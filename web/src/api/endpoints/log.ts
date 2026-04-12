@@ -59,10 +59,10 @@ export interface LogListParams {
 
 /**
  * 清空日志 Hook
- * 
+ *
  * @example
  * const clearLogs = useClearLogs();
- * 
+ *
  * clearLogs.mutate();
  */
 export function useClearLogs() {
@@ -83,6 +83,22 @@ export function useClearLogs() {
 }
 
 const logsInfiniteQueryKey = (pageSize: number, filterError: boolean) => ['logs', 'infinite', pageSize, filterError] as const;
+
+// 模块级别的手动断开标志，持久化用户选择
+// 使用 sessionStorage 确保跨页面导航时保持状态，但关闭标签页后重置
+function getManualDisconnectFlag(): boolean {
+    if (typeof window === 'undefined') return false;
+    return sessionStorage.getItem('log_stream_manual_disconnect') === 'true';
+}
+
+function setManualDisconnectFlag(value: boolean): void {
+    if (typeof window === 'undefined') return;
+    if (value) {
+        sessionStorage.setItem('log_stream_manual_disconnect', 'true');
+    } else {
+        sessionStorage.removeItem('log_stream_manual_disconnect');
+    }
+}
 
 /**
  * 日志管理 Hook
@@ -110,9 +126,8 @@ export function useLogs(options: { pageSize?: number } = {}) {
     const [filterError, setFilterError] = useState(false);
     const [isConnected, setIsConnected] = useState(false);
     const [error, setError] = useState<Error | null>(null);
-    // 使用 reconnectNonce 强制触发重连，而不是依赖 ref 变化
+    // 使用 reconnectNonce 强制触发重连
     const [reconnectNonce, setReconnectNonce] = useState(0);
-    const manualCloseRef = useRef(false);
 
     const eventSourceRef = useRef<EventSource | null>(null);
     const connectGenerationRef = useRef(0);
@@ -171,6 +186,10 @@ export function useLogs(options: { pageSize?: number } = {}) {
     const closeEventSource = useCallback((target?: EventSource | null) => {
         const source = target ?? eventSourceRef.current;
         if (!source) return;
+        // 清理 handlers 防止内存泄漏
+        source.onopen = null;
+        source.onmessage = null;
+        source.onerror = null;
         source.close();
         if (eventSourceRef.current === source) {
             eventSourceRef.current = null;
@@ -178,8 +197,8 @@ export function useLogs(options: { pageSize?: number } = {}) {
     }, []);
 
     useEffect(() => {
-        // 手动断开时不连接
-        if (manualCloseRef.current) {
+        // 检查用户是否手动断开（从 sessionStorage 读取）
+        if (getManualDisconnectFlag()) {
             return;
         }
 
@@ -189,14 +208,14 @@ export function useLogs(options: { pageSize?: number } = {}) {
         const connect = async () => {
             try {
                 const { token } = await apiClient.get<{ token: string }>('/api/v1/log/stream-token');
-                if (cancelled || connectGenerationRef.current !== currentGen || manualCloseRef.current) return;
+                if (cancelled || connectGenerationRef.current !== currentGen || getManualDisconnectFlag()) return;
 
                 closeEventSource();
                 const eventSource = new EventSource(`${API_BASE_URL}/api/v1/log/stream?token=${token}`);
                 eventSourceRef.current = eventSource;
 
                 eventSource.onopen = () => {
-                    if (cancelled || connectGenerationRef.current !== currentGen || manualCloseRef.current) {
+                    if (cancelled || connectGenerationRef.current !== currentGen || getManualDisconnectFlag()) {
                         closeEventSource(eventSource);
                         return;
                     }
@@ -205,25 +224,38 @@ export function useLogs(options: { pageSize?: number } = {}) {
                 };
 
                 eventSource.onmessage = (event) => {
+                    // 防止过期实例写入
+                    if (cancelled || connectGenerationRef.current !== currentGen) return;
+
                     try {
                         const log: RelayLog = JSON.parse(event.data);
-                        // SSE 推送时也应用 filterError 筛选
-                        if (filterError && !log.error?.trim()) return;
 
+                        // 双写：同时更新两个缓存，筛选逻辑在各自缓存的 queryFn 中处理
+                        // 写入全量缓存
                         queryClient.setQueryData(
-                            logsInfiniteQueryKey(pageSize, filterError),
+                            logsInfiniteQueryKey(pageSize, false),
                             (old: InfiniteData<RelayLog[], number> | undefined) => {
-                                if (!old) {
-                                    return { pages: [[log]], pageParams: [1] };
-                                }
-
+                                if (!old) return { pages: [[log]], pageParams: [1] };
                                 const exists = old.pages.some((p) => p?.some((x) => x.id === log.id));
                                 if (exists) return old;
-
                                 const firstPage = old.pages[0] ?? [];
                                 return { ...old, pages: [[log, ...firstPage], ...old.pages.slice(1)] };
                             }
                         );
+
+                        // 如果有错误，也写入错误筛选缓存
+                        if (log.error?.trim()) {
+                            queryClient.setQueryData(
+                                logsInfiniteQueryKey(pageSize, true),
+                                (old: InfiniteData<RelayLog[], number> | undefined) => {
+                                    if (!old) return { pages: [[log]], pageParams: [1] };
+                                    const exists = old.pages.some((p) => p?.some((x) => x.id === log.id));
+                                    if (exists) return old;
+                                    const firstPage = old.pages[0] ?? [];
+                                    return { ...old, pages: [[log, ...firstPage], ...old.pages.slice(1)] };
+                                }
+                            );
+                        }
                     } catch (e) {
                         logger.error('解析日志数据失败:', e);
                     }
@@ -232,10 +264,10 @@ export function useLogs(options: { pageSize?: number } = {}) {
                 eventSource.onerror = () => {
                     if (cancelled || connectGenerationRef.current !== currentGen) return;
 
-                    const wasManualClose = manualCloseRef.current;
+                    const wasManualDisconnect = getManualDisconnectFlag();
                     setIsConnected(false);
 
-                    if (!wasManualClose) {
+                    if (!wasManualDisconnect) {
                         setError(new Error('SSE 连接断开'));
                     }
 
@@ -255,21 +287,21 @@ export function useLogs(options: { pageSize?: number } = {}) {
             cancelled = true;
             closeEventSource();
         };
-    }, [closeEventSource, pageSize, queryClient, filterError, reconnectNonce]);
+    }, [closeEventSource, pageSize, queryClient, reconnectNonce]); // 移除 filterError 依赖
 
     const clear = useCallback(() => {
         queryClient.removeQueries({ queryKey: logsInfiniteQueryKey(pageSize, filterError) });
     }, [pageSize, filterError, queryClient]);
 
     const disconnect = useCallback(() => {
-        manualCloseRef.current = true;
+        setManualDisconnectFlag(true);
         closeEventSource();
         setIsConnected(false);
         setError(null);
     }, [closeEventSource]);
 
     const reconnect = useCallback(() => {
-        manualCloseRef.current = false;
+        setManualDisconnectFlag(false);
         setError(null);
         setIsConnected(false);
         closeEventSource();
