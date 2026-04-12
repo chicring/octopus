@@ -110,7 +110,7 @@ export function useLogs(options: { pageSize?: number } = {}) {
     const [filterError, setFilterError] = useState(false);
     const [isConnected, setIsConnected] = useState(false);
     const [error, setError] = useState<Error | null>(null);
-    // 使用 reconnectNonce 强制触发重连，而不是依赖 streamPaused 状态变化
+    // 使用 reconnectNonce 强制触发重连，而不是依赖 ref 变化
     const [reconnectNonce, setReconnectNonce] = useState(0);
     const manualCloseRef = useRef(false);
 
@@ -168,6 +168,15 @@ export function useLogs(options: { pageSize?: number } = {}) {
         }
     }, [logsQuery]);
 
+    const closeEventSource = useCallback((target?: EventSource | null) => {
+        const source = target ?? eventSourceRef.current;
+        if (!source) return;
+        source.close();
+        if (eventSourceRef.current === source) {
+            eventSourceRef.current = null;
+        }
+    }, []);
+
     useEffect(() => {
         // 手动断开时不连接
         if (manualCloseRef.current) {
@@ -180,14 +189,15 @@ export function useLogs(options: { pageSize?: number } = {}) {
         const connect = async () => {
             try {
                 const { token } = await apiClient.get<{ token: string }>('/api/v1/log/stream-token');
-                if (cancelled || connectGenerationRef.current !== currentGen) return;
+                if (cancelled || connectGenerationRef.current !== currentGen || manualCloseRef.current) return;
 
+                closeEventSource();
                 const eventSource = new EventSource(`${API_BASE_URL}/api/v1/log/stream?token=${token}`);
                 eventSourceRef.current = eventSource;
 
                 eventSource.onopen = () => {
-                    if (connectGenerationRef.current !== currentGen) {
-                        eventSource.close();
+                    if (cancelled || connectGenerationRef.current !== currentGen || manualCloseRef.current) {
+                        closeEventSource(eventSource);
                         return;
                     }
                     setIsConnected(true);
@@ -220,17 +230,20 @@ export function useLogs(options: { pageSize?: number } = {}) {
                 };
 
                 eventSource.onerror = () => {
-                    if (connectGenerationRef.current !== currentGen) return;
-                    // 仅在非手动关闭时设置状态
-                    if (!manualCloseRef.current) {
-                        setIsConnected(false);
+                    if (cancelled || connectGenerationRef.current !== currentGen) return;
+
+                    const wasManualClose = manualCloseRef.current;
+                    setIsConnected(false);
+
+                    if (!wasManualClose) {
                         setError(new Error('SSE 连接断开'));
                     }
-                    eventSource.close();
-                    eventSourceRef.current = null;
+
+                    closeEventSource(eventSource);
                 };
             } catch (e) {
                 if (cancelled || connectGenerationRef.current !== currentGen) return;
+                setIsConnected(false);
                 setError(e instanceof Error ? e : new Error('获取 stream token 失败'));
                 logger.error('获取 stream token 失败:', e);
             }
@@ -240,10 +253,9 @@ export function useLogs(options: { pageSize?: number } = {}) {
 
         return () => {
             cancelled = true;
-            eventSourceRef.current?.close();
-            eventSourceRef.current = null;
+            closeEventSource();
         };
-    }, [pageSize, queryClient, filterError, reconnectNonce]);
+    }, [closeEventSource, pageSize, queryClient, filterError, reconnectNonce]);
 
     const clear = useCallback(() => {
         queryClient.removeQueries({ queryKey: logsInfiniteQueryKey(pageSize, filterError) });
@@ -251,15 +263,18 @@ export function useLogs(options: { pageSize?: number } = {}) {
 
     const disconnect = useCallback(() => {
         manualCloseRef.current = true;
-        eventSourceRef.current?.close();
-        eventSourceRef.current = null;
+        closeEventSource();
         setIsConnected(false);
-    }, []);
+        setError(null);
+    }, [closeEventSource]);
 
     const reconnect = useCallback(() => {
         manualCloseRef.current = false;
+        setError(null);
+        setIsConnected(false);
+        closeEventSource();
         setReconnectNonce((n) => n + 1);
-    }, []);
+    }, [closeEventSource]);
 
     return {
         logs,
