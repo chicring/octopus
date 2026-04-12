@@ -11,6 +11,7 @@ import (
 	"github.com/bestruirui/octopus/internal/server/router"
 	"github.com/bestruirui/octopus/internal/utils/log"
 	"github.com/bestruirui/octopus/static"
+	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 )
 
@@ -28,6 +29,9 @@ func Start() error {
 		resp.Error(c, http.StatusInternalServerError, resp.ErrInternalServer)
 		c.Abort()
 	}))
+
+	// Gzip 压缩，对 1KB 以上响应启用
+	r.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithMinLength(1024)))
 
 	if conf.IsDebug() {
 		r.Use(middleware.Logger())
