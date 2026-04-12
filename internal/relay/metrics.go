@@ -121,6 +121,12 @@ func finalChannel(attempts []model.ChannelAttempt) (int, string) {
 			lastName = a.ChannelName
 		}
 	}
+	// 如果没有 success/failed，取最后一个被跳过的通道用于日志记录
+	if lastID == 0 && len(attempts) > 0 {
+		last := attempts[len(attempts)-1]
+		lastID = last.ChannelID
+		lastName = last.ChannelName
+	}
 	return lastID, lastName
 }
 

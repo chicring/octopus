@@ -151,9 +151,20 @@ func Handler(inboundType inbound.InboundType, c *gin.Context) {
 		lastErr = result.Err
 	}
 
-	// 所有通道都失败
+	// 所有通道都失败或被跳过
+	var hasAttempt bool
+	for _, a := range iter.Attempts() {
+		if a.Status == dbmodel.AttemptSuccess || a.Status == dbmodel.AttemptFailed {
+			hasAttempt = true
+			break
+		}
+	}
 	metrics.Save(c.Request.Context(), false, lastErr, iter.Attempts())
-	resp.Error(c, http.StatusBadGateway, "all channels failed")
+	if hasAttempt {
+		resp.Error(c, http.StatusBadGateway, "all channels failed")
+	} else {
+		resp.Error(c, http.StatusServiceUnavailable, "no available channel")
+	}
 }
 
 // attempt 统一管理一次通道尝试的完整生命周期
