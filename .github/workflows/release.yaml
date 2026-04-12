@@ -70,7 +70,7 @@ jobs:
           images: ${{ env.DOCKER_IMAGE }}
           tags: |
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
-            type=raw,value=${{ steps.tag.outputs.tag_name }}
+            type=raw,value=${{ steps.tag.outputs.tag_name }},enable=${{ github.ref == 'refs/heads/master' }}
             type=raw,value=${{ steps.tag.outputs.short_sha }}
             type=raw,value=dev,enable=${{ github.ref == 'refs/heads/dev' }}
 
@@ -81,7 +81,7 @@ jobs:
           images: ${{ env.DOCKER_IMAGE }}
           tags: |
             type=raw,value=latest-alpine,enable=${{ github.ref == 'refs/heads/master' }}
-            type=raw,value=${{ steps.tag.outputs.tag_name }}-alpine
+            type=raw,value=${{ steps.tag.outputs.tag_name }}-alpine,enable=${{ github.ref == 'refs/heads/master' }}
             type=raw,value=${{ steps.tag.outputs.short_sha }}-alpine
             type=raw,value=dev-alpine,enable=${{ github.ref == 'refs/heads/dev' }}
 

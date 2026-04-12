@@ -282,3 +282,12 @@ func RelayLogGet(ctx context.Context, id int64) (*model.RelayLog, error) {
 	}
 	return &log, nil
 }
+
+// RelayLogExists 判断日志是否存在（用于 404 检测）
+func RelayLogExists(ctx context.Context, id int64) (bool, error) {
+	var count int64
+	if err := db.GetDB().WithContext(ctx).Model(&model.RelayLog{}).Where("id = ?", id).Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}

@@ -105,10 +105,6 @@ func getLogDetail(c *gin.Context) {
 
 	log, err := op.RelayLogGet(c.Request.Context(), id)
 	if err != nil {
-		resp.Error(c, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if log == nil {
 		resp.Error(c, http.StatusNotFound, "log not found")
 		return
 	}
