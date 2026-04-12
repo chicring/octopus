@@ -4,11 +4,14 @@ on:
   push:
     branches:
       - master
+      - dev
 
 permissions:
   contents: write
-  packages: write
-  
+
+env:
+  DOCKER_IMAGE: chruxc/octopus
+
 jobs:
   release:
     name: release
@@ -18,13 +21,12 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          ref: master
 
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
           go-version: 'stable'
-    
+
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
@@ -45,53 +47,49 @@ jobs:
       - name: Build
         run: bash scripts/build.sh release
 
-      - name: Get latest tag
+      - name: Get version info
         id: tag
         run: |
-          LATEST_TAG=$(git describe --tags --abbrev=0)
-          echo "TAG_NAME=$LATEST_TAG" >> $GITHUB_OUTPUT
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo 'dev')
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          echo "tag_name=$LATEST_TAG" >> $GITHUB_OUTPUT
+          echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
 
       - name: Upload Release
+        if: github.ref == 'refs/heads/master'
         uses: softprops/action-gh-release@v2
         with:
           files: build/archives/*
           prerelease: false
-          tag_name: ${{ steps.tag.outputs.TAG_NAME }}
+          tag_name: ${{ steps.tag.outputs.tag_name }}
 
       - name: Docker meta (Debian)
         id: meta-debian
         uses: docker/metadata-action@v5
         with:
-          images: |
-            ghcr.io/${{ github.repository }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}
+          images: ${{ env.DOCKER_IMAGE }}
           tags: |
-            type=raw,value=latest
-            type=raw,value=${{ steps.tag.outputs.TAG_NAME }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
+            type=raw,value=${{ steps.tag.outputs.tag_name }}
+            type=raw,value=${{ steps.tag.outputs.short_sha }}
+            type=raw,value=dev,enable=${{ github.ref == 'refs/heads/dev' }}
 
       - name: Docker meta (Alpine)
         id: meta-alpine
         uses: docker/metadata-action@v5
         with:
-          images: |
-            ghcr.io/${{ github.repository }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}
+          images: ${{ env.DOCKER_IMAGE }}
           tags: |
-            type=raw,value=latest-alpine
-            type=raw,value=${{ steps.tag.outputs.TAG_NAME }}-alpine
+            type=raw,value=latest-alpine,enable=${{ github.ref == 'refs/heads/master' }}
+            type=raw,value=${{ steps.tag.outputs.tag_name }}-alpine
+            type=raw,value=${{ steps.tag.outputs.short_sha }}-alpine
+            type=raw,value=dev-alpine,enable=${{ github.ref == 'refs/heads/dev' }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
