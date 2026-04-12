@@ -101,9 +101,13 @@ func (m *RelayMetrics) Save(ctx context.Context, success bool, err error, attemp
 	if channelID > 0 {
 		op.StatsChannelUpdate(channelID, globalStats)
 	}
-	// 更新模型统计（使用实际模型名，聚合到全局）
-	if m.ActualModel != "" {
-		op.StatsModelUpdate(m.ActualModel, globalStats)
+	// 更新模型统计（使用实际模型名，fallback 到请求模型名）
+	modelName := m.ActualModel
+	if modelName == "" {
+		modelName = m.RequestModel
+	}
+	if modelName != "" {
+		op.StatsModelUpdate(modelName, globalStats)
 	}
 
 	log.Infof("relay complete: model=%s, channel=%d(%s), success=%t, duration=%dms, input_token=%d, output_token=%d, input_cost=%f, output_cost=%f, total_cost=%f, attempts=%d",

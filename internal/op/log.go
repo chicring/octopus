@@ -250,7 +250,8 @@ func RelayLogList(ctx context.Context, startTime, endTime *int, page, pageSize i
 				query = query.Where("time >= ? AND time <= ?", *startTime, *endTime)
 			}
 			if hasError {
-				query = query.Where("error IS NOT NULL AND error != ''")
+				// 与缓存路径保持一致：排除空白错误
+				query = query.Where("error IS NOT NULL AND error != '' AND TRIM(error) != ''")
 			}
 
 			var dbLogs []model.RelayLog

@@ -110,7 +110,9 @@ export function useLogs(options: { pageSize?: number } = {}) {
     const [filterError, setFilterError] = useState(false);
     const [isConnected, setIsConnected] = useState(false);
     const [error, setError] = useState<Error | null>(null);
-    const [streamPaused, setStreamPaused] = useState(false);
+    // 使用 reconnectNonce 强制触发重连，而不是依赖 streamPaused 状态变化
+    const [reconnectNonce, setReconnectNonce] = useState(0);
+    const manualCloseRef = useRef(false);
 
     const eventSourceRef = useRef<EventSource | null>(null);
     const connectGenerationRef = useRef(0);
@@ -167,11 +169,8 @@ export function useLogs(options: { pageSize?: number } = {}) {
     }, [logsQuery]);
 
     useEffect(() => {
-        if (streamPaused) {
-            // 手动断开
-            eventSourceRef.current?.close();
-            eventSourceRef.current = null;
-            setIsConnected(false);
+        // 手动断开时不连接
+        if (manualCloseRef.current) {
             return;
         }
 
@@ -222,8 +221,11 @@ export function useLogs(options: { pageSize?: number } = {}) {
 
                 eventSource.onerror = () => {
                     if (connectGenerationRef.current !== currentGen) return;
-                    setIsConnected(false);
-                    setError(new Error('SSE 连接断开'));
+                    // 仅在非手动关闭时设置状态
+                    if (!manualCloseRef.current) {
+                        setIsConnected(false);
+                        setError(new Error('SSE 连接断开'));
+                    }
                     eventSource.close();
                     eventSourceRef.current = null;
                 };
@@ -241,18 +243,22 @@ export function useLogs(options: { pageSize?: number } = {}) {
             eventSourceRef.current?.close();
             eventSourceRef.current = null;
         };
-    }, [pageSize, queryClient, streamPaused, filterError]);
+    }, [pageSize, queryClient, filterError, reconnectNonce]);
 
     const clear = useCallback(() => {
         queryClient.removeQueries({ queryKey: logsInfiniteQueryKey(pageSize, filterError) });
     }, [pageSize, filterError, queryClient]);
 
     const disconnect = useCallback(() => {
-        setStreamPaused(true);
+        manualCloseRef.current = true;
+        eventSourceRef.current?.close();
+        eventSourceRef.current = null;
+        setIsConnected(false);
     }, []);
 
     const reconnect = useCallback(() => {
-        setStreamPaused(false);
+        manualCloseRef.current = false;
+        setReconnectNonce((n) => n + 1);
     }, []);
 
     return {
