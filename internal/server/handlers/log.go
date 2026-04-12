@@ -27,6 +27,10 @@ func init() {
 		AddRoute(
 			router.NewRoute("/stream-token", http.MethodGet).
 				Handle(getStreamToken),
+		).
+		AddRoute(
+			router.NewRoute("/:id", http.MethodGet).
+				Handle(getLogDetail),
 		)
 
 	router.NewGroupRouter("/api/v1/log").
@@ -89,6 +93,27 @@ func getStreamToken(c *gin.Context) {
 		return
 	}
 	resp.Success(c, gin.H{"token": token})
+}
+
+func getLogDetail(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		resp.Error(c, http.StatusBadRequest, "invalid log id")
+		return
+	}
+
+	log, err := op.RelayLogGet(c.Request.Context(), id)
+	if err != nil {
+		resp.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if log == nil {
+		resp.Error(c, http.StatusNotFound, "log not found")
+		return
+	}
+
+	resp.Success(c, log)
 }
 
 func streamLog(c *gin.Context) {

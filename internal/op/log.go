@@ -188,6 +188,7 @@ func relayLogCleanup(ctx context.Context) error {
 
 // RelayLogList 查询日志列表，支持可选的时间范围过滤
 // startTime 和 endTime 为 nil 时表示不限制时间范围
+// 不返回 request_content 和 response_content 以提升性能
 func RelayLogList(ctx context.Context, startTime, endTime *int, page, pageSize int) ([]model.RelayLog, error) {
 	enabled, err := SettingGetBool(model.SettingKeyRelayLogKeepEnabled)
 	if err != nil {
@@ -195,17 +196,18 @@ func RelayLogList(ctx context.Context, startTime, endTime *int, page, pageSize i
 	}
 	hasTimeFilter := startTime != nil && endTime != nil
 
-	// 获取缓存中符合条件的日志
+	// 获取缓存中符合条件的日志（排除大字段）
 	relayLogCacheLock.Lock()
 	var cachedLogs []model.RelayLog
 	for _, log := range relayLogCache {
 		if hasTimeFilter {
-			if log.Time >= int64(*startTime) && log.Time <= int64(*endTime) {
-				cachedLogs = append(cachedLogs, log)
+			if log.Time < int64(*startTime) || log.Time > int64(*endTime) {
+				continue
 			}
-		} else {
-			cachedLogs = append(cachedLogs, log)
 		}
+		log.RequestContent = ""
+		log.ResponseContent = ""
+		cachedLogs = append(cachedLogs, log)
 	}
 	relayLogCacheLock.Unlock()
 
@@ -237,7 +239,7 @@ func RelayLogList(ctx context.Context, startTime, endTime *int, page, pageSize i
 				dbOffset = offset - cacheCount
 			}
 
-			query := db.GetDB().WithContext(ctx)
+			query := db.GetDB().WithContext(ctx).Omit("request_content", "response_content")
 			if hasTimeFilter {
 				query = query.Where("time >= ? AND time <= ?", *startTime, *endTime)
 			}
@@ -258,4 +260,25 @@ func RelayLogClear(ctx context.Context) error {
 	relayLogCache = make([]model.RelayLog, 0, relayLogMaxSize)
 	relayLogCacheLock.Unlock()
 	return db.GetDB().WithContext(ctx).Where("1 = 1").Delete(&model.RelayLog{}).Error
+}
+
+// RelayLogGet 获取单条日志详情（含完整的 request_content 和 response_content）
+func RelayLogGet(ctx context.Context, id int64) (*model.RelayLog, error) {
+	// 先从缓存中查找
+	relayLogCacheLock.Lock()
+	for _, log := range relayLogCache {
+		if log.ID == id {
+			result := log
+			relayLogCacheLock.Unlock()
+			return &result, nil
+		}
+	}
+	relayLogCacheLock.Unlock()
+
+	// 缓存未命中，从数据库查询
+	var log model.RelayLog
+	if err := db.GetDB().WithContext(ctx).Where("id = ?", id).First(&log).Error; err != nil {
+		return nil, err
+	}
+	return &log, nil
 }

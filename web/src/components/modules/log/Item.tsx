@@ -8,7 +8,7 @@ import JsonView from '@uiw/react-json-view';
 import { githubDarkTheme } from '@uiw/react-json-view/githubDark';
 import { githubLightTheme } from '@uiw/react-json-view/githubLight';
 import { useTheme } from 'next-themes';
-import { type RelayLog, type ChannelAttempt } from '@/api/endpoints/log';
+import { type RelayLog, type ChannelAttempt, getLogDetail } from '@/api/endpoints/log';
 import { getModelIcon } from '@/lib/model-icons';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -99,7 +99,7 @@ function RetryBadgeWithTooltip({ channelName, brandColor, attempts }: RetryBadge
     );
 }
 
-function DeferredJsonContent({ content, fallbackText }: { content: string | undefined; fallbackText: string }) {
+function DeferredJsonContent({ content, fallbackText, loading }: { content: string | undefined; fallbackText: string; loading?: boolean }) {
     const { resolvedTheme } = useTheme();
     const { isOpen } = useMorphingDialog();
     const [shouldRender, setShouldRender] = useState(false);
@@ -123,6 +123,14 @@ function DeferredJsonContent({ content, fallbackText }: { content: string | unde
     if (!isOpen) {
         if (shouldRender) setShouldRender(false);
         return null;
+    }
+
+    if (loading) {
+        return (
+            <div className="p-4 flex items-center justify-center h-full">
+                <Loader2 className="h-5 w-5 text-muted-foreground animate-spin" />
+            </div>
+        );
     }
 
     if (!content) {
@@ -195,6 +203,25 @@ export function LogCard({ log }: { log: RelayLog }) {
     const hasError = !!log.error;
     const hasMultipleAttempts = log.attempts && log.attempts.length > 1;
     const [isDiagnosticExpanded, setIsDiagnosticExpanded] = useState(false);
+
+    // 懒加载日志详情（含 request_content / response_content）
+    const { isOpen } = useMorphingDialog();
+    const [detail, setDetail] = useState<RelayLog | null>(null);
+    const [detailLoading, setDetailLoading] = useState(false);
+
+    useEffect(() => {
+        if (isOpen && !detail && !detailLoading) {
+            setDetailLoading(true);
+            getLogDetail(log.id)
+                .then((data) => setDetail(data ?? null))
+                .catch(() => setDetail(null))
+                .finally(() => setDetailLoading(false));
+        }
+        if (!isOpen) {
+            setDetail(null);
+            setDetailLoading(false);
+        }
+    }, [isOpen, log.id, detail, detailLoading]);
 
     return (
         <TooltipProvider>
@@ -432,7 +459,7 @@ export function LogCard({ log }: { log: RelayLog }) {
                                                 </Badge>
                                             </div>
                                             <div className="flex-1 overflow-auto min-h-0">
-                                                <DeferredJsonContent content={log.request_content} fallbackText={t('noRequestContent')} />
+                                                <DeferredJsonContent content={detail?.request_content} fallbackText={detailLoading ? '' : t('noRequestContent')} loading={detailLoading} />
                                             </div>
                                         </div>
                                         <div className="flex flex-col rounded-2xl border border-border bg-muted/30 overflow-hidden min-h-0">
@@ -444,7 +471,7 @@ export function LogCard({ log }: { log: RelayLog }) {
                                                 </Badge>
                                             </div>
                                             <div className="flex-1 overflow-auto min-h-0">
-                                                <DeferredJsonContent content={log.response_content} fallbackText={t('noResponseContent')} />
+                                                <DeferredJsonContent content={detail?.response_content} fallbackText={detailLoading ? '' : t('noResponseContent')} loading={detailLoading} />
                                             </div>
                                         </div>
                                     </div>

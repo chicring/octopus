@@ -40,8 +40,8 @@ export interface RelayLog {
     ftut: number;                // 首字时间(毫秒)
     use_time: number;            // 总用时(毫秒)
     cost: number;                // 消耗费用
-    request_content: string;     // 请求内容
-    response_content: string;    // 响应内容
+    request_content?: string;     // 请求内容（仅详情接口返回）
+    response_content?: string;    // 响应内容（仅详情接口返回）
     error: string;               // 错误信息
     attempts?: ChannelAttempt[]; // 所有尝试记录
     total_attempts?: number;     // 总尝试次数
@@ -227,4 +227,11 @@ export function useLogs(options: { pageSize?: number } = {}) {
         loadMore,
         clear,
     };
+}
+
+/**
+ * 获取单条日志详情（含完整的 request_content 和 response_content）
+ */
+export async function getLogDetail(id: number): Promise<RelayLog> {
+    return apiClient.get<RelayLog>(`/api/v1/log/${id}`);
 }
