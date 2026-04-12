@@ -1,21 +1,58 @@
 'use client';
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLogs } from '@/api/endpoints/log';
 import { LogCard } from './Item';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ArrowUp, Wifi, WifiOff } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { VirtualizedGrid } from '@/components/common/VirtualizedGrid';
+import { Switch } from '@/components/ui/switch';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 /**
  * 日志页面组件
  * - 初始加载 pageSize 条历史日志
  * - SSE 实时推送新日志
  * - 滚动自动加载更多
+ * - 支持筛选错误日志
+ * - 支持断开/重连 SSE
  */
 export function Log() {
     const t = useTranslations('log');
-    const { logs, hasMore, isLoading, isLoadingMore, loadMore } = useLogs({ pageSize: 10 });
+    const {
+        logs,
+        isConnected,
+        hasMore,
+        isLoading,
+        isLoadingMore,
+        loadMore,
+        filterError,
+        setFilterError,
+        disconnect,
+        reconnect,
+    } = useLogs({ pageSize: 10 });
+
+    const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+    const [showScrollTop, setShowScrollTop] = useState(false);
+
+    // 监听滚动位置
+    useEffect(() => {
+        const el = scrollContainerRef.current;
+        if (!el) return;
+
+        const handleScroll = () => {
+            setShowScrollTop(el.scrollTop > 200);
+        };
+
+        el.addEventListener('scroll', handleScroll);
+        return () => el.removeEventListener('scroll', handleScroll);
+    }, []);
+
+    // 滚动到顶部
+    const scrollToTop = useCallback(() => {
+        scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    }, []);
 
     const canLoadMore = hasMore && !isLoading && !isLoadingMore && logs.length > 0;
     const handleReachEnd = useCallback(() => {
@@ -42,18 +79,65 @@ export function Log() {
     }, [hasMore, isLoading, isLoadingMore, logs.length, t]);
 
     return (
-        <VirtualizedGrid
-            items={logs}
-            layout="list"
-            columns={{ default: 1 }}
-            estimateItemHeight={80}
-            overscan={8}
-            getItemKey={(log) => `log-${log.id}`}
-            renderItem={(log) => <LogCard log={log} />}
-            footer={footer}
-            onReachEnd={handleReachEnd}
-            reachEndEnabled={canLoadMore}
-            reachEndOffset={2}
-        />
+        <div className="flex flex-col h-full min-h-0">
+            {/* 顶部控制栏 */}
+            <div className="flex items-center justify-end gap-4 px-4 py-2 shrink-0">
+                <label className="flex items-center gap-2 text-sm">
+                    <Switch
+                        checked={filterError}
+                        onCheckedChange={setFilterError}
+                    />
+                    <span className="text-muted-foreground">{t('controls.showErrorOnly')}</span>
+                </label>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => isConnected ? disconnect() : reconnect()}
+                    className="gap-2"
+                >
+                    {isConnected ? (
+                        <>
+                            <Wifi className="h-4 w-4 text-green-500" />
+                            <span>{t('controls.connected')}</span>
+                        </>
+                    ) : (
+                        <>
+                            <WifiOff className="h-4 w-4 text-muted-foreground" />
+                            <span>{t('controls.disconnected')}</span>
+                        </>
+                    )}
+                </Button>
+            </div>
+
+            {/* 日志列表 */}
+            <div className="flex-1 min-h-0 relative">
+                <VirtualizedGrid
+                    items={logs}
+                    layout="list"
+                    columns={{ default: 1 }}
+                    estimateItemHeight={80}
+                    overscan={8}
+                    getItemKey={(log) => `log-${log.id}`}
+                    renderItem={(log) => <LogCard log={log} />}
+                    footer={footer}
+                    onReachEnd={handleReachEnd}
+                    reachEndEnabled={canLoadMore}
+                    reachEndOffset={2}
+                    scrollContainerRef={scrollContainerRef}
+                />
+
+                {/* 滚动到顶部按钮 */}
+                <button
+                    onClick={scrollToTop}
+                    className={cn(
+                        "absolute bottom-4 right-4 z-10 p-2 rounded-full bg-card border shadow-lg transition-opacity",
+                        showScrollTop ? "opacity-100" : "opacity-0 pointer-events-none"
+                    )}
+                    aria-label={t('controls.scrollToTop')}
+                >
+                    <ArrowUp className="h-5 w-5" />
+                </button>
+            </div>
+        </div>
     );
 }

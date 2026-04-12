@@ -137,7 +137,9 @@
             "sortByCount": "Count",
             "sortByTokens": "Tokens",
             "noData": "No ranking data",
-            "successRate": "Success Rate"
+            "successRate": "Success Rate",
+            "channelDimension": "Channel",
+            "modelDimension": "Model"
         }
     },
     "setting": {
@@ -427,6 +429,12 @@
     "log": {
         "list": {
             "noMore": "No more logs"
+        },
+        "controls": {
+            "showErrorOnly": "Errors Only",
+            "connected": "Connected",
+            "disconnected": "Disconnected",
+            "scrollToTop": "Scroll to top"
         },
         "card": {
             "error": "Error",

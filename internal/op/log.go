@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"strings"
 	"sync"
 	"time"
 
@@ -186,10 +187,11 @@ func relayLogCleanup(ctx context.Context) error {
 	return db.GetDB().WithContext(ctx).Where("time < ?", cutoffTime).Delete(&model.RelayLog{}).Error
 }
 
-// RelayLogList 查询日志列表，支持可选的时间范围过滤
+// RelayLogList 查询日志列表，支持可选的时间范围过滤和错误筛选
 // startTime 和 endTime 为 nil 时表示不限制时间范围
+// hasError 为 true 时只返回有错误信息的日志
 // 不返回 request_content 和 response_content 以提升性能
-func RelayLogList(ctx context.Context, startTime, endTime *int, page, pageSize int) ([]model.RelayLog, error) {
+func RelayLogList(ctx context.Context, startTime, endTime *int, page, pageSize int, hasError bool) ([]model.RelayLog, error) {
 	enabled, err := SettingGetBool(model.SettingKeyRelayLogKeepEnabled)
 	if err != nil {
 		return nil, err
@@ -204,6 +206,10 @@ func RelayLogList(ctx context.Context, startTime, endTime *int, page, pageSize i
 			if log.Time < int64(*startTime) || log.Time > int64(*endTime) {
 				continue
 			}
+		}
+		// hasError 筛选：只保留有非空错误信息的日志
+		if hasError && strings.TrimSpace(log.Error) == "" {
+			continue
 		}
 		log.RequestContent = ""
 		log.ResponseContent = ""
@@ -242,6 +248,9 @@ func RelayLogList(ctx context.Context, startTime, endTime *int, page, pageSize i
 			query := db.GetDB().WithContext(ctx).Omit("request_content", "response_content")
 			if hasTimeFilter {
 				query = query.Where("time >= ? AND time <= ?", *startTime, *endTime)
+			}
+			if hasError {
+				query = query.Where("error IS NOT NULL AND error != ''")
 			}
 
 			var dbLogs []model.RelayLog

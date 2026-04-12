@@ -82,37 +82,51 @@ export function useClearLogs() {
     });
 }
 
-const logsInfiniteQueryKey = (pageSize: number) => ['logs', 'infinite', pageSize] as const;
+const logsInfiniteQueryKey = (pageSize: number, filterError: boolean) => ['logs', 'infinite', pageSize, filterError] as const;
 
 /**
  * 日志管理 Hook
  * 整合初始加载、SSE 实时推送、滚动加载更多
- * 
+ *
  * @example
- * const { logs, isConnected, hasMore, isLoadingMore, loadMore, clear } = useLogs();
- * 
+ * const { logs, isConnected, hasMore, isLoadingMore, loadMore, filterError, setFilterError, disconnect, reconnect } = useLogs();
+ *
  * // logs 自动包含历史日志和实时日志，按时间倒序
  * logs.forEach(log => console.log(log.request_model_name));
- * 
+ *
  * // 滚动到底部时加载更多
  * if (hasMore && !isLoadingMore) loadMore();
+ *
+ * // 筛选错误日志
+ * setFilterError(true);
+ *
+ * // 断开/重连 SSE
+ * disconnect();
+ * reconnect();
  */
 export function useLogs(options: { pageSize?: number } = {}) {
     const { pageSize = 20 } = options;
 
+    const [filterError, setFilterError] = useState(false);
     const [isConnected, setIsConnected] = useState(false);
     const [error, setError] = useState<Error | null>(null);
+    const [streamPaused, setStreamPaused] = useState(false);
+
     const eventSourceRef = useRef<EventSource | null>(null);
+    const connectGenerationRef = useRef(0);
 
     const queryClient = useQueryClient();
 
     const logsQuery = useInfiniteQuery({
-        queryKey: logsInfiniteQueryKey(pageSize),
+        queryKey: logsInfiniteQueryKey(pageSize, filterError),
         initialPageParam: 1,
         queryFn: async ({ pageParam }) => {
             const params = new URLSearchParams();
             params.set('page', String(pageParam));
             params.set('page_size', String(pageSize));
+            if (filterError) {
+                params.set('has_error', 'true');
+            }
             const result = await apiClient.get<RelayLog[] | null>(`/api/v1/log/list?${params.toString()}`);
             return result ?? [];
         },
@@ -153,17 +167,30 @@ export function useLogs(options: { pageSize?: number } = {}) {
     }, [logsQuery]);
 
     useEffect(() => {
+        if (streamPaused) {
+            // 手动断开
+            eventSourceRef.current?.close();
+            eventSourceRef.current = null;
+            setIsConnected(false);
+            return;
+        }
+
         let cancelled = false;
+        const currentGen = ++connectGenerationRef.current;
 
         const connect = async () => {
             try {
                 const { token } = await apiClient.get<{ token: string }>('/api/v1/log/stream-token');
-                if (cancelled) return;
+                if (cancelled || connectGenerationRef.current !== currentGen) return;
 
                 const eventSource = new EventSource(`${API_BASE_URL}/api/v1/log/stream?token=${token}`);
                 eventSourceRef.current = eventSource;
 
                 eventSource.onopen = () => {
+                    if (connectGenerationRef.current !== currentGen) {
+                        eventSource.close();
+                        return;
+                    }
                     setIsConnected(true);
                     setError(null);
                 };
@@ -171,8 +198,11 @@ export function useLogs(options: { pageSize?: number } = {}) {
                 eventSource.onmessage = (event) => {
                     try {
                         const log: RelayLog = JSON.parse(event.data);
+                        // SSE 推送时也应用 filterError 筛选
+                        if (filterError && !log.error?.trim()) return;
+
                         queryClient.setQueryData(
-                            logsInfiniteQueryKey(pageSize),
+                            logsInfiniteQueryKey(pageSize, filterError),
                             (old: InfiniteData<RelayLog[], number> | undefined) => {
                                 if (!old) {
                                     return { pages: [[log]], pageParams: [1] };
@@ -191,13 +221,14 @@ export function useLogs(options: { pageSize?: number } = {}) {
                 };
 
                 eventSource.onerror = () => {
+                    if (connectGenerationRef.current !== currentGen) return;
                     setIsConnected(false);
                     setError(new Error('SSE 连接断开'));
                     eventSource.close();
                     eventSourceRef.current = null;
                 };
             } catch (e) {
-                if (cancelled) return;
+                if (cancelled || connectGenerationRef.current !== currentGen) return;
                 setError(e instanceof Error ? e : new Error('获取 stream token 失败'));
                 logger.error('获取 stream token 失败:', e);
             }
@@ -209,13 +240,20 @@ export function useLogs(options: { pageSize?: number } = {}) {
             cancelled = true;
             eventSourceRef.current?.close();
             eventSourceRef.current = null;
-            setIsConnected(false);
         };
-    }, [pageSize, queryClient]);
+    }, [pageSize, queryClient, streamPaused, filterError]);
 
     const clear = useCallback(() => {
-        queryClient.removeQueries({ queryKey: logsInfiniteQueryKey(pageSize) });
-    }, [pageSize, queryClient]);
+        queryClient.removeQueries({ queryKey: logsInfiniteQueryKey(pageSize, filterError) });
+    }, [pageSize, filterError, queryClient]);
+
+    const disconnect = useCallback(() => {
+        setStreamPaused(true);
+    }, []);
+
+    const reconnect = useCallback(() => {
+        setStreamPaused(false);
+    }, []);
 
     return {
         logs,
@@ -226,6 +264,10 @@ export function useLogs(options: { pageSize?: number } = {}) {
         isLoadingMore: logsQuery.isFetchingNextPage,
         loadMore,
         clear,
+        filterError,
+        setFilterError,
+        disconnect,
+        reconnect,
     };
 }
 

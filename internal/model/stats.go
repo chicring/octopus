@@ -27,9 +27,7 @@ type StatsDaily struct {
 }
 
 type StatsModel struct {
-	ID        int    `json:"id" gorm:"primaryKey"`
-	Name      string `json:"name" gorm:"not null"`
-	ChannelID int    `json:"channel_id" gorm:"not null"`
+	Name string `json:"name" gorm:"primaryKey;not null"`
 	StatsMetrics
 }
 

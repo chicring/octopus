@@ -137,7 +137,9 @@
             "sortByCount": "次數",
             "sortByTokens": "Tokens",
             "noData": "暫無排行數據",
-            "successRate": "成功率"
+            "successRate": "成功率",
+            "channelDimension": "渠道",
+            "modelDimension": "模型"
         }
     },
     "setting": {
@@ -427,6 +429,12 @@
     "log": {
         "list": {
             "noMore": "沒有更多日誌了"
+        },
+        "controls": {
+            "showErrorOnly": "僅錯誤",
+            "connected": "已連接",
+            "disconnected": "已斷開",
+            "scrollToTop": "滾動到頂部"
         },
         "card": {
             "error": "錯誤",

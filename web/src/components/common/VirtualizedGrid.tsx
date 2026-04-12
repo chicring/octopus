@@ -34,6 +34,7 @@ interface VirtualizedGridProps<T> {
     onReachEnd?: () => void;
     reachEndEnabled?: boolean;
     reachEndOffset?: number;
+    scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 function getColumnsForWidth(
@@ -61,13 +62,15 @@ export function VirtualizedGrid<T>({
     onReachEnd,
     reachEndEnabled = false,
     reachEndOffset = 1,
+    scrollContainerRef,
 }: VirtualizedGridProps<T>) {
     'use no memo';
 
     const [containerWidth, setContainerWidth] = useState(() =>
         typeof window === 'undefined' ? 1024 : window.innerWidth
     );
-    const containerRef = useRef<HTMLDivElement | null>(null);
+    const internalContainerRef = useRef<HTMLDivElement | null>(null);
+    const containerRef = scrollContainerRef ?? internalContainerRef;
     const reachEndTriggeredRef = useRef(false);
 
     useEffect(() => {
@@ -88,7 +91,7 @@ export function VirtualizedGrid<T>({
         return () => {
             observer.disconnect();
         };
-    }, []);
+    }, [containerRef]);
 
     const columnCount = useMemo(() => {
         if (layout === 'list') return 1;
