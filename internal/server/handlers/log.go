@@ -127,6 +127,11 @@ func streamLog(c *gin.Context) {
 	c.Header("Connection", "keep-alive")
 	c.Header("X-Accel-Buffering", "no")
 
+	if _, err := c.Writer.Write([]byte(":connected\n\n")); err != nil {
+		return
+	}
+	c.Writer.Flush()
+
 	logChan := op.RelayLogSubscribe()
 	defer op.RelayLogUnsubscribe(logChan)
 
@@ -144,7 +149,9 @@ func streamLog(c *gin.Context) {
 			if err != nil {
 				continue
 			}
-			c.Writer.Write([]byte(fmt.Sprintf("data: %s\n\n", data)))
+			if _, err := c.Writer.Write([]byte(fmt.Sprintf("data: %s\n\n", data))); err != nil {
+				return
+			}
 			c.Writer.Flush()
 		}
 	}

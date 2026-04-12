@@ -81,8 +81,8 @@ export function Log() {
     return (
         <div className="flex flex-col h-full min-h-0">
             {/* 顶部控制栏 */}
-            <div className="flex items-center justify-end gap-4 px-4 py-2 shrink-0">
-                <label className="flex items-center gap-2 text-sm">
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-3 px-4 py-2">
+                <label className="flex min-h-11 items-center gap-2 text-sm">
                     <Switch
                         checked={filterError}
                         onCheckedChange={setFilterError}
@@ -93,7 +93,7 @@ export function Log() {
                     variant="outline"
                     size="sm"
                     onClick={() => isConnected ? disconnect() : reconnect()}
-                    className="gap-2"
+                    className="min-h-11 min-w-11 gap-2 px-4"
                 >
                     {isConnected ? (
                         <>
