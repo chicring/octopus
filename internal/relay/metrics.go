@@ -97,7 +97,10 @@ func (m *RelayMetrics) Save(ctx context.Context, success bool, err error, attemp
 	op.StatsHourlyUpdate(globalStats)
 	op.StatsDailyUpdate(context.Background(), globalStats)
 	op.StatsAPIKeyUpdate(m.APIKeyID, globalStats)
-	op.StatsChannelUpdate(channelID, globalStats)
+	// 仅在有有效渠道时更新渠道统计（避免 channel=0 的无效记录）
+	if channelID > 0 {
+		op.StatsChannelUpdate(channelID, globalStats)
+	}
 
 	log.Infof("relay complete: model=%s, channel=%d(%s), success=%t, duration=%dms, input_token=%d, output_token=%d, input_cost=%f, output_cost=%f, total_cost=%f, attempts=%d",
 		m.RequestModel, channelID, channelName, success, duration.Milliseconds(),
@@ -114,7 +117,11 @@ func finalChannel(attempts []model.ChannelAttempt) (int, string) {
 	for i := len(attempts) - 1; i >= 0; i-- {
 		a := attempts[i]
 		if a.Status == model.AttemptSuccess {
-			return a.ChannelID, a.ChannelName
+			name := a.ChannelName
+			if name == "" {
+				name = fmt.Sprintf("channel_%d", a.ChannelID)
+			}
+			return a.ChannelID, name
 		}
 		if a.Status == model.AttemptFailed && lastID == 0 {
 			lastID = a.ChannelID
@@ -126,6 +133,10 @@ func finalChannel(attempts []model.ChannelAttempt) (int, string) {
 		last := attempts[len(attempts)-1]
 		lastID = last.ChannelID
 		lastName = last.ChannelName
+	}
+	// 确保 channelName 不为空
+	if lastName == "" && lastID > 0 {
+		lastName = fmt.Sprintf("channel_%d", lastID)
 	}
 	return lastID, lastName
 }
