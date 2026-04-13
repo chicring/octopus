@@ -151,6 +151,11 @@
             "dark": "深色",
             "system": "跟随系统"
         },
+        "themeStyle": {
+            "label": "风格",
+            "default": "默认",
+            "claude": "Claude"
+        },
         "language": {
             "label": "语言",
             "zh_hans": "简体中文",

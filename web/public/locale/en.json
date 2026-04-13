@@ -151,6 +151,11 @@
             "dark": "Dark",
             "system": "System"
         },
+        "themeStyle": {
+            "label": "Style",
+            "default": "Default",
+            "claude": "Claude"
+        },
         "language": {
             "label": "Language",
             "zh_hans": "Chinese (Simplified)",
