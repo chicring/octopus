@@ -273,8 +273,12 @@ func convertLLMToGeminiRequest(request *model.InternalLLMRequest) *model.GeminiG
 		config.TopP = request.TopP
 		hasConfig = true
 	}
-	// TopK is stored in metadata if present
-	if topKStr, ok := request.TransformerMetadata["gemini_top_k"]; ok {
+	// TopK: prefer explicit field, fall back to metadata key
+	if request.TopK != nil {
+		topK := int(*request.TopK)
+		config.TopK = &topK
+		hasConfig = true
+	} else if topKStr, ok := request.TransformerMetadata["gemini_top_k"]; ok {
 		var topK int
 		fmt.Sscanf(topKStr, "%d", &topK)
 		config.TopK = &topK

@@ -307,7 +307,8 @@ func convertToAnthropicRequest(req *model.InternalLLMRequest) *anthropicModel.Me
 	}
 
 	// Convert tool_choice and parallel_tool_calls
-	if req.ToolChoice != nil || req.ParallelToolCalls != nil {
+	// Only send tool_choice when tools are present; Anthropic rejects tool_choice without tools.
+	if len(req.Tools) > 0 && (req.ToolChoice != nil || req.ParallelToolCalls != nil) {
 		result.ToolChoice = convertToolChoiceToAnthropic(req.ToolChoice, req.ParallelToolCalls)
 	}
 

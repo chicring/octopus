@@ -1002,10 +1002,11 @@ func convertToInternalRequest(req *ResponsesRequest) (*model.InternalLLMRequest,
 		chatReq.Tools = tools
 	}
 
-	// Convert text format
+	// Convert text format (response_format)
 	if req.Text != nil && req.Text.Format != nil && req.Text.Format.Type != "" {
 		chatReq.ResponseFormat = &model.ResponseFormat{
-			Type: req.Text.Format.Type,
+			Type:       req.Text.Format.Type,
+			JSONSchema: req.Text.Format.Schema,
 		}
 	}
 

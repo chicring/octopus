@@ -472,7 +472,8 @@ func ConvertToResponsesRequest(req *model.InternalLLMRequest) *ResponsesRequest 
 	if req.ResponseFormat != nil {
 		result.Text = &ResponsesTextOptions{
 			Format: &ResponsesTextFormat{
-				Type: req.ResponseFormat.Type,
+				Type:   req.ResponseFormat.Type,
+				Schema: req.ResponseFormat.JSONSchema,
 			},
 		}
 	}
