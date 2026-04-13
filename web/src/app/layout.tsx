@@ -16,7 +16,7 @@ export default function RootLayout({
   return (
     <html suppressHydrationWarning>
       <head>
-        <meta name="theme-color" content="#eae9e3" />
+        <meta name="theme-color" content="#f5f4ed" />
         <meta name="application-name" content="Octopus" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black" />
@@ -38,9 +38,15 @@ export default function RootLayout({
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                background: hsl(var(--background));
-                color: hsl(var(--primary));
+                background: #f5f4ed;
+                color: #c96442;
                 transition: opacity 200ms ease;
+              }
+              @media (prefers-color-scheme: dark) {
+                #initial-loader {
+                  background: #1a1918;
+                  color: #d97757;
+                }
               }
               #initial-loader.octo-hide {
                 opacity: 0;
