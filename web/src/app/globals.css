@@ -92,139 +92,141 @@ html.dark,
   --sidebar-ring: oklch(0.6990 0.1292 144.8727);
 }
 
-/* ==================== Claude Theme (Warm Parchment) ==================== */
+/* ==================== Claude Theme (Anthropic Official Tokens) ==================== */
 html[data-theme="claude"],
 [data-theme="claude"] {
-  /* Warm parchment background */
-  --background: oklch(0.96 0.01 85);
-  --foreground: oklch(0.22 0.02 85);
+  /* Light mode — Anthropic design system */
 
-  /* Ivory cards */
-  --card: oklch(0.98 0.005 85);
-  --card-foreground: oklch(0.22 0.02 85);
+  /* Warm parchment page background */
+  --background: #F5F4ED;
+  --foreground: #141413;
+
+  /* Pure white elevated cards */
+  --card: #FFFFFF;
+  --card-foreground: #141413;
 
   /* Popover */
-  --popover: oklch(0.98 0.005 85);
-  --popover-foreground: oklch(0.22 0.02 85);
+  --popover: #FFFFFF;
+  --popover-foreground: #141413;
 
-  /* Terracotta brand accent */
-  --primary: oklch(0.58 0.15 45);
-  --primary-foreground: oklch(0.98 0.005 85);
+  /* Terracotta brand accent (terracotta-600) */
+  --primary: #C96442;
+  --primary-foreground: #FFFFFF;
 
-  /* Warm sand secondary */
-  --secondary: oklch(0.91 0.02 85);
-  --secondary-foreground: oklch(0.35 0.03 85);
+  /* Warm off-white secondary */
+  --secondary: #FAF9F5;
+  --secondary-foreground: #3D3D3A;
 
-  /* Muted warm gray */
-  --muted: oklch(0.94 0.015 85);
-  --muted-foreground: oklch(0.45 0.025 85);
+  /* Muted warm beige */
+  --muted: #EEECE2;
+  --muted-foreground: #73726C;
 
-  /* Coral accent */
-  --accent: oklch(0.65 0.14 40);
-  --accent-foreground: oklch(0.98 0.005 85);
+  /* Brighter terracotta (terracotta-500) */
+  --accent: #DE7356;
+  --accent-foreground: #FFFFFF;
 
-  /* Error crimson */
-  --destructive: oklch(0.50 0.15 25);
-  --destructive-foreground: oklch(0.98 0.005 85);
+  /* Error */
+  --destructive: #B53333;
+  --destructive-foreground: #FFFFFF;
 
-  /* Border cream */
-  --border: oklch(0.92 0.018 85);
-  --input: oklch(0.92 0.018 85);
+  /* Borders — #1F1E1D at ~15% on parchment */
+  --border: #D5D4CE;
+  --input: #D5D4CE;
 
   /* Focus ring */
-  --ring: oklch(0.55 0.15 230);
+  --ring: #C96442;
 
-  /* Chart colors */
-  --chart-1: oklch(0.58 0.15 45);
-  --chart-2: oklch(0.55 0.10 85);
-  --chart-3: oklch(0.50 0.08 120);
-  --chart-4: oklch(0.65 0.14 40);
-  --chart-5: oklch(0.45 0.12 35);
+  /* Chart colors — terracotta scale */
+  --chart-1: #C96442;
+  --chart-2: #DE7356;
+  --chart-3: #E88A6E;
+  --chart-4: #BD5D3A;
+  --chart-5: #DA7756;
 
   /* Sidebar */
-  --sidebar: oklch(0.98 0.005 85);
-  --sidebar-foreground: oklch(0.22 0.02 85);
-  --sidebar-primary: oklch(0.91 0.02 85);
-  --sidebar-primary-foreground: oklch(0.22 0.02 85);
-  --sidebar-accent: oklch(0.94 0.015 85);
-  --sidebar-accent-foreground: oklch(0.98 0.005 85);
-  --sidebar-border: oklch(0.92 0.018 85);
-  --sidebar-ring: oklch(0.55 0.15 230);
+  --sidebar: #F5F4ED;
+  --sidebar-foreground: #141413;
+  --sidebar-primary: #C96442;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #FAF9F5;
+  --sidebar-accent-foreground: #141413;
+  --sidebar-border: #D5D4CE;
+  --sidebar-ring: #C96442;
 
-  /* Generous radius for soft feel */
-  --radius: 0.75rem;
+  /* Claude official radius (lg=10px) */
+  --radius: 0.625rem;
 
-  /* Whisper-soft shadows */
-  --shadow-color: oklch(0.22 0.02 85);
-  --shadow-2xs: 0 1px 2px 0px oklch(0.22 0.02 85 / 0.03);
-  --shadow-xs: 0 1px 2px 0px oklch(0.22 0.02 85 / 0.04);
-  --shadow-sm: 0 1px 3px 0px oklch(0.22 0.02 85 / 0.05), 0 1px 2px -1px oklch(0.22 0.02 85 / 0.05);
-  --shadow: 0 1px 3px 0px oklch(0.22 0.02 85 / 0.05), 0 1px 2px -1px oklch(0.22 0.02 85 / 0.05);
-  --shadow-md: 0 4px 6px -1px oklch(0.22 0.02 85 / 0.05), 0 2px 4px -2px oklch(0.22 0.02 85 / 0.05);
-  --shadow-lg: 0 10px 15px -3px oklch(0.22 0.02 85 / 0.05), 0 4px 6px -4px oklch(0.22 0.02 85 / 0.05);
-  --shadow-xl: 0 20px 25px -5px oklch(0.22 0.02 85 / 0.05), 0 8px 10px -6px oklch(0.22 0.02 85 / 0.05);
-  --shadow-2xl: 0 25px 50px -12px oklch(0.22 0.02 85 / 0.10);
+  /* Shadows */
+  --shadow-color: #000000;
+  --shadow-2xs: 0 1px 2px 0px hsl(0 0% 0% / 0.03);
+  --shadow-xs: 0 1px 2px 0px hsl(0 0% 0% / 0.04);
+  --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.05), 0 1px 2px -1px hsl(0 0% 0% / 0.05);
+  --shadow: 0 1px 3px 0px hsl(0 0% 0% / 0.05), 0 1px 2px -1px hsl(0 0% 0% / 0.05);
+  --shadow-md: 0 4px 6px -1px hsl(0 0% 0% / 0.05), 0 2px 4px -2px hsl(0 0% 0% / 0.05);
+  --shadow-lg: 0 10px 15px -3px hsl(0 0% 0% / 0.05), 0 4px 6px -4px hsl(0 0% 0% / 0.05);
+  --shadow-xl: 0 20px 25px -5px hsl(0 0% 0% / 0.05), 0 8px 10px -6px hsl(0 0% 0% / 0.05);
+  --shadow-2xl: 0 25px 50px -12px hsl(0 0% 0% / 0.10);
 }
 
-/* Claude Dark Theme */
+/* Claude Dark Theme — Anthropic official tokens */
 html[data-theme="claude"].dark,
 html.dark[data-theme="claude"],
 [data-theme="claude"].dark {
-  /* Deep warm black */
-  --background: oklch(0.18 0.02 85);
-  --foreground: oklch(0.90 0.01 85);
+  /* Primary dark surface (#30302E) — noticeably lighter than before, neutral-warm */
+  --background: #30302E;
+  --foreground: #FAF9F5;
 
-  /* Warm dark surface cards */
-  --card: oklch(0.22 0.018 85);
-  --card-foreground: oklch(0.90 0.01 85);
+  /* Cards same as bg, subtle border separation */
+  --card: #30302E;
+  --card-foreground: #FAF9F5;
 
   /* Popover */
-  --popover: oklch(0.22 0.018 85);
-  --popover-foreground: oklch(0.90 0.01 85);
+  --popover: #30302E;
+  --popover-foreground: #FAF9F5;
 
-  /* Terracotta brand accent */
-  --primary: oklch(0.65 0.16 45);
-  --primary-foreground: oklch(0.98 0.005 85);
+  /* Terracotta accent (terracotta-500, brighter for dark mode) */
+  --primary: #DE7356;
+  --primary-foreground: #FFFFFF;
 
-  /* Warm dark secondary */
-  --secondary: oklch(0.28 0.02 85);
-  --secondary-foreground: oklch(0.85 0.015 85);
+  /* Secondary surface (#262624) — between bg and sidebar */
+  --secondary: #262624;
+  --secondary-foreground: #C2C0B6;
 
-  /* Muted warm */
-  --muted: oklch(0.26 0.018 85);
-  --muted-foreground: oklch(0.65 0.02 85);
+  /* Muted surface */
+  --muted: #262624;
+  --muted-foreground: #9C9A92;
 
-  /* Coral accent */
-  --accent: oklch(0.70 0.15 40);
-  --accent-foreground: oklch(0.18 0.02 85);
+  /* Hover terracotta (terracotta-400) */
+  --accent: #E88A6E;
+  --accent-foreground: #141413;
 
-  /* Error crimson */
-  --destructive: oklch(0.55 0.16 25);
-  --destructive-foreground: oklch(0.90 0.01 85);
+  /* Error */
+  --destructive: #DD5353;
+  --destructive-foreground: #FAF9F5;
 
-  /* Border dark warm */
-  --border: oklch(0.30 0.02 85);
-  --input: oklch(0.30 0.02 85);
+  /* Borders — #DEDCD1 at ~15% on #30302E */
+  --border: #4A4A46;
+  --input: #4A4A46;
 
   /* Focus ring */
-  --ring: oklch(0.60 0.15 230);
+  --ring: #DE7356;
 
-  /* Chart colors */
-  --chart-1: oklch(0.70 0.16 45);
-  --chart-2: oklch(0.65 0.12 85);
-  --chart-3: oklch(0.60 0.10 120);
-  --chart-4: oklch(0.72 0.15 40);
-  --chart-5: oklch(0.55 0.14 35);
+  /* Chart colors — terracotta scale (brighter for dark) */
+  --chart-1: #DE7356;
+  --chart-2: #E88A6E;
+  --chart-3: #C96442;
+  --chart-4: #DA7756;
+  --chart-5: #BD5D3A;
 
-  /* Sidebar dark */
-  --sidebar: oklch(0.16 0.02 85);
-  --sidebar-foreground: oklch(0.90 0.01 85);
-  --sidebar-primary: oklch(0.28 0.02 85);
-  --sidebar-primary-foreground: oklch(0.90 0.01 85);
-  --sidebar-accent: oklch(0.24 0.018 85);
-  --sidebar-accent-foreground: oklch(0.90 0.01 85);
-  --sidebar-border: oklch(0.30 0.02 85);
-  --sidebar-ring: oklch(0.60 0.15 230);
+  /* Sidebar — deepest surface (#1A1918) */
+  --sidebar: #1A1918;
+  --sidebar-foreground: #FAF9F5;
+  --sidebar-primary: #DE7356;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #262624;
+  --sidebar-accent-foreground: #FAF9F5;
+  --sidebar-border: #4A4A46;
+  --sidebar-ring: #DE7356;
 }
 
 @theme inline {

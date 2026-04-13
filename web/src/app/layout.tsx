@@ -38,14 +38,14 @@ export default function RootLayout({
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                background: #f5f4ed;
-                color: #c96442;
+                background: #F5F4ED;
+                color: #C96442;
                 transition: opacity 200ms ease;
               }
               @media (prefers-color-scheme: dark) {
                 #initial-loader {
-                  background: #1a1918;
-                  color: #d97757;
+                  background: #30302E;
+                  color: #DE7356;
                 }
               }
               #initial-loader.octo-hide {
