@@ -18,6 +18,12 @@ import (
 var httpSrv http.Server
 
 func Start() error {
+	noGzipPaths := []string{
+		"/v1/chat/completions",
+		"/v1/responses",
+		"/v1/messages",
+	}
+
 	if conf.IsDebug() {
 		gin.SetMode(gin.DebugMode)
 	} else {
@@ -30,8 +36,12 @@ func Start() error {
 		c.Abort()
 	}))
 
-	// Gzip 压缩，对 1KB 以上响应启用
-	r.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithMinLength(1024)))
+	// Gzip 压缩，对 1KB 以上响应启用，但排除 AI 对话接口，避免流式/大模型响应被压缩。
+	r.Use(gzip.Gzip(
+		gzip.DefaultCompression,
+		gzip.WithMinLength(1024),
+		gzip.WithExcludedPaths(noGzipPaths),
+	))
 
 	if conf.IsDebug() {
 		r.Use(middleware.Logger())
