@@ -44,6 +44,14 @@ func init() {
 		AddRoute(
 			router.NewRoute("/fetch-model", http.MethodPost).
 				Handle(fetchModel),
+		).
+		AddRoute(
+			router.NewRoute("/test-models", http.MethodPost).
+				Handle(testModels),
+		).
+		AddRoute(
+			router.NewRoute("/test-models-by-config", http.MethodPost).
+				Handle(testModelsByConfig),
 		)
 	router.NewGroupRouter("/api/v1/channel").
 		Use(middleware.Auth()).
@@ -170,4 +178,58 @@ func syncChannel(c *gin.Context) {
 func getLastSyncTime(c *gin.Context) {
 	time := task.GetLastSyncModelsTime()
 	resp.Success(c, time)
+}
+
+func testModels(c *gin.Context) {
+	var req struct {
+		ChannelID int      `json:"channel_id"`
+		Models    []string `json:"models"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.Error(c, http.StatusBadRequest, resp.ErrInvalidJSON)
+		return
+	}
+	if req.ChannelID <= 0 || len(req.Models) == 0 {
+		resp.Error(c, http.StatusBadRequest, "channel_id and models are required")
+		return
+	}
+
+	channel, err := op.ChannelGet(req.ChannelID, c.Request.Context())
+	if err != nil {
+		resp.Error(c, http.StatusNotFound, "channel not found")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Minute)
+	defer cancel()
+
+	results := helper.TestModels(ctx, channel, req.Models)
+	resp.Success(c, results)
+}
+
+func testModelsByConfig(c *gin.Context) {
+	var channel model.Channel
+	if err := c.ShouldBindJSON(&channel); err != nil {
+		resp.Error(c, http.StatusBadRequest, resp.ErrInvalidJSON)
+		return
+	}
+
+	modelsStr := strings.Split(channel.Model, ",")
+	var models []string
+	for _, m := range modelsStr {
+		m = strings.TrimSpace(m)
+		if m != "" {
+			models = append(models, m)
+		}
+	}
+	if len(models) == 0 {
+		resp.Error(c, http.StatusBadRequest, "models are required")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Minute)
+	defer cancel()
+
+	results := helper.TestModels(ctx, &channel, models)
+	resp.Success(c, results)
 }

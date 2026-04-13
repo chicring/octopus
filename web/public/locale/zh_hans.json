@@ -554,7 +554,22 @@
             "autoGroupRegex": "正则匹配",
             "matchRegex": "匹配正则",
             "matchRegexPlaceholder": "可选：用于匹配请求模型名称的正则表达式",
-            "remark": "备注"
+            "remark": "备注",
+            "modelDialogTitle": "选择模型",
+            "modelDialogSearch": "搜索模型...",
+            "modelDialogSelectAll": "全选",
+            "modelDialogDeselectAll": "取消全选",
+            "modelDialogConfirm": "确认选择",
+            "modelDialogCancel": "取消",
+            "modelDialogSelected": "已选 {{count}} 个",
+            "modelDialogAutoSyncWarning": "开启自动同步后，此列表会被上游定时覆盖。不受影响的模型请添加到自定义模型。",
+            "testFirst": "测试首个",
+            "testAll": "测试全部",
+            "testPassed": "通过",
+            "testFailed": "失败",
+            "testRunning": "测试中...",
+            "testResult": "测试结果",
+            "testNoModels": "请先添加模型"
         }
     }
 }

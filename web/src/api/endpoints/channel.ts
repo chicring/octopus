@@ -363,3 +363,39 @@ export function useSyncChannel() {
         },
     });
 }
+
+/**
+ * 模型测试结果
+ */
+export type TestModelResult = {
+    model: string;
+    passed: boolean;
+    error?: string;
+    delay?: number;
+};
+
+/**
+ * 测试已保存渠道的模型
+ */
+export function useTestChannelModels() {
+    return useMutation({
+        mutationFn: async (data: { channel_id: number; models: string[] }) => {
+            return apiClient.post<TestModelResult[]>('/api/v1/channel/test-models', data);
+        },
+    });
+}
+
+/**
+ * 测试未保存配置的模型（创建/编辑时使用）
+ */
+export function useTestChannelModelsByConfig() {
+    return useMutation({
+        mutationFn: async (data: FetchModelRequest & { models: string[] }) => {
+            const { models, ...config } = data;
+            return apiClient.post<TestModelResult[]>('/api/v1/channel/test-models-by-config', {
+                ...config,
+                model: models.join(','),
+            });
+        },
+    });
+}

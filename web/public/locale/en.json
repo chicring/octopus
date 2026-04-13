@@ -554,7 +554,22 @@
             "autoGroupRegex": "Regex",
             "matchRegex": "Match Regex",
             "matchRegexPlaceholder": "Optional: regex pattern to match request model names",
-            "remark": "Remark"
+            "remark": "Remark",
+            "modelDialogTitle": "Select Models",
+            "modelDialogSearch": "Search models...",
+            "modelDialogSelectAll": "Select All",
+            "modelDialogDeselectAll": "Deselect All",
+            "modelDialogConfirm": "Confirm Selection",
+            "modelDialogCancel": "Cancel",
+            "modelDialogSelected": "{{count}} selected",
+            "modelDialogAutoSyncWarning": "When auto sync is enabled, this list will be periodically overwritten by upstream. Add models to custom models to keep them.",
+            "testFirst": "Test First",
+            "testAll": "Test All",
+            "testPassed": "Passed",
+            "testFailed": "Failed",
+            "testRunning": "Testing...",
+            "testResult": "Test Results",
+            "testNoModels": "Please add models first"
         }
     }
 }

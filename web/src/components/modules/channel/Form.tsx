@@ -1,4 +1,4 @@
-import { AutoGroupType, ChannelType, type Channel, useFetchModel } from '@/api/endpoints/channel';
+import { AutoGroupType, ChannelType, type Channel, useFetchModel, useTestChannelModelsByConfig, type TestModelResult } from '@/api/endpoints/channel';
 import {
     Select,
     SelectContent,
@@ -10,10 +10,19 @@ import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from '@/components/common/Toast';
 import { useTranslations } from 'next-intl';
-import { useEffect, useRef, useState } from 'react';
-import { RefreshCw, X, Plus } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { RefreshCw, X, Plus, CheckCircle2, XCircle, Loader2, AlertTriangle } from 'lucide-react';
 
 export interface ChannelKeyFormItem {
     id?: number;
@@ -99,6 +108,16 @@ export function ChannelForm({
     const [inputValue, setInputValue] = useState('');
     const inputRef = useRef<HTMLInputElement>(null);
 
+    // Model selection dialog state
+    const [showModelDialog, setShowModelDialog] = useState(false);
+    const [fetchedModels, setFetchedModels] = useState<string[]>([]);
+    const [dialogSelectedModels, setDialogSelectedModels] = useState<Set<string>>(new Set());
+    const [dialogSearch, setDialogSearch] = useState('');
+
+    // Model test state
+    const testModels = useTestChannelModelsByConfig();
+    const [testResults, setTestResults] = useState<TestModelResult[]>([]);
+
     const fetchModel = useFetchModel();
 
     const effectiveKey =
@@ -128,9 +147,10 @@ export function ChannelForm({
             {
                 onSuccess: (data) => {
                     if (data && data.length > 0) {
-                        const nextAuto = Array.from(new Set([...autoModels, ...data].map((m) => m.trim()).filter(Boolean)));
-                        updateModels(nextAuto, customModels);
-                        toast.success(t('modelRefreshSuccess'));
+                        setFetchedModels(data);
+                        setDialogSelectedModels(new Set(autoModels));
+                        setDialogSearch('');
+                        setShowModelDialog(true);
                     } else {
                         toast.warning(t('modelRefreshEmpty'));
                     }
@@ -141,6 +161,80 @@ export function ChannelForm({
                 },
             }
         );
+    };
+
+    const handleDialogConfirm = () => {
+        updateModels(Array.from(dialogSelectedModels), customModels);
+        setShowModelDialog(false);
+        toast.success(t('modelRefreshSuccess'));
+    };
+
+    const filteredDialogModels = useMemo(() => {
+        const q = dialogSearch.toLowerCase();
+        return q ? fetchedModels.filter((m) => m.toLowerCase().includes(q)) : fetchedModels;
+    }, [fetchedModels, dialogSearch]);
+
+    const dialogAllSelected = filteredDialogModels.length > 0 && filteredDialogModels.every((m) => dialogSelectedModels.has(m));
+
+    const handleDialogToggleAll = () => {
+        setDialogSelectedModels((prev) => {
+            const next = new Set(prev);
+            if (dialogAllSelected) {
+                filteredDialogModels.forEach((m) => next.delete(m));
+            } else {
+                filteredDialogModels.forEach((m) => next.add(m));
+            }
+            return next;
+        });
+    };
+
+    const handleDialogToggleModel = (model: string) => {
+        setDialogSelectedModels((prev) => {
+            const next = new Set(prev);
+            if (next.has(model)) {
+                next.delete(model);
+            } else {
+                next.add(model);
+            }
+            return next;
+        });
+    };
+
+    // Model test handlers
+    const allModels = useMemo(() => [...autoModels, ...customModels], [autoModels, customModels]);
+
+    const getTestConfig = () => ({
+        type: formData.type,
+        base_urls: formData.base_urls,
+        keys: formData.keys
+            .filter((k) => k.channel_key.trim())
+            .map((k) => ({ enabled: k.enabled, channel_key: k.channel_key.trim() })),
+        proxy: formData.proxy,
+        channel_proxy: formData.channel_proxy?.trim() || null,
+        match_regex: formData.match_regex.trim() || null,
+        custom_header: formData.custom_header?.filter((h) => h.header_key.trim()) || [],
+    });
+
+    const handleTestFirst = () => {
+        if (allModels.length === 0) return;
+        setTestResults([]);
+        testModels.mutate({ ...getTestConfig(), models: [allModels[0]] }, {
+            onSuccess: (data) => setTestResults(data),
+            onError: (error) => {
+                setTestResults([{ model: allModels[0], passed: false, error: error.message }]);
+            },
+        });
+    };
+
+    const handleTestAll = () => {
+        if (allModels.length === 0) return;
+        setTestResults([]);
+        testModels.mutate({ ...getTestConfig(), models: allModels }, {
+            onSuccess: (data) => setTestResults(data),
+            onError: (error) => {
+                setTestResults(allModels.map((m) => ({ model: m, passed: false, error: error.message })));
+            },
+        });
     };
 
     const handleAddModel = (model: string) => {
@@ -456,6 +550,135 @@ export function ChannelForm({
                     </div>
                 </div>
             </div>
+
+            {/* Model test buttons */}
+            {allModels.length > 0 && (
+                <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={handleTestFirst}
+                            disabled={testModels.isPending}
+                            className="rounded-xl text-xs"
+                        >
+                            {testModels.isPending ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <CheckCircle2 className="h-3 w-3 mr-1" />}
+                            {t('testFirst')}
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={handleTestAll}
+                            disabled={testModels.isPending}
+                            className="rounded-xl text-xs"
+                        >
+                            {testModels.isPending ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <CheckCircle2 className="h-3 w-3 mr-1" />}
+                            {t('testAll')}
+                        </Button>
+                    </div>
+                    {testResults.length > 0 && (
+                        <div className="space-y-1">
+                            <label className="text-xs font-medium text-card-foreground">{t('testResult')}</label>
+                            <div className="rounded-xl border border-border bg-muted/30 p-2 space-y-1 max-h-40 overflow-y-auto">
+                                {testResults.map((r) => (
+                                    <div key={r.model} className="flex items-center justify-between text-xs px-1 py-0.5">
+                                        <div className="flex items-center gap-1.5 min-w-0">
+                                            {r.passed ? (
+                                                <CheckCircle2 className="h-3 w-3 shrink-0 text-green-600 dark:text-green-400" />
+                                            ) : (
+                                                <XCircle className="h-3 w-3 shrink-0 text-red-600 dark:text-red-400" />
+                                            )}
+                                            <span className="truncate">{r.model}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            {r.error && (
+                                                <span className="text-muted-foreground truncate max-w-48" title={r.error}>{r.error}</span>
+                                            )}
+                                            {r.delay != null && (
+                                                <span className="text-muted-foreground">{r.delay}ms</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Model selection dialog */}
+            <Dialog open={showModelDialog} onOpenChange={setShowModelDialog}>
+                <DialogContent className="sm:max-w-md max-h-[80vh] flex flex-col">
+                    <DialogHeader>
+                        <DialogTitle>{t('modelDialogTitle')}</DialogTitle>
+                        <DialogDescription>
+                            {formData.auto_sync && (
+                                <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
+                                    <AlertTriangle className="h-3 w-3" />
+                                    {t('modelDialogAutoSyncWarning')}
+                                </span>
+                            )}
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-3 flex-1 min-h-0 flex flex-col">
+                        <Input
+                            type="text"
+                            value={dialogSearch}
+                            onChange={(e) => setDialogSearch(e.target.value)}
+                            placeholder={t('modelDialogSearch')}
+                            className="rounded-xl"
+                        />
+                        <div className="flex items-center gap-2">
+                            <Checkbox
+                                id="dialog-select-all"
+                                checked={dialogAllSelected}
+                                onCheckedChange={handleDialogToggleAll}
+                            />
+                            <label htmlFor="dialog-select-all" className="text-xs text-muted-foreground cursor-pointer">
+                                {dialogAllSelected ? t('modelDialogDeselectAll') : t('modelDialogSelectAll')}
+                            </label>
+                        </div>
+                        <div className="flex-1 overflow-y-auto border rounded-xl p-2 space-y-1 min-h-0 max-h-60">
+                            {filteredDialogModels.length === 0 ? (
+                                <div className="flex items-center justify-center h-12 text-xs text-muted-foreground">
+                                    {t('modelRefreshEmpty')}
+                                </div>
+                            ) : (
+                                filteredDialogModels.map((model) => (
+                                    <label key={model} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-muted/50 cursor-pointer">
+                                        <Checkbox
+                                            checked={dialogSelectedModels.has(model)}
+                                            onCheckedChange={() => handleDialogToggleModel(model)}
+                                        />
+                                        <span className="text-sm truncate">{model}</span>
+                                    </label>
+                                ))
+                            )}
+                        </div>
+                    </div>
+
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setShowModelDialog(false)}
+                            className="rounded-xl"
+                        >
+                            {t('modelDialogCancel')}
+                        </Button>
+                        <Button
+                            type="button"
+                            onClick={handleDialogConfirm}
+                            className="rounded-xl"
+                        >
+                            {t('modelDialogConfirm')} ({dialogSelectedModels.size})
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             <Accordion type="single" collapsible className="w-full border rounded-xl bg-card">
                 <AccordionItem value="advanced" className="border-none">

@@ -554,7 +554,22 @@
             "autoGroupRegex": "正規比對",
             "matchRegex": "匹配正規",
             "matchRegexPlaceholder": "可選：用於匹配請求模型名稱的正規表示式",
-            "remark": "備註"
+            "remark": "備註",
+            "modelDialogTitle": "選擇模型",
+            "modelDialogSearch": "搜尋模型...",
+            "modelDialogSelectAll": "全選",
+            "modelDialogDeselectAll": "取消全選",
+            "modelDialogConfirm": "確認選擇",
+            "modelDialogCancel": "取消",
+            "modelDialogSelected": "已選 {{count}} 個",
+            "modelDialogAutoSyncWarning": "開啟自動同步後，此列表會被上游定時覆蓋。不受影響的模型請新增到自定義模型。",
+            "testFirst": "測試首個",
+            "testAll": "測試全部",
+            "testPassed": "通過",
+            "testFailed": "失敗",
+            "testRunning": "測試中...",
+            "testResult": "測試結果",
+            "testNoModels": "請先新增模型"
         }
     }
 }
