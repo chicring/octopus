@@ -288,6 +288,7 @@ func convertToAnthropicRequest(req *model.InternalLLMRequest) *anthropicModel.Me
 		Model:       req.Model,
 		Temperature: req.Temperature,
 		TopP:        req.TopP,
+		TopK:        req.TopK,
 		Stream:      req.Stream,
 		MaxTokens:   resolveMaxTokens(req),
 		System:      convertSystemPrompt(req),
@@ -303,6 +304,11 @@ func convertToAnthropicRequest(req *model.InternalLLMRequest) *anthropicModel.Me
 	// Convert tools
 	if len(req.Tools) > 0 {
 		result.Tools = convertTools(req.Tools)
+	}
+
+	// Convert tool_choice and parallel_tool_calls
+	if req.ToolChoice != nil || req.ParallelToolCalls != nil {
+		result.ToolChoice = convertToolChoiceToAnthropic(req.ToolChoice, req.ParallelToolCalls)
 	}
 
 	// Convert stop sequences
@@ -893,5 +899,51 @@ func convertAnthropicUsage(usage *anthropicModel.Usage) *model.Usage {
 			CachedTokens: usage.CacheReadInputTokens,
 		}
 	}
+	return result
+}
+
+// convertToolChoiceToAnthropic converts internal ToolChoice and ParallelToolCalls
+// to Anthropic's tool_choice format.
+// OpenAI "auto"       -> Anthropic {type: "auto"}
+// OpenAI "required"   -> Anthropic {type: "any"}
+// OpenAI "none"       -> Anthropic {type: "none"}
+// OpenAI {function:{name:...}} -> Anthropic {type: "tool", name: "..."}
+// parallel_tool_calls=true  -> disable_parallel_tool_use=false (and vice versa)
+func convertToolChoiceToAnthropic(tc *model.ToolChoice, parallel *bool) *anthropicModel.ToolChoice {
+	var result *anthropicModel.ToolChoice
+
+	if tc != nil {
+		if tc.ToolChoice != nil {
+			switch *tc.ToolChoice {
+			case "auto":
+				result = &anthropicModel.ToolChoice{Type: "auto"}
+			case "required":
+				result = &anthropicModel.ToolChoice{Type: "any"}
+			case "none":
+				result = &anthropicModel.ToolChoice{Type: "none"}
+			default:
+				result = &anthropicModel.ToolChoice{Type: "auto"}
+			}
+		} else if tc.NamedToolChoice != nil {
+			result = &anthropicModel.ToolChoice{
+				Type: "tool",
+				Name: &tc.NamedToolChoice.Function.Name,
+			}
+		}
+	}
+
+	// Handle parallel_tool_calls -> disable_parallel_tool_use
+	if parallel != nil {
+		if result == nil {
+			result = &anthropicModel.ToolChoice{Type: "auto"}
+		}
+		// Anthropic: tool_choice.type=none does not accept extra fields.
+		// When tools are disabled, parallel_tool_calls is irrelevant.
+		if result.Type != "none" {
+			disabled := !*parallel
+			result.DisableParallelToolUse = &disabled
+		}
+	}
+
 	return result
 }

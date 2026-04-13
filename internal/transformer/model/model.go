@@ -117,6 +117,10 @@ type InternalLLMRequest struct {
 	// We generally recommend altering this or `temperature` but not both.
 	TopP *float64 `json:"top_p,omitempty"`
 
+	// Only supported by Anthropic and a few other providers. Removes all but the
+	// top K options before sampling. Mutually exclusive with temperature.
+	TopK *int64 `json:"top_k,omitempty"`
+
 	// Used by OpenAI to cache responses for similar requests to optimize your cache
 	// hit rates. Replaces the `user` field.
 	// [Learn more](https://platform.openai.com/docs/guides/prompt-caching).

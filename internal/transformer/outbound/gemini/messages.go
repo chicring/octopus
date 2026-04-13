@@ -306,7 +306,22 @@ func convertLLMToGeminiRequest(request *model.InternalLLMRequest) *model.GeminiG
 			hasConfig = true
 		case "json_schema":
 			config.ResponseMimeType = "application/json"
-			// TODO: Convert JSON schema to Gemini schema format if schema is provided
+			// Extract and convert JSON schema from OpenAI format {name, schema, strict}
+			if len(request.ResponseFormat.JSONSchema) > 0 {
+				var schemaWrapper struct {
+					Schema json.RawMessage `json:"schema"`
+				}
+				if err := json.Unmarshal(request.ResponseFormat.JSONSchema, &schemaWrapper); err == nil && len(schemaWrapper.Schema) > 0 {
+					var schemaMap map[string]any
+					if err := json.Unmarshal(schemaWrapper.Schema, &schemaMap); err == nil {
+						cleanGeminiSchema(schemaMap)
+						config.ResponseSchema = &model.GeminiSchema{}
+						// Re-marshal to convert type names to Gemini format
+						cleaned, _ := json.Marshal(schemaMap)
+						json.Unmarshal(cleaned, config.ResponseSchema)
+					}
+				}
+			}
 			hasConfig = true
 		case "text":
 			config.ResponseMimeType = "text/plain"

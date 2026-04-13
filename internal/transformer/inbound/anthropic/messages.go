@@ -46,6 +46,7 @@ func (i *MessagesInbound) TransformRequest(ctx context.Context, body []byte) (*m
 		MaxTokens:           &anthropicReq.MaxTokens,
 		Temperature:         anthropicReq.Temperature,
 		TopP:                anthropicReq.TopP,
+		TopK:                anthropicReq.TopK,
 		Stream:              anthropicReq.Stream,
 		Metadata:            map[string]string{},
 		RawAPIFormat:        model.APIFormatAnthropicMessage,
@@ -272,6 +273,32 @@ func (i *MessagesInbound) TransformRequest(ctx context.Context, body []byte) (*m
 		i.inputToken += int64(len(tools) * 3)
 
 		chatReq.Tools = tools
+	}
+
+	// Convert tool_choice and disable_parallel_tool_use
+	if anthropicReq.ToolChoice != nil {
+		switch anthropicReq.ToolChoice.Type {
+		case "auto":
+			chatReq.ToolChoice = &model.ToolChoice{ToolChoice: lo.ToPtr("auto")}
+		case "any":
+			chatReq.ToolChoice = &model.ToolChoice{ToolChoice: lo.ToPtr("required")}
+		case "none":
+			chatReq.ToolChoice = &model.ToolChoice{ToolChoice: lo.ToPtr("none")}
+		case "tool":
+			if anthropicReq.ToolChoice.Name != nil {
+				chatReq.ToolChoice = &model.ToolChoice{
+					NamedToolChoice: &model.NamedToolChoice{
+						Type: "function",
+						Function: model.ToolFunction{Name: *anthropicReq.ToolChoice.Name},
+					},
+				}
+			}
+		}
+		// disable_parallel_tool_use -> parallel_tool_calls (inverted)
+		if anthropicReq.ToolChoice.DisableParallelToolUse != nil {
+			parallel := !*anthropicReq.ToolChoice.DisableParallelToolUse
+			chatReq.ParallelToolCalls = &parallel
+		}
 	}
 
 	// Convert stop sequences
