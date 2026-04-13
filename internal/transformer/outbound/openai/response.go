@@ -382,6 +382,7 @@ type ResponsesTextFormat struct {
 	Type   string          `json:"type,omitempty"`
 	Name   string          `json:"name,omitempty"`
 	Schema json.RawMessage `json:"schema,omitempty"`
+	Strict *bool           `json:"strict,omitempty"`
 }
 
 type ResponsesReasoning struct {
@@ -476,12 +477,14 @@ func ConvertToResponsesRequest(req *model.InternalLLMRequest) *ResponsesRequest 
 		// Extract the raw schema from Chat-style wrapper {name, schema, strict}
 		if len(req.ResponseFormat.JSONSchema) > 0 {
 			var wrapper struct {
-				Name        string          `json:"name"`
-				Schema       json.RawMessage `json:"schema"`
+				Name   string          `json:"name"`
+				Schema json.RawMessage `json:"schema"`
+				Strict *bool           `json:"strict"`
 			}
 			if err := json.Unmarshal(req.ResponseFormat.JSONSchema, &wrapper); err == nil && len(wrapper.Schema) > 0 {
 				format.Name = wrapper.Name
 				format.Schema = wrapper.Schema
+				format.Strict = wrapper.Strict
 			} else {
 				// Not wrapped — use as-is
 				format.Schema = req.ResponseFormat.JSONSchema

@@ -875,6 +875,7 @@ type ResponsesTextFormat struct {
 	Type   string          `json:"type,omitempty"`
 	Name   string          `json:"name,omitempty"`
 	Schema json.RawMessage `json:"schema,omitempty"`
+	Strict *bool           `json:"strict,omitempty"`
 }
 
 type ResponsesReasoning struct {
@@ -1011,6 +1012,9 @@ func convertToInternalRequest(req *ResponsesRequest) (*model.InternalLLMRequest,
 			wrapper := map[string]any{
 				"name":   req.Text.Format.Name,
 				"schema": json.RawMessage(req.Text.Format.Schema),
+			}
+			if req.Text.Format.Strict != nil {
+				wrapper["strict"] = *req.Text.Format.Strict
 			}
 			if b, err := json.Marshal(wrapper); err == nil {
 				jsonSchema = b
