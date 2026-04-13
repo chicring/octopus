@@ -2,14 +2,14 @@
 
 import { useTheme } from 'next-themes';
 import { useTranslations } from 'next-intl';
-import { Sun, Moon, Monitor, Languages } from 'lucide-react';
+import { Sun, Moon, Monitor, Languages, Palette } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useSettingStore, type Locale } from '@/stores/setting';
+import { useSettingStore, type Locale, type ThemeStyle } from '@/stores/setting';
 
 export function SettingAppearance() {
     const t = useTranslations('setting');
     const { theme, setTheme } = useTheme();
-    const { locale, setLocale } = useSettingStore();
+    const { locale, setLocale, themeStyle, setThemeStyle } = useSettingStore();
 
     return (
         <div className="rounded-3xl border border-border bg-card p-6 space-y-5">
@@ -18,7 +18,28 @@ export function SettingAppearance() {
                 {t('appearance')}
             </h2>
 
-            {/* 主题 */}
+            {/* 主题风格 */}
+            <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                    <Palette className="h-5 w-5 text-muted-foreground" />
+                    <span className="text-sm font-medium">{t('themeStyle.label')}</span>
+                </div>
+                <Select value={themeStyle} onValueChange={(v) => setThemeStyle(v as ThemeStyle)}>
+                    <SelectTrigger className="w-36 rounded-xl">
+                        <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl">
+                        <SelectItem value="default" className="rounded-xl">
+                            {t('themeStyle.default')}
+                        </SelectItem>
+                        <SelectItem value="claude" className="rounded-xl">
+                            {t('themeStyle.claude')}
+                        </SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
+
+            {/* 明暗模式 */}
             <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
                     {theme === 'dark' ? <Moon className="h-5 w-5 text-muted-foreground" /> : <Sun className="h-5 w-5 text-muted-foreground" />}
@@ -65,4 +86,3 @@ export function SettingAppearance() {
         </div>
     );
 }
-
