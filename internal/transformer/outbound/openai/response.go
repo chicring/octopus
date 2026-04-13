@@ -470,11 +470,25 @@ func ConvertToResponsesRequest(req *model.InternalLLMRequest) *ResponsesRequest 
 
 	// Convert text options
 	if req.ResponseFormat != nil {
+		format := &ResponsesTextFormat{
+			Type: req.ResponseFormat.Type,
+		}
+		// Extract the raw schema from Chat-style wrapper {name, schema, strict}
+		if len(req.ResponseFormat.JSONSchema) > 0 {
+			var wrapper struct {
+				Name        string          `json:"name"`
+				Schema       json.RawMessage `json:"schema"`
+			}
+			if err := json.Unmarshal(req.ResponseFormat.JSONSchema, &wrapper); err == nil && len(wrapper.Schema) > 0 {
+				format.Name = wrapper.Name
+				format.Schema = wrapper.Schema
+			} else {
+				// Not wrapped — use as-is
+				format.Schema = req.ResponseFormat.JSONSchema
+			}
+		}
 		result.Text = &ResponsesTextOptions{
-			Format: &ResponsesTextFormat{
-				Type:   req.ResponseFormat.Type,
-				Schema: req.ResponseFormat.JSONSchema,
-			},
+			Format: format,
 		}
 	}
 

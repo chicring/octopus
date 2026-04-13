@@ -1003,10 +1003,22 @@ func convertToInternalRequest(req *ResponsesRequest) (*model.InternalLLMRequest,
 	}
 
 	// Convert text format (response_format)
+	// Responses API uses flat {type, name, schema} while internal model stores
+	// the Chat-style wrapper {name, schema, strict} in JSONSchema for consistency.
 	if req.Text != nil && req.Text.Format != nil && req.Text.Format.Type != "" {
+		var jsonSchema json.RawMessage
+		if len(req.Text.Format.Schema) > 0 {
+			wrapper := map[string]any{
+				"name":   req.Text.Format.Name,
+				"schema": json.RawMessage(req.Text.Format.Schema),
+			}
+			if b, err := json.Marshal(wrapper); err == nil {
+				jsonSchema = b
+			}
+		}
 		chatReq.ResponseFormat = &model.ResponseFormat{
 			Type:       req.Text.Format.Type,
-			JSONSchema: req.Text.Format.Schema,
+			JSONSchema: jsonSchema,
 		}
 	}
 
