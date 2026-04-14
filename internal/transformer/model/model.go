@@ -247,6 +247,10 @@ type InternalLLMRequest struct {
 	// e.g., "file_search_call.results", "message.input_image.image_url", "reasoning.encrypted_content"
 	Include []string `json:"-"`
 
+	// Truncation specifies the truncation strategy for the Responses API.
+	// This is a help field and will not be sent to the llm service.
+	Truncation string `json:"-"`
+
 	// Query stores the original query parameters from the inbound request.
 	// This is a help field and will not be sent to the llm service.
 	Query url.Values `json:"-"`
@@ -395,6 +399,7 @@ func (r *InternalLLMRequest) ClearHelpFields() {
 
 	r.ExtraBody = nil
 	r.Include = nil
+	r.Truncation = ""
 }
 
 func (r *InternalLLMRequest) IsImageGenerationRequest() bool {

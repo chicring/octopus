@@ -719,6 +719,7 @@ type ResponsesRequest struct {
 	Reasoning         *ResponsesReasoning   `json:"reasoning,omitempty"`
 	Include           []string              `json:"include,omitempty"`
 	TopLogprobs       *int64                `json:"top_logprobs,omitempty"`
+	Truncation        string                `json:"truncation,omitempty"`
 }
 
 type ResponsesInput struct {
@@ -954,6 +955,7 @@ func convertToInternalRequest(req *ResponsesRequest) (*model.InternalLLMRequest,
 		RawAPIFormat:        model.APIFormatOpenAIResponse,
 		TransformerMetadata: map[string]string{},
 		Include:             append([]string(nil), req.Include...),
+		Truncation:          req.Truncation,
 	}
 
 	if req.Input.Text == nil && len(req.Input.Items) > 0 {

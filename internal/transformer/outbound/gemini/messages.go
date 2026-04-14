@@ -261,7 +261,11 @@ func convertLLMToGeminiRequest(request *model.InternalLLMRequest) *model.GeminiG
 	config := &model.GeminiGenerationConfig{}
 	hasConfig := false
 
-	if request.MaxTokens != nil {
+	// MaxOutputTokens: prefer MaxCompletionTokens (newer), fall back to MaxTokens
+	if request.MaxCompletionTokens != nil {
+		config.MaxOutputTokens = int(*request.MaxCompletionTokens)
+		hasConfig = true
+	} else if request.MaxTokens != nil {
 		config.MaxOutputTokens = int(*request.MaxTokens)
 		hasConfig = true
 	}
@@ -289,6 +293,32 @@ func convertLLMToGeminiRequest(request *model.InternalLLMRequest) *model.GeminiG
 		hasConfig = true
 	} else if request.Stop != nil && request.Stop.Stop != nil {
 		config.StopSequences = []string{*request.Stop.Stop}
+		hasConfig = true
+	}
+
+	// PresencePenalty / FrequencyPenalty
+	if request.PresencePenalty != nil {
+		config.PresencePenalty = request.PresencePenalty
+		hasConfig = true
+	}
+	if request.FrequencyPenalty != nil {
+		config.FrequencyPenalty = request.FrequencyPenalty
+		hasConfig = true
+	}
+
+	// Seed for deterministic sampling
+	if request.Seed != nil {
+		config.Seed = request.Seed
+		hasConfig = true
+	}
+
+	// Logprobs
+	if request.Logprobs != nil && *request.Logprobs {
+		config.ResponseLogprobs = lo.ToPtr(true)
+		if request.TopLogprobs != nil {
+			logprobs := int(*request.TopLogprobs)
+			config.Logprobs = &logprobs
+		}
 		hasConfig = true
 	}
 
@@ -600,6 +630,20 @@ func convertGeminiFinishReason(reason string) string {
 		return "content_filter"
 	case "RECITATION":
 		return "content_filter"
+	case "BLOCKLIST":
+		return "content_filter"
+	case "PROHIBITED_CONTENT":
+		return "content_filter"
+	case "SPII":
+		return "content_filter"
+	case "MALFORMED_FUNCTION_CALL":
+		return "stop"
+	case "LANGUAGE":
+		return "content_filter"
+	case "FINISH_REASON_UNSPECIFIED":
+		return "stop"
+	case "OTHER":
+		return "stop"
 	default:
 		return "stop"
 	}

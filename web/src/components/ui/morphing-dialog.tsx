@@ -235,6 +235,13 @@ function MorphingDialogContent({
       if (openPopoverContent) {
         return true;
       }
+      if (target?.closest('[data-slot="dialog-content"]')) {
+        return true;
+      }
+      const openDialogContent = document.querySelector('[data-slot="dialog-content"]');
+      if (openDialogContent) {
+        return true;
+      }
       return false;
     }
   );

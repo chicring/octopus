@@ -52,6 +52,10 @@ func (i *MessagesInbound) TransformRequest(ctx context.Context, body []byte) (*m
 		RawAPIFormat:        model.APIFormatAnthropicMessage,
 		TransformerMetadata: map[string]string{},
 	}
+
+	if anthropicReq.ServiceTier != "" {
+		chatReq.ServiceTier = &anthropicReq.ServiceTier
+	}
 	if anthropicReq.Metadata != nil {
 		chatReq.Metadata["user_id"] = anthropicReq.Metadata.UserID
 	}
@@ -479,6 +483,9 @@ func (i *MessagesInbound) TransformResponse(ctx context.Context, response *model
 			usage.CacheReadInputTokens = response.Usage.PromptTokensDetails.CachedTokens
 			usage.InputTokens -= usage.CacheReadInputTokens
 		}
+		if response.Usage.CacheCreationInputTokens > 0 {
+			usage.CacheCreationInputTokens = response.Usage.CacheCreationInputTokens
+		}
 		resp.Usage = usage
 	}
 
@@ -887,6 +894,9 @@ func (i *MessagesInbound) convertUsage(usage *model.Usage) *Usage {
 	if usage.PromptTokensDetails != nil {
 		anthropicUsage.CacheReadInputTokens = usage.PromptTokensDetails.CachedTokens
 		anthropicUsage.InputTokens -= anthropicUsage.CacheReadInputTokens
+	}
+	if usage.CacheCreationInputTokens > 0 {
+		anthropicUsage.CacheCreationInputTokens = usage.CacheCreationInputTokens
 	}
 	return anthropicUsage
 }

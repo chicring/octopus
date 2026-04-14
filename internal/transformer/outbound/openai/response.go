@@ -269,6 +269,8 @@ type ResponsesRequest struct {
 	Temperature       *float64              `json:"temperature,omitempty"`
 	TopP              *float64              `json:"top_p,omitempty"`
 	Reasoning         *ResponsesReasoning   `json:"reasoning,omitempty"`
+	Include           []string              `json:"include,omitempty"`
+	Truncation        string                `json:"truncation,omitempty"`
 }
 
 type ResponsesInput struct {
@@ -451,6 +453,8 @@ func ConvertToResponsesRequest(req *model.InternalLLMRequest) *ResponsesRequest 
 		Metadata:          req.Metadata,
 		MaxOutputTokens:   req.MaxCompletionTokens,
 		ParallelToolCalls: req.ParallelToolCalls,
+		Include:           req.Include,
+		Truncation:        req.Truncation,
 	}
 
 	// Convert instructions from system messages

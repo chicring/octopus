@@ -105,6 +105,17 @@ type GeminiGenerationConfig struct {
 	ResponseSchema     *GeminiSchema `json:"responseSchema,omitempty"`
 	ResponseModalities []string      `json:"responseModalities,omitempty"`
 
+	// PresencePenalty positive values penalize tokens already present.
+	PresencePenalty *float64 `json:"presencePenalty,omitempty"`
+	// FrequencyPenalty positive values penalize tokens based on frequency.
+	FrequencyPenalty *float64 `json:"frequencyPenalty,omitempty"`
+	// Seed for deterministic sampling.
+	Seed *int64 `json:"seed,omitempty"`
+	// ResponseLogprobs enables logprobs in the response.
+	ResponseLogprobs *bool `json:"responseLogprobs,omitempty"`
+	// Logprobs specifies the number of top logprobs to return.
+	Logprobs *int `json:"logprobs,omitempty"`
+
 	// ThinkingConfig is the thinking features configuration
 	ThinkingConfig *GeminiThinkingConfig `json:"thinkingConfig,omitempty"`
 }
