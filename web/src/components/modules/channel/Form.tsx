@@ -31,6 +31,9 @@ export interface ChannelKeyFormItem {
     status_code?: number;
     last_use_time_stamp?: number;
     total_cost?: number;
+    total_requests?: number;
+    total_input_token?: number;
+    total_output_token?: number;
     remark?: string;
 }
 

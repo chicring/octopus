@@ -494,7 +494,21 @@
                 "outputToken": "输出 Token",
                 "inputCost": "输入成本",
                 "outputCost": "输出成本",
-                "avgWaitTime": "等待时间"
+                "avgWaitTime": "等待时间",
+                "requests": "次"
+            },
+            "errors": {
+                "noModels": "未选择模型",
+                "noEnabledKeys": "没有启用的密钥"
+            },
+            "test": {
+                "allPassed": "全部 {count} 个模型测试通过",
+                "allFailed": "全部 {count} 个模型测试失败",
+                "partial": "{passed} 个通过，{failed} 个失败",
+                "keyDisabled": "该密钥测试全部失败，已自动禁用",
+                "keysDisabled": "{count} 个密钥测试全部失败，已自动禁用",
+                "allKeysPassed": "全部 {count} 个密钥测试通过",
+                "allKeysResult": "共 {keyCount} 个密钥：{passed} 个模型通过，{failed} 个模型失败"
             },
             "actions": {
                 "edit": "编辑",
@@ -503,7 +517,9 @@
                 "saving": "保存中...",
                 "delete": "删除",
                 "confirmDelete": "确认删除",
-                "deleting": "删除中..."
+                "deleting": "删除中...",
+                "testKey": "测试密钥",
+                "testAllKeys": "测试全部密钥"
             }
         },
         "create": {

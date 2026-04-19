@@ -95,7 +95,7 @@ func Handler(inboundType inbound.InboundType, c *gin.Context) {
 			continue
 		}
 
-		usedKey := channel.GetChannelKey()
+		usedKey := op.ChannelGetKey(channel.ID)
 		if usedKey.ChannelKey == "" {
 			iter.Skip(channel.ID, 0, channel.Name, "no available key")
 			continue
@@ -182,6 +182,9 @@ func (ra *relayAttempt) attempt() attemptResult {
 		// ====== 成功 ======
 		ra.collectResponse()
 		ra.usedKey.TotalCost += ra.metrics.Stats.InputCost + ra.metrics.Stats.OutputCost
+		ra.usedKey.TotalRequests++
+		ra.usedKey.TotalInputToken += ra.metrics.Stats.InputToken
+		ra.usedKey.TotalOutputToken += ra.metrics.Stats.OutputToken
 		op.ChannelKeyUpdate(ra.usedKey)
 
 		span.End(dbmodel.AttemptSuccess, statusCode, "")
@@ -201,6 +204,7 @@ func (ra *relayAttempt) attempt() attemptResult {
 	}
 
 	// ====== 失败 ======
+	ra.usedKey.TotalRequests++
 	op.ChannelKeyUpdate(ra.usedKey)
 	span.End(dbmodel.AttemptFailed, statusCode, fwdErr.Error())
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import {
     Trash2,
     CheckCircle2,
@@ -9,9 +9,11 @@ import {
     Activity,
     TrendingUp,
     Globe,
-    Key
+    Key,
+    FlaskConical,
+    Loader2
 } from 'lucide-react';
-import { useUpdateChannel, useDeleteChannel, type Channel, type UpdateChannelRequest } from '@/api/endpoints/channel';
+import { useUpdateChannel, useDeleteChannel, useTestChannelModelsByKey, type Channel, type UpdateChannelRequest } from '@/api/endpoints/channel';
 import {
     MorphingDialogTitle,
     MorphingDialogDescription,
@@ -21,16 +23,23 @@ import {
 import { Tabs, TabsContents, TabsContent } from '@/components/animate-ui/primitives/animate/tabs';
 import { type StatsMetricsFormatted } from '@/api/endpoints/stats';
 import { useTranslations } from 'next-intl';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { ChannelForm, type ChannelFormData } from './Form';
-import { formatMoney } from '@/lib/utils';
+import { formatMoney, formatCount } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { toast } from '@/components/common/Toast';
 
 export function CardContent({ channel, stats }: { channel: Channel; stats: StatsMetricsFormatted }) {
     const { setIsOpen } = useMorphingDialog();
     const updateChannel = useUpdateChannel();
     const deleteChannel = useDeleteChannel();
+    const testByKey = useTestChannelModelsByKey();
+    const queryClient = useQueryClient();
+    const t = useTranslations('channel.detail');
+    const [testingKeyId, setTestingKeyId] = useState<number | null>(null);
+    const [testingAllKeys, setTestingAllKeys] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
     const [formData, setFormData] = useState<ChannelFormData>({
@@ -49,6 +58,9 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
                 status_code: k.status_code,
                 last_use_time_stamp: k.last_use_time_stamp,
                 total_cost: k.total_cost,
+                total_requests: k.total_requests,
+                total_input_token: k.total_input_token,
+                total_output_token: k.total_output_token,
                 remark: k.remark,
             }))
             : [{ enabled: true, channel_key: '', remark: '' }],
@@ -59,9 +71,77 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
         auto_group: channel.auto_group,
         match_regex: channel.match_regex ?? '',
     });
-    const t = useTranslations('channel.detail');
 
     const currentView = isEditing ? 'editing' : 'viewing';
+
+    const getModels = useCallback(() =>
+        [channel.model, channel.custom_model]
+            .flatMap(s => s?.split(',') ?? [])
+            .map(m => m.trim())
+            .filter(Boolean),
+        [channel.model, channel.custom_model]
+    );
+
+    const disableKeys = useCallback(async (keyIds: number[]) => {
+        if (keyIds.length === 0) return;
+        const req: UpdateChannelRequest = {
+            id: channel.id,
+            keys_to_update: keyIds.map(id => ({ id, enabled: false })),
+        };
+        await updateChannel.mutateAsync(req);
+        queryClient.invalidateQueries({ queryKey: ['channels', 'list'] });
+    }, [channel.id, updateChannel, queryClient]);
+
+    const handleTestAllKeys = useCallback(async () => {
+        const models = getModels();
+        if (models.length === 0) {
+            toast.error(t('errors.noModels'));
+            return;
+        }
+        const enabledKeys = channel.keys.filter(k => k.enabled);
+        if (enabledKeys.length === 0) {
+            toast.error(t('errors.noEnabledKeys'));
+            return;
+        }
+        setTestingAllKeys(true);
+        const failedKeyIds: number[] = [];
+        let totalPassed = 0;
+        let totalFailed = 0;
+
+        for (const key of enabledKeys) {
+            setTestingKeyId(key.id);
+            try {
+                const results = await testByKey.mutateAsync(
+                    { channel_id: channel.id, key_id: key.id, models }
+                );
+                const failed = results.filter(r => !r.passed);
+                const passed = results.filter(r => r.passed);
+                totalPassed += passed.length;
+                totalFailed += failed.length;
+                if (failed.length === results.length) {
+                    failedKeyIds.push(key.id);
+                }
+            } catch {
+                totalFailed += models.length;
+                failedKeyIds.push(key.id);
+            }
+        }
+
+        setTestingKeyId(null);
+        setTestingAllKeys(false);
+
+        // 禁用全部模型测试失败的 Key
+        if (failedKeyIds.length > 0) {
+            await disableKeys(failedKeyIds);
+            toast.warning(t('test.keysDisabled', { count: failedKeyIds.length }));
+        }
+
+        if (totalFailed === 0) {
+            toast.success(t('test.allKeysPassed', { count: enabledKeys.length }));
+        } else {
+            toast.warning(t('test.allKeysResult', { keyCount: enabledKeys.length, passed: totalPassed, failed: totalFailed }));
+        }
+    }, [getModels, channel.id, channel.keys, testByKey, t, disableKeys]);
 
     const baseUrlsEqual = (a: Channel['base_urls'] | undefined, b: Channel['base_urls'] | undefined) =>
         JSON.stringify(a ?? []) === JSON.stringify(b ?? []);
@@ -348,9 +428,22 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
 
                                 {/* Keys */}
                                 <section className="space-y-3">
-                                    <h4 className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                                        <Key className="size-3.5" />
-                                        {t('sections.keys')}
+                                    <h4 className="flex items-center justify-between text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                                        <span className="flex items-center gap-2">
+                                            <Key className="size-3.5" />
+                                            {t('sections.keys')}
+                                        </span>
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-6 px-2 text-xs"
+                                            disabled={testingAllKeys || channel.keys.filter(k => k.enabled).length === 0}
+                                            onClick={handleTestAllKeys}
+                                        >
+                                            {testingAllKeys ? <Loader2 className="h-3 w-3 animate-spin" /> : <FlaskConical className="h-3 w-3" />}
+                                            {t('actions.testAllKeys')}
+                                        </Button>
                                     </h4>
                                     <div className="rounded-2xl border bg-card overflow-hidden">
                                         {channel.keys?.map((key) => (
@@ -396,9 +489,64 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
                                                     )}
 
                                                     <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+                                                        {formatCount(key.total_requests).formatted.value}
+                                                        {formatCount(key.total_requests).formatted.unit} {t('metrics.requests')}
+                                                    </Badge>
+
+                                                    <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+                                                        {formatCount(key.total_input_token + key.total_output_token).formatted.value}
+                                                        {formatCount(key.total_input_token + key.total_output_token).formatted.unit} tok
+                                                    </Badge>
+
+                                                    <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
                                                         {formatMoney(key.total_cost).formatted.value}
                                                         {formatMoney(key.total_cost).formatted.unit}
                                                     </Badge>
+
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-6 w-6 p-0 shrink-0"
+                                                        disabled={(testByKey.isPending && testingKeyId === key.id) || testingAllKeys}
+                                                        onClick={() => {
+                                                            const models = getModels();
+                                                            if (models.length === 0) {
+                                                                toast.error(t('errors.noModels'));
+                                                                return;
+                                                            }
+                                                            setTestingKeyId(key.id);
+                                                            testByKey.mutate(
+                                                                { channel_id: channel.id, key_id: key.id, models },
+                                                                {
+                                                                    onSuccess: async (results) => {
+                                                                        const passed = results.filter(r => r.passed);
+                                                                        const failed = results.filter(r => !r.passed);
+                                                                        if (failed.length === 0) {
+                                                                            toast.success(t('test.allPassed', { count: passed.length }));
+                                                                        } else if (passed.length === 0) {
+                                                                            toast.error(t('test.allFailed', { count: failed.length }));
+                                                                            // 全部模型失败，自动禁用该 Key
+                                                                            await disableKeys([key.id]);
+                                                                            toast.warning(t('test.keyDisabled'));
+                                                                        } else {
+                                                                            toast.warning(t('test.partial', { passed: passed.length, failed: failed.length }));
+                                                                        }
+                                                                        failed.forEach(r => {
+                                                                            toast.error(`${r.model}: ${r.error}`);
+                                                                        });
+                                                                        setTestingKeyId(null);
+                                                                    },
+                                                                    onError: () => {
+                                                                        setTestingKeyId(null);
+                                                                    },
+                                                                }
+                                                            );
+                                                        }}
+                                                        title={t('actions.testKey')}
+                                                    >
+                                                        <FlaskConical className="h-3 w-3" />
+                                                    </Button>
                                                 </div>
                                             </div>
                                         ))}

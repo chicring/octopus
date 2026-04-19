@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/bestruirui/octopus/internal/db"
 	"github.com/bestruirui/octopus/internal/model"
@@ -16,6 +18,64 @@ var channelCache = cache.New[int, model.Channel](16)
 var channelKeyCache = cache.New[int, model.ChannelKey](16)
 var channelKeyCacheNeedUpdate = make(map[int]struct{})
 var channelKeyCacheNeedUpdateLock sync.Mutex
+
+// channelKeyRotationCounters 用于渠道内 Key 轮询的原子计数器，key 为 channelID
+var channelKeyRotationCounters sync.Map // map[int]*uint64
+
+// ChannelGetKey 从缓存中获取渠道，并使用最低成本优先 + 轮询 tiebreaker 策略选择可用 Key。
+// 当多个 Key 具有相同最低成本时，通过原子计数器实现轮询，确保全轮询。
+func ChannelGetKey(channelID int) model.ChannelKey {
+	ch, ok := channelCache.Get(channelID)
+	if !ok || len(ch.Keys) == 0 {
+		return model.ChannelKey{}
+	}
+
+	nowSec := time.Now().Unix()
+
+	// 筛选可用 Key
+	var eligible []model.ChannelKey
+	for _, k := range ch.Keys {
+		if !k.Enabled || k.ChannelKey == "" {
+			continue
+		}
+		if k.StatusCode == 429 && k.LastUseTimeStamp > 0 {
+			if nowSec-k.LastUseTimeStamp < int64(5*time.Minute/time.Second) {
+				continue
+			}
+		}
+		eligible = append(eligible, k)
+	}
+
+	if len(eligible) == 0 {
+		return model.ChannelKey{}
+	}
+
+	// 找出最低成本
+	minCost := eligible[0].TotalCost
+	for _, k := range eligible[1:] {
+		if k.TotalCost < minCost {
+			minCost = k.TotalCost
+		}
+	}
+
+	// 收集所有同最低成本的 Key
+	var tied []model.ChannelKey
+	for _, k := range eligible {
+		if k.TotalCost == minCost {
+			tied = append(tied, k)
+		}
+	}
+
+	// 单个 Key 直接返回
+	if len(tied) == 1 {
+		return tied[0]
+	}
+
+	// 多个同成本 Key：原子计数器轮询
+	counterPtr, _ := channelKeyRotationCounters.LoadOrStore(channelID, new(uint64))
+	idx := atomic.AddUint64(counterPtr.(*uint64), 1) % uint64(len(tied))
+	return tied[idx]
+}
 
 func ChannelList(ctx context.Context) ([]model.Channel, error) {
 	channels := make([]model.Channel, 0, channelCache.Len())
@@ -315,6 +375,7 @@ func ChannelDel(id int, ctx context.Context) error {
 
 	// 删除缓存
 	channelCache.Del(id)
+	channelKeyRotationCounters.Delete(id)
 	for _, k := range ch.Keys {
 		if k.ID != 0 {
 			channelKeyCache.Del(k.ID)
