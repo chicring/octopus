@@ -246,11 +246,11 @@ func TestIterator_SkipAndAttempt(t *testing.T) {
 	iter.Skip(1, 0, "ch1", "disabled")
 
 	iter.Next()
-	span := iter.StartAttempt(2, 200, "ch2")
+	span := iter.StartAttempt(2, 200, "ch2", "")
 	span.End(model.AttemptFailed, 500, "internal error")
 
 	iter.Next()
-	span3 := iter.StartAttempt(3, 300, "ch3")
+	span3 := iter.StartAttempt(3, 300, "ch3", "")
 	span3.End(model.AttemptSuccess, 200, "")
 
 	attempts := iter.Attempts()

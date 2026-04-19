@@ -149,7 +149,6 @@ func ChannelKeySaveDB(ctx context.Context) error {
 	for id := range channelKeyCacheNeedUpdate {
 		keyIDs = append(keyIDs, id)
 	}
-	channelKeyCacheNeedUpdate = make(map[int]struct{})
 	channelKeyCacheNeedUpdateLock.Unlock()
 
 	if len(keyIDs) == 0 {
@@ -157,16 +156,30 @@ func ChannelKeySaveDB(ctx context.Context) error {
 	}
 
 	dbConn := db.GetDB().WithContext(ctx)
+	var firstErr error
 	for _, id := range keyIDs {
 		k, ok := channelKeyCache.Get(id)
 		if !ok {
 			continue
 		}
 		if err := dbConn.Save(&k).Error; err != nil {
-			return err
+			if firstErr == nil {
+				firstErr = err
+			}
+			log.Errorf("failed to save channel key %d: %v", id, err)
 		}
 	}
-	return nil
+
+	// 仅在无错误时清空 dirty set，确保失败时下次重试
+	if firstErr == nil {
+		channelKeyCacheNeedUpdateLock.Lock()
+		for _, id := range keyIDs {
+			delete(channelKeyCacheNeedUpdate, id)
+		}
+		channelKeyCacheNeedUpdateLock.Unlock()
+	}
+
+	return firstErr
 }
 
 func ChannelUpdate(req *model.ChannelUpdateRequest, ctx context.Context) (*model.Channel, error) {
@@ -445,7 +458,33 @@ func channelRefreshCache(ctx context.Context) error {
 }
 
 func channelRefreshCacheByID(id int, ctx context.Context) error {
+	// 先将该渠道的脏 ChannelKey 落库，避免内存中累积的统计被 DB 旧值覆盖
 	if old, ok := channelCache.Get(id); ok {
+		dirtyKeyIDs := make([]int, 0)
+		channelKeyCacheNeedUpdateLock.Lock()
+		for _, k := range old.Keys {
+			if k.ID != 0 {
+				if _, dirty := channelKeyCacheNeedUpdate[k.ID]; dirty {
+					dirtyKeyIDs = append(dirtyKeyIDs, k.ID)
+				}
+			}
+		}
+		channelKeyCacheNeedUpdateLock.Unlock()
+		if len(dirtyKeyIDs) > 0 {
+			dbConn := db.GetDB().WithContext(ctx)
+			for _, keyID := range dirtyKeyIDs {
+				if k, ok := channelKeyCache.Get(keyID); ok {
+					if err := dbConn.Save(&k).Error; err != nil {
+						log.Errorf("failed to flush dirty channel key %d before refresh: %v", keyID, err)
+					}
+				}
+			}
+			channelKeyCacheNeedUpdateLock.Lock()
+			for _, keyID := range dirtyKeyIDs {
+				delete(channelKeyCacheNeedUpdate, keyID)
+			}
+			channelKeyCacheNeedUpdateLock.Unlock()
+		}
 		for _, k := range old.Keys {
 			if k.ID != 0 {
 				channelKeyCache.Del(k.ID)

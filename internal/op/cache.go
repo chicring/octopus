@@ -33,14 +33,18 @@ func InitCache() error {
 func SaveCache() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	var errs []error
 	if err := StatsSaveDB(ctx); err != nil {
-		return err
+		errs = append(errs, err)
 	}
 	if err := ChannelKeySaveDB(ctx); err != nil {
-		return err
+		errs = append(errs, err)
 	}
 	if err := RelayLogSaveDBTask(ctx); err != nil {
-		return err
+		errs = append(errs, err)
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("save cache errors: %v", errs)
 	}
 	return nil
 }
