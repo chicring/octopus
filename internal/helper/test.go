@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/bestruirui/octopus/internal/model"
+	"github.com/bestruirui/octopus/internal/op"
 	transformermodel "github.com/bestruirui/octopus/internal/transformer/model"
 	"github.com/bestruirui/octopus/internal/transformer/outbound"
 )
@@ -39,9 +40,17 @@ func TestModels(ctx context.Context, channel *model.Channel, models []string) []
 	}
 
 	baseUrl := channel.GetBaseUrl()
-	key := channel.GetChannelKey()
+	var keyStr string
+	if channel.ID > 0 {
+		// 已保存的渠道使用轮询策略选 Key
+		k := op.ChannelGetKey(channel.ID)
+		keyStr = k.ChannelKey
+	} else {
+		k := channel.GetChannelKey()
+		keyStr = k.ChannelKey
+	}
 
-	if baseUrl == "" || key.ChannelKey == "" {
+	if baseUrl == "" || keyStr == "" {
 		results := make([]TestModelResult, 0, len(models))
 		for _, m := range models {
 			results = append(results, TestModelResult{Model: m, Passed: false, Error: "base url or key is empty"})
@@ -56,7 +65,48 @@ func TestModels(ctx context.Context, channel *model.Channel, models []string) []
 		if modelName == "" {
 			continue
 		}
-		results = append(results, testSingleModel(ctx, transformer, httpClient, baseUrl, key.ChannelKey, modelName, channel, isEmbedding))
+		results = append(results, testSingleModel(ctx, transformer, httpClient, baseUrl, keyStr, modelName, channel, isEmbedding))
+	}
+	return results
+}
+
+// TestModelsWithKey 使用指定的 Key 对渠道模型进行连通性测试
+func TestModelsWithKey(ctx context.Context, channel *model.Channel, key string, models []string) []TestModelResult {
+	transformer := outbound.Get(channel.Type)
+	if transformer == nil {
+		results := make([]TestModelResult, 0, len(models))
+		for _, m := range models {
+			results = append(results, TestModelResult{Model: m, Passed: false, Error: "unsupported channel type"})
+		}
+		return results
+	}
+
+	httpClient, err := ChannelHttpClient(channel)
+	if err != nil {
+		results := make([]TestModelResult, 0, len(models))
+		for _, m := range models {
+			results = append(results, TestModelResult{Model: m, Passed: false, Error: "failed to create http client: " + err.Error()})
+		}
+		return results
+	}
+
+	baseUrl := channel.GetBaseUrl()
+	if baseUrl == "" || key == "" {
+		results := make([]TestModelResult, 0, len(models))
+		for _, m := range models {
+			results = append(results, TestModelResult{Model: m, Passed: false, Error: "base url or key is empty"})
+		}
+		return results
+	}
+
+	isEmbedding := outbound.IsEmbeddingChannelType(channel.Type)
+
+	results := make([]TestModelResult, 0, len(models))
+	for _, modelName := range models {
+		if modelName == "" {
+			continue
+		}
+		results = append(results, testSingleModel(ctx, transformer, httpClient, baseUrl, key, modelName, channel, isEmbedding))
 	}
 	return results
 }

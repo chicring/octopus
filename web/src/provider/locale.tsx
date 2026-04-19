@@ -14,6 +14,13 @@ const messages: Record<Locale, typeof zh_hansMessages> = {
     en: enMessages,
 };
 
+// next-intl 要求 BCP 47 格式的 locale 标签（如 zh-Hans），内部用下划线格式映射
+const bcp47LocaleMap: Record<Locale, string> = {
+    zh_hans: 'zh-Hans',
+    zh_hant: 'zh-Hant',
+    en: 'en',
+};
+
 export function LocaleProvider({ children }: { children: ReactNode }) {
     const { locale } = useSettingStore();
     const [currentLocale, setCurrentLocale] = useState<Locale>('zh_hans');
@@ -24,7 +31,7 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
 
     return (
         <NextIntlClientProvider
-            locale={currentLocale}
+            locale={bcp47LocaleMap[currentLocale]}
             messages={messages[currentLocale]}
             timeZone="Asia/Shanghai"
         >

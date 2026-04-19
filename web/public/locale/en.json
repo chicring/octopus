@@ -494,7 +494,21 @@
                 "outputToken": "Output Tokens",
                 "inputCost": "Input Cost",
                 "outputCost": "Output Cost",
-                "avgWaitTime": "Wait Time"
+                "avgWaitTime": "Wait Time",
+                "requests": "req"
+            },
+            "errors": {
+                "noModels": "No models selected",
+                "noEnabledKeys": "No enabled keys"
+            },
+            "test": {
+                "allPassed": "All {count} models passed",
+                "allFailed": "All {count} models failed",
+                "partial": "{passed} passed, {failed} failed",
+                "keyDisabled": "Key failed all tests, auto-disabled",
+                "keysDisabled": "{count} keys failed all tests, auto-disabled",
+                "allKeysPassed": "All {count} keys passed",
+                "allKeysResult": "{keyCount} keys: {passed} models passed, {failed} models failed"
             },
             "actions": {
                 "edit": "Edit",
@@ -503,7 +517,9 @@
                 "saving": "Saving...",
                 "delete": "Delete",
                 "confirmDelete": "Confirm Delete",
-                "deleting": "Deleting..."
+                "deleting": "Deleting...",
+                "testKey": "Test Key",
+                "testAllKeys": "Test All Keys"
             }
         },
         "create": {

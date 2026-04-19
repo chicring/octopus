@@ -43,6 +43,9 @@ export type ChannelKey = {
     status_code: number;
     last_use_time_stamp: number;
     total_cost: number;
+    total_requests: number;
+    total_input_token: number;
+    total_output_token: number;
     remark: string;
 };
 
@@ -396,6 +399,17 @@ export function useTestChannelModelsByConfig() {
                 ...config,
                 model: models.join(','),
             });
+        },
+    });
+}
+
+/**
+ * 使用指定 Key 测试渠道模型
+ */
+export function useTestChannelModelsByKey() {
+    return useMutation({
+        mutationFn: async (data: { channel_id: number; key_id: number; models: string[] }) => {
+            return apiClient.post<TestModelResult[]>('/api/v1/channel/test-models-by-key', data);
         },
     });
 }

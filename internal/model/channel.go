@@ -52,6 +52,9 @@ type ChannelKey struct {
 	StatusCode       int     `json:"status_code"`
 	LastUseTimeStamp int64   `json:"last_use_time_stamp"`
 	TotalCost        float64 `json:"total_cost"`
+	TotalRequests    int64   `json:"total_requests" gorm:"default:0"`
+	TotalInputToken  int64   `json:"total_input_token" gorm:"default:0"`
+	TotalOutputToken int64   `json:"total_output_token" gorm:"default:0"`
 	Remark           string  `json:"remark"`
 }
 

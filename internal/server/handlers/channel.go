@@ -52,6 +52,10 @@ func init() {
 		AddRoute(
 			router.NewRoute("/test-models-by-config", http.MethodPost).
 				Handle(testModelsByConfig),
+		).
+		AddRoute(
+			router.NewRoute("/test-models-by-key", http.MethodPost).
+				Handle(testModelsByKey),
 		)
 	router.NewGroupRouter("/api/v1/channel").
 		Use(middleware.Auth()).
@@ -231,5 +235,46 @@ func testModelsByConfig(c *gin.Context) {
 	defer cancel()
 
 	results := helper.TestModels(ctx, &channel, models)
+	resp.Success(c, results)
+}
+
+func testModelsByKey(c *gin.Context) {
+	var req struct {
+		ChannelID int      `json:"channel_id"`
+		KeyID     int      `json:"key_id"`
+		Models    []string `json:"models"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.Error(c, http.StatusBadRequest, resp.ErrInvalidJSON)
+		return
+	}
+	if req.ChannelID <= 0 || req.KeyID <= 0 || len(req.Models) == 0 {
+		resp.Error(c, http.StatusBadRequest, "channel_id, key_id and models are required")
+		return
+	}
+
+	channel, err := op.ChannelGet(req.ChannelID, c.Request.Context())
+	if err != nil {
+		resp.Error(c, http.StatusNotFound, "channel not found")
+		return
+	}
+
+	// 查找指定的 Key
+	var targetKey string
+	for _, k := range channel.Keys {
+		if k.ID == req.KeyID {
+			targetKey = k.ChannelKey
+			break
+		}
+	}
+	if targetKey == "" {
+		resp.Error(c, http.StatusNotFound, "key not found")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Minute)
+	defer cancel()
+
+	results := helper.TestModelsWithKey(ctx, channel, targetKey, req.Models)
 	resp.Success(c, results)
 }

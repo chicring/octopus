@@ -494,7 +494,21 @@
                 "outputToken": "輸出 Token",
                 "inputCost": "輸入成本",
                 "outputCost": "輸出成本",
-                "avgWaitTime": "等待時間"
+                "avgWaitTime": "等待時間",
+                "requests": "次"
+            },
+            "errors": {
+                "noModels": "未選擇模型",
+                "noEnabledKeys": "沒有啟用的金鑰"
+            },
+            "test": {
+                "allPassed": "全部 {count} 個模型測試通過",
+                "allFailed": "全部 {count} 個模型測試失敗",
+                "partial": "{passed} 個通過，{failed} 個失敗",
+                "keyDisabled": "該金鑰測試全部失敗，已自動停用",
+                "keysDisabled": "{count} 個金鑰測試全部失敗，已自動停用",
+                "allKeysPassed": "全部 {count} 個金鑰測試通過",
+                "allKeysResult": "共 {keyCount} 個金鑰：{passed} 個模型通過，{failed} 個模型失敗"
             },
             "actions": {
                 "edit": "編輯",
@@ -503,7 +517,9 @@
                 "saving": "儲存中...",
                 "delete": "刪除",
                 "confirmDelete": "確認刪除",
-                "deleting": "刪除中..."
+                "deleting": "刪除中...",
+                "testKey": "測試金鑰",
+                "testAllKeys": "測試全部金鑰"
             }
         },
         "create": {
