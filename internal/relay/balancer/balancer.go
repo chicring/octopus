@@ -3,18 +3,17 @@ package balancer
 import (
 	"math/rand"
 	"sort"
+	"sync"
 	"sync/atomic"
 
 	"github.com/bestruirui/octopus/internal/model"
 )
 
-var roundRobinCounter uint64
-
-// Balancer 根据负载均衡模式选择通道
+// Balancer 负载均衡策略接口
 type Balancer interface {
 	// Candidates 返回按策略排序的候选列表
-	// 调用方在遍历候选列表时自行检查熔断状态
-	Candidates(items []model.GroupItem) []model.GroupItem
+	// groupID 用于 per-group 计数器隔离（RoundRobin 需要）
+	Candidates(groupID int, items []model.GroupItem) []model.GroupItem
 }
 
 // GetBalancer 根据模式返回对应的负载均衡器
@@ -33,15 +32,30 @@ func GetBalancer(mode model.GroupMode) Balancer {
 	}
 }
 
-// RoundRobin 轮询：从上次位置开始轮转排列
+// RoundRobin 轮询：per-group 计数器，从上次位置开始轮转排列
 type RoundRobin struct{}
 
-func (b *RoundRobin) Candidates(items []model.GroupItem) []model.GroupItem {
+var groupRoundRobinCounters sync.Map // map[int]*uint64
+
+func getGroupRoundRobinCounter(groupID int) *uint64 {
+	if v, ok := groupRoundRobinCounters.Load(groupID); ok {
+		return v.(*uint64)
+	}
+	newCounter := new(uint64)
+	actual, _ := groupRoundRobinCounters.LoadOrStore(groupID, newCounter)
+	return actual.(*uint64)
+}
+
+func (b *RoundRobin) Candidates(groupID int, items []model.GroupItem) []model.GroupItem {
 	n := len(items)
 	if n == 0 {
 		return nil
 	}
-	idx := int(atomic.AddUint64(&roundRobinCounter, 1) % uint64(n))
+	counter := getGroupRoundRobinCounter(groupID)
+	idx := int(atomic.AddUint64(counter, 1)%uint64(n) - 1)
+	if idx < 0 {
+		idx = n - 1
+	}
 	result := make([]model.GroupItem, n)
 	for i := 0; i < n; i++ {
 		result[i] = items[(idx+i)%n]
@@ -52,7 +66,7 @@ func (b *RoundRobin) Candidates(items []model.GroupItem) []model.GroupItem {
 // Random 随机：随机打乱所有 items
 type Random struct{}
 
-func (b *Random) Candidates(items []model.GroupItem) []model.GroupItem {
+func (b *Random) Candidates(_ int, items []model.GroupItem) []model.GroupItem {
 	n := len(items)
 	if n == 0 {
 		return nil
@@ -68,7 +82,7 @@ func (b *Random) Candidates(items []model.GroupItem) []model.GroupItem {
 // Failover 故障转移：按优先级排序
 type Failover struct{}
 
-func (b *Failover) Candidates(items []model.GroupItem) []model.GroupItem {
+func (b *Failover) Candidates(_ int, items []model.GroupItem) []model.GroupItem {
 	if len(items) == 0 {
 		return nil
 	}
@@ -78,7 +92,7 @@ func (b *Failover) Candidates(items []model.GroupItem) []model.GroupItem {
 // Weighted 加权分配：按权重概率排序
 type Weighted struct{}
 
-func (b *Weighted) Candidates(items []model.GroupItem) []model.GroupItem {
+func (b *Weighted) Candidates(_ int, items []model.GroupItem) []model.GroupItem {
 	n := len(items)
 	if n == 0 {
 		return nil
@@ -86,8 +100,8 @@ func (b *Weighted) Candidates(items []model.GroupItem) []model.GroupItem {
 
 	// 构建加权随机排序
 	type weightedItem struct {
-		item   model.GroupItem
-		score  float64
+		item  model.GroupItem
+		score float64
 	}
 
 	totalWeight := 0

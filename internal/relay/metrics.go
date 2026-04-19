@@ -98,8 +98,20 @@ func (m *RelayMetrics) Save(ctx context.Context, success bool, err error, attemp
 	op.StatsDailyUpdate(context.Background(), globalStats)
 	op.StatsAPIKeyUpdate(m.APIKeyID, globalStats)
 	// 仅在有有效渠道时更新渠道统计（避免 channel=0 的无效记录）
+	// 渠道维度：Token/Cost/WaitTime 由 Save 统一记录，成功时记录 success，
+	// 失败时不记录 RequestFailed（attempt() 已按每次尝试记录）
 	if channelID > 0 {
-		op.StatsChannelUpdate(channelID, globalStats)
+		channelStats := model.StatsMetrics{
+			WaitTime:    duration.Milliseconds(),
+			InputToken:  m.Stats.InputToken,
+			OutputToken: m.Stats.OutputToken,
+			InputCost:   m.Stats.InputCost,
+			OutputCost:  m.Stats.OutputCost,
+		}
+		if success {
+			channelStats.RequestSuccess = 1
+		}
+		op.StatsChannelUpdate(channelID, channelStats)
 	}
 	// 更新模型统计（使用实际模型名，fallback 到请求模型名）
 	modelName := m.ActualModel

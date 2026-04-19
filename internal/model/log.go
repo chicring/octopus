@@ -12,15 +12,16 @@ const (
 
 // ChannelAttempt 记录单次渠道尝试的决策和结果
 type ChannelAttempt struct {
-	ChannelID    int           `json:"channel_id"`
-	ChannelKeyID int           `json:"channel_key_id,omitempty"`
-	ChannelName  string        `json:"channel_name"`
-	ModelName    string        `json:"model_name"`
-	AttemptNum   int           `json:"attempt_num"`
-	Status       AttemptStatus `json:"status"`
-	Duration     int           `json:"duration"`
-	Sticky       bool          `json:"sticky,omitempty"`
-	Msg          string        `json:"msg,omitempty"`
+	ChannelID        int           `json:"channel_id"`
+	ChannelKeyID     int           `json:"channel_key_id,omitempty"`
+	ChannelName      string        `json:"channel_name"`
+	ChannelKeyRemark string        `json:"channel_key_remark,omitempty"`
+	ModelName        string        `json:"model_name"`
+	AttemptNum       int           `json:"attempt_num"`
+	Status           AttemptStatus `json:"status"`
+	Duration         int           `json:"duration"`
+	Sticky           bool          `json:"sticky,omitempty"`
+	Msg              string        `json:"msg,omitempty"`
 }
 
 type RelayLog struct {

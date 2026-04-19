@@ -10,6 +10,7 @@ import (
 type SessionEntry struct {
 	ChannelID    int
 	ChannelKeyID int
+	ModelName    string
 	Timestamp    time.Time
 }
 
@@ -41,11 +42,12 @@ func GetSticky(apiKeyID int, requestModel string, ttl time.Duration) *SessionEnt
 }
 
 // SetSticky 写入/更新粘性记录
-func SetSticky(apiKeyID int, requestModel string, channelID, keyID int) {
+func SetSticky(apiKeyID int, requestModel string, channelID, keyID int, modelName string) {
 	key := sessionKey(apiKeyID, requestModel)
 	globalSession.Store(key, &SessionEntry{
 		ChannelID:    channelID,
 		ChannelKeyID: keyID,
+		ModelName:    modelName,
 		Timestamp:    time.Now(),
 	})
 }

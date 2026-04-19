@@ -25,6 +25,7 @@ type circuitEntry struct {
 	ConsecutiveFailures int64
 	LastFailureTime     time.Time
 	TripCount           int // 累计熔断触发次数（用于指数退避）
+	HalfOpenTime        time.Time // 进入 HalfOpen 状态的时间
 	mu                  sync.Mutex
 }
 
@@ -104,6 +105,7 @@ func IsTripped(channelID, keyID int, modelName string) (tripped bool, remaining 
 		elapsed := time.Since(entry.LastFailureTime)
 		if elapsed >= cooldown {
 			entry.State = StateHalfOpen
+			entry.HalfOpenTime = time.Now()
 			log.Infof("circuit breaker [%s] Open -> HalfOpen (cooldown %v elapsed)", key, cooldown)
 			return false, 0
 		}
@@ -111,6 +113,16 @@ func IsTripped(channelID, keyID int, modelName string) (tripped bool, remaining 
 		return true, cooldown - elapsed
 
 	case StateHalfOpen:
+		// 探测请求挂死保护：如果进入 HalfOpen 超过 30s 仍未完成，
+		// 回退到 Open 重新开始冷却，避免渠道永久不可用
+		if !entry.HalfOpenTime.IsZero() && time.Since(entry.HalfOpenTime) > 30*time.Second {
+			entry.State = StateOpen
+			entry.LastFailureTime = time.Now()
+			entry.TripCount++
+			log.Warnf("circuit breaker [%s] HalfOpen -> Open (probe timeout 30s, tripCount=%d, cooldown=%v)",
+				key, entry.TripCount, GetCooldown(entry.TripCount))
+			return true, GetCooldown(entry.TripCount)
+		}
 		// 已有试探请求在进行中，拒绝其他请求
 		return true, 0
 
@@ -139,6 +151,7 @@ func RecordSuccess(channelID, keyID int, modelName string) {
 	entry.State = StateClosed
 	entry.ConsecutiveFailures = 0
 	entry.TripCount = 0
+	entry.HalfOpenTime = time.Time{}
 }
 
 // RecordFailure 记录失败，可能触发熔断

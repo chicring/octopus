@@ -16,6 +16,7 @@ export interface ChannelAttempt {
     channel_id: number;
     channel_key_id?: number;
     channel_name: string;
+    channel_key_remark?: string;
     model_name: string;
     attempt_num: number;    // 第几次尝试
     status: AttemptStatus;

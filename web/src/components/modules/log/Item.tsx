@@ -45,9 +45,10 @@ interface RetryBadgeWithTooltipProps {
     channelName: string;
     brandColor: string;
     attempts: ChannelAttempt[];
+    keyRemark?: string;
 }
 
-function RetryBadgeWithTooltip({ channelName, brandColor, attempts }: RetryBadgeWithTooltipProps) {
+function RetryBadgeWithTooltip({ channelName, brandColor, attempts, keyRemark }: RetryBadgeWithTooltipProps) {
     const t = useTranslations('log.card');
 
     return (
@@ -59,7 +60,7 @@ function RetryBadgeWithTooltip({ channelName, brandColor, attempts }: RetryBadge
                     style={{ backgroundColor: `${brandColor}15`, color: brandColor }}
                 >
                     <RotateCw className="size-3 mr-1 opacity-80" />
-                    {channelName}
+                    {channelName}{keyRemark ? ` (${keyRemark})` : ''}
                 </Badge>
             </TooltipTrigger>
             <TooltipContent className="border bg-card p-2 min-w-[280px] shadow-sm rounded-3xl flex flex-col gap-1">
@@ -78,7 +79,7 @@ function RetryBadgeWithTooltip({ channelName, brandColor, attempts }: RetryBadge
                             </Badge>
                             <div className="flex min-w-0 flex-col flex-1">
                                 <span className="truncate text-xs font-semibold text-foreground">
-                                    {attempt.channel_name}
+                                    {attempt.channel_name}{attempt.channel_key_remark ? ` (${attempt.channel_key_remark})` : ''}
                                 </span>
                                 <span className="text-[10px] text-muted-foreground">
                                     {attempt.model_name} • {formatDuration(attempt.duration)}
@@ -255,6 +256,8 @@ export function LogCard({ log }: { log: RelayLog }) {
     const hasError = !!log.error;
     const hasMultipleAttempts = log.attempts && log.attempts.length > 1;
     const [isDiagnosticExpanded, setIsDiagnosticExpanded] = useState(false);
+    const keyRemark = log.attempts?.find(a => a.status === 'success')?.channel_key_remark
+        || log.attempts?.[0]?.channel_key_remark;
 
     return (
         <TooltipProvider>
@@ -278,6 +281,7 @@ export function LogCard({ log }: { log: RelayLog }) {
                                         channelName={log.channel_name}
                                         brandColor={brandColor}
                                         attempts={log.attempts!}
+                                        keyRemark={keyRemark}
                                     />
                                 ) : (
                                     <Badge
@@ -285,7 +289,7 @@ export function LogCard({ log }: { log: RelayLog }) {
                                         className="shrink-0 text-xs px-1.5 py-0"
                                         style={{ backgroundColor: `${brandColor}15`, color: brandColor }}
                                     >
-                                        {log.channel_name}
+                                        {log.channel_name}{keyRemark ? ` (${keyRemark})` : ''}
                                     </Badge>
                                 )}
                                 <span className="text-muted-foreground truncate" title={log.actual_model_name}>
@@ -352,6 +356,7 @@ export function LogCard({ log }: { log: RelayLog }) {
                                     channelName={log.channel_name}
                                     brandColor={brandColor}
                                     attempts={log.attempts!}
+                                    keyRemark={keyRemark}
                                 />
                             ) : (
                                 <Badge
@@ -359,7 +364,7 @@ export function LogCard({ log }: { log: RelayLog }) {
                                     className="text-xs px-1.5 py-0"
                                     style={{ backgroundColor: `${brandColor}15`, color: brandColor }}
                                 >
-                                    {log.channel_name}
+                                    {log.channel_name}{keyRemark ? ` (${keyRemark})` : ''}
                                 </Badge>
                             )}
                             <span className="text-muted-foreground">{log.actual_model_name}</span>
@@ -457,7 +462,7 @@ export function LogCard({ log }: { log: RelayLog }) {
                                                                     >
                                                                         <div className="flex items-center gap-2">
                                                                             <span className="font-semibold text-foreground">
-                                                                                {attempt.channel_name}
+                                                                                {attempt.channel_name}{attempt.channel_key_remark ? ` (${attempt.channel_key_remark})` : ''}
                                                                             </span>
                                                                             <span className="text-muted-foreground">
                                                                                 ({attempt.model_name})

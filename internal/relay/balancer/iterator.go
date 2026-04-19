@@ -24,14 +24,14 @@ type Iterator struct {
 // 自动处理：策略排序 + 粘性通道提前
 func NewIterator(group model.Group, apiKeyID int, requestModel string) *Iterator {
 	b := GetBalancer(group.Mode)
-	candidates := b.Candidates(group.Items)
+	candidates := b.Candidates(group.ID, group.Items)
 
 	stickyIdx := -1
 	if group.SessionKeepTime > 0 {
 		stickyTTL := time.Duration(group.SessionKeepTime) * time.Second
 		if sticky := GetSticky(apiKeyID, requestModel, stickyTTL); sticky != nil {
 			for i, item := range candidates {
-				if item.ChannelID == sticky.ChannelID {
+				if item.ChannelID == sticky.ChannelID && item.ModelName == sticky.ModelName {
 					if i > 0 {
 						// 将粘性通道移到最前面
 						stickyItem := candidates[i]
@@ -120,16 +120,17 @@ func (it *Iterator) SkipCircuitBreak(channelID, channelKeyID int, channelName st
 }
 
 // StartAttempt 开始一次真实转发尝试，返回 Span 用于记录结果
-func (it *Iterator) StartAttempt(channelID, channelKeyID int, channelName string) *AttemptSpan {
+func (it *Iterator) StartAttempt(channelID, channelKeyID int, channelName, channelKeyRemark string) *AttemptSpan {
 	it.count++
 	return &AttemptSpan{
 		attempt: model.ChannelAttempt{
-			ChannelID:    channelID,
-			ChannelKeyID: channelKeyID,
-			ChannelName:  channelName,
-			ModelName:    it.candidates[it.index].ModelName,
-			AttemptNum:   it.count,
-			Sticky:       it.IsSticky(),
+			ChannelID:        channelID,
+			ChannelKeyID:     channelKeyID,
+			ChannelName:      channelName,
+			ChannelKeyRemark: channelKeyRemark,
+			ModelName:        it.candidates[it.index].ModelName,
+			AttemptNum:       it.count,
+			Sticky:           it.IsSticky(),
 		},
 		startTime: time.Now(),
 		iter:      it,
