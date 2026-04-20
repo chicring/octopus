@@ -144,7 +144,8 @@ func Handler(inboundType inbound.InboundType, c *gin.Context) {
 		// 设置实际模型
 		internalRequest.Model = item.ModelName
 
-		// 重置入站适配器的内部状态，避免前次尝试的残留数据污染后续的响应聚合
+		// 重置入站适配器的尝试级响应状态，避免前次尝试的残留数据
+		// （streamChunks/storedResponse 等）污染后续的响应聚合
 		inAdapter.Reset()
 
 		log.Infof("request model %s, mode: %d, forwarding to channel: %s model: %s (attempt %d/%d, sticky=%t)",

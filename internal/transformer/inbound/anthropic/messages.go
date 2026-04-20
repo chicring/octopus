@@ -45,7 +45,7 @@ func (i *MessagesInbound) Reset() {
 	i.contentIndex = 0
 	i.stopReason = nil
 	i.toolCallIndices = nil
-	i.inputToken = 0
+	// 注意：不清除 inputToken，它由 TransformRequest 计算并跨尝试保留
 	i.streamChunks = nil
 	i.storedResponse = nil
 }
