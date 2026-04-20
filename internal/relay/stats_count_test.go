@@ -1007,6 +1007,76 @@ func TestCrossChannelRetry_FailedLogFields(t *testing.T) {
 	}
 }
 
+// ============================================================================
+// 空响应视为失败的场景测试
+// ============================================================================
+
+// TestEmptyResponseTreatedAsFailure 上游返回 2xx 但空响应时，应视为失败触发重试
+func TestEmptyResponseTreatedAsFailure(t *testing.T) {
+	s := newStatsSnapshot()
+
+	// 渠道A(key100) 返回 2xx 但空响应 → 视为失败
+	attemptSim(&s, 1, 100, false, 0, 0)
+	// 渠道B(key200) 正常成功
+	attemptSim(&s, 2, 200, true, 100, 50)
+	// metrics.Save 记录最终渠道B的成功
+	metricsSaveSim(&s, 2, true, 100, 50)
+
+	// 全局：1次成功（不是2次）
+	assertEqual(t, "TotalSuccess", s.TotalSuccess, 1)
+	assertEqual(t, "TotalFailed", s.TotalFailed, 0)
+
+	// 渠道A：1次失败（空响应被正确记录为失败）
+	assertEqual(t, "ChannelA Failed", s.ChannelFailed[1], 1)
+	assertEqual(t, "ChannelA Success", s.ChannelSuccess[1], 0)
+
+	// 渠道B：1次成功
+	assertEqual(t, "ChannelB Success", s.ChannelSuccess[2], 1)
+	assertEqual(t, "ChannelB Failed", s.ChannelFailed[2], 0)
+}
+
+// TestEmptyResponseTreatedAsFailure_LogFields 空响应失败后重试成功：日志归属正确
+func TestEmptyResponseTreatedAsFailure_LogFields(t *testing.T) {
+	attempts := []model.ChannelAttempt{
+		{ChannelID: 1, ChannelName: "A", ChannelKeyID: 100, Status: model.AttemptFailed, AttemptNum: 1, Msg: "empty response from upstream"},
+		{ChannelID: 2, ChannelName: "B", ChannelKeyID: 200, Status: model.AttemptSuccess, AttemptNum: 2},
+	}
+
+	// finalChannel 应选成功的渠道B
+	id, name := finalChannel(attempts)
+	if id != 2 || name != "B" {
+		t.Errorf("finalChannel: got (%d, %s), want (2, B)", id, name)
+	}
+
+	// 第一次 attempt 是失败（空响应）
+	if attempts[0].Status != model.AttemptFailed {
+		t.Errorf("attempt[0] status: got %s, want failed", attempts[0].Status)
+	}
+	if attempts[0].Msg != "empty response from upstream" {
+		t.Errorf("attempt[0] msg: got %s, want 'empty response from upstream'", attempts[0].Msg)
+	}
+}
+
+// TestEmptyResponse_AllChannelsEmpty 所有渠道都返回空响应：全局1次失败
+func TestEmptyResponse_AllChannelsEmpty(t *testing.T) {
+	s := newStatsSnapshot()
+
+	// 渠道A 空响应失败
+	attemptSim(&s, 1, 100, false, 0, 0)
+	// 渠道B 也空响应失败
+	attemptSim(&s, 2, 200, false, 0, 0)
+	// metrics.Save 记录失败
+	metricsSaveSim(&s, 2, false, 0, 0)
+
+	// 全局：1次失败
+	assertEqual(t, "TotalFailed", s.TotalFailed, 1)
+	assertEqual(t, "TotalSuccess", s.TotalSuccess, 0)
+
+	// 每个渠道各1次失败
+	assertEqual(t, "ChannelA Failed", s.ChannelFailed[1], 1)
+	assertEqual(t, "ChannelB Failed", s.ChannelFailed[2], 1)
+}
+
 func assertEqual(t *testing.T, name string, got, want int64) {
 	t.Helper()
 	if got != want {
