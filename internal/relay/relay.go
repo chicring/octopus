@@ -2,6 +2,7 @@ package relay
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"github.com/bestruirui/octopus/internal/helper"
 	dbmodel "github.com/bestruirui/octopus/internal/model"
 	"github.com/bestruirui/octopus/internal/op"
+	"github.com/bestruirui/octopus/internal/provider"
 	"github.com/bestruirui/octopus/internal/relay/balancer"
 	"github.com/bestruirui/octopus/internal/server/resp"
 	"github.com/bestruirui/octopus/internal/transformer/inbound"
@@ -22,6 +24,8 @@ import (
 	"github.com/tmaxmax/go-sse"
 )
 
+var errClientDisconnected = errors.New("client disconnected during stream")
+
 // Handler 处理入站请求并转发到上游服务
 func Handler(inboundType inbound.InboundType, c *gin.Context) {
 	// 解析请求
@@ -29,22 +33,28 @@ func Handler(inboundType inbound.InboundType, c *gin.Context) {
 	if err != nil {
 		return
 	}
+
+	requestModel := internalRequest.Model
+	apiKeyID := c.GetInt("api_key_id")
+
+	// 提前初始化 Metrics，确保早期失败也有日志记录
+	metrics := NewRelayMetrics(apiKeyID, requestModel, internalRequest)
+
 	supportedModels := c.GetString("supported_models")
 	if supportedModels != "" {
 		supportedModelsArray := strings.Split(supportedModels, ",")
 		if !slices.Contains(supportedModelsArray, internalRequest.Model) {
 			resp.Error(c, http.StatusBadRequest, "model not supported")
+			metrics.SaveEarlyFailure(fmt.Errorf("model not supported: %s", internalRequest.Model))
 			return
 		}
 	}
-
-	requestModel := internalRequest.Model
-	apiKeyID := c.GetInt("api_key_id")
 
 	// 获取通道分组
 	group, err := op.GroupGetEnabledMap(requestModel, c.Request.Context())
 	if err != nil {
 		resp.Error(c, http.StatusNotFound, "model not found")
+		metrics.SaveEarlyFailure(fmt.Errorf("model not found: %s", requestModel))
 		return
 	}
 
@@ -52,11 +62,9 @@ func Handler(inboundType inbound.InboundType, c *gin.Context) {
 	iter := balancer.NewIterator(group, apiKeyID, requestModel)
 	if iter.Len() == 0 {
 		resp.Error(c, http.StatusServiceUnavailable, "no available channel")
+		metrics.SaveEarlyFailure(fmt.Errorf("no available channel for model: %s", requestModel))
 		return
 	}
-
-	// 初始化 Metrics
-	metrics := NewRelayMetrics(apiKeyID, requestModel, internalRequest)
 
 	// 请求级上下文
 	req := &relayRequest{
@@ -106,19 +114,29 @@ func Handler(inboundType inbound.InboundType, c *gin.Context) {
 			continue
 		}
 
-		// 出站适配器
-		outAdapter := outbound.Get(channel.Type)
+		// 出站适配器 — 优先 provider_id，回退 legacy type
+		pid := provider.ResolveProviderIDFromType(channel.Type)
+		if channel.ProviderID != "" {
+			pid = provider.ProviderID(channel.ProviderID)
+		}
+		var outAdapter model.Outbound
+		if pid != "" {
+			outAdapter = provider.GetOutbound(pid)
+		}
+		if outAdapter == nil {
+			outAdapter = outbound.Get(channel.Type)
+		}
 		if outAdapter == nil {
 			iter.Skip(channel.ID, usedKey.ID, channel.Name, fmt.Sprintf("unsupported channel type: %d", channel.Type))
 			continue
 		}
 
 		// 类型兼容性检查
-		if internalRequest.IsEmbeddingRequest() && !outbound.IsEmbeddingChannelType(channel.Type) {
+		if internalRequest.IsEmbeddingRequest() && !provider.IsEmbeddingProvider(pid) && !outbound.IsEmbeddingChannelType(channel.Type) {
 			iter.Skip(channel.ID, usedKey.ID, channel.Name, "channel type not compatible with embedding request")
 			continue
 		}
-		if internalRequest.IsChatRequest() && !outbound.IsChatChannelType(channel.Type) {
+		if internalRequest.IsChatRequest() && !provider.IsChatProvider(pid) && !outbound.IsChatChannelType(channel.Type) {
 			iter.Skip(channel.ID, usedKey.ID, channel.Name, "channel type not compatible with chat request")
 			continue
 		}
@@ -377,7 +395,8 @@ func (ra *relayAttempt) handleStreamResponse(ctx context.Context, response *http
 		select {
 		case <-ctx.Done():
 			log.Infof("client disconnected, stopping stream")
-			return nil
+			_ = response.Body.Close()
+			return errClientDisconnected
 		case <-firstTokenC:
 			log.Warnf("first token timeout (%ds), switching channel", ra.firstTokenTimeOutSec)
 			_ = response.Body.Close()
@@ -457,7 +476,7 @@ func (ra *relayAttempt) handleResponse(ctx context.Context, response *http.Respo
 
 // collectResponse 收集响应信息
 func (ra *relayAttempt) collectResponse() {
-	internalResponse, err := ra.inAdapter.GetInternalResponse(ra.c.Request.Context())
+	internalResponse, err := ra.inAdapter.GetInternalResponse(context.Background())
 	if err != nil || internalResponse == nil {
 		return
 	}

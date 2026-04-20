@@ -7,6 +7,7 @@ import (
 
 	"github.com/bestruirui/octopus/internal/model"
 	"github.com/bestruirui/octopus/internal/op"
+	"github.com/bestruirui/octopus/internal/provider"
 	transformermodel "github.com/bestruirui/octopus/internal/transformer/model"
 	"github.com/bestruirui/octopus/internal/transformer/outbound"
 )
@@ -21,7 +22,18 @@ type TestModelResult struct {
 // TestModels 对渠道中的指定模型进行连通性测试
 // 每个模型发送一个最小请求（"1+1=?"，max_tokens=1），30s 超时
 func TestModels(ctx context.Context, channel *model.Channel, models []string) []TestModelResult {
-	transformer := outbound.Get(channel.Type)
+	// 优先 provider-based 查找，回退到 legacy
+	pid := provider.ResolveProviderIDFromType(channel.Type)
+	if channel.ProviderID != "" {
+		pid = provider.ProviderID(channel.ProviderID)
+	}
+	var transformer transformermodel.Outbound
+	if pid != "" {
+		transformer = provider.GetOutbound(pid)
+	}
+	if transformer == nil {
+		transformer = outbound.Get(channel.Type)
+	}
 	if transformer == nil {
 		results := make([]TestModelResult, 0, len(models))
 		for _, m := range models {
@@ -58,7 +70,7 @@ func TestModels(ctx context.Context, channel *model.Channel, models []string) []
 		return results
 	}
 
-	isEmbedding := outbound.IsEmbeddingChannelType(channel.Type)
+	isEmbedding := provider.IsEmbeddingProvider(pid) || outbound.IsEmbeddingChannelType(channel.Type)
 
 	results := make([]TestModelResult, 0, len(models))
 	for _, modelName := range models {
@@ -72,7 +84,18 @@ func TestModels(ctx context.Context, channel *model.Channel, models []string) []
 
 // TestModelsWithKey 使用指定的 Key 对渠道模型进行连通性测试
 func TestModelsWithKey(ctx context.Context, channel *model.Channel, key string, models []string) []TestModelResult {
-	transformer := outbound.Get(channel.Type)
+	// 优先 provider-based 查找，回退到 legacy
+	pid := provider.ResolveProviderIDFromType(channel.Type)
+	if channel.ProviderID != "" {
+		pid = provider.ProviderID(channel.ProviderID)
+	}
+	var transformer transformermodel.Outbound
+	if pid != "" {
+		transformer = provider.GetOutbound(pid)
+	}
+	if transformer == nil {
+		transformer = outbound.Get(channel.Type)
+	}
 	if transformer == nil {
 		results := make([]TestModelResult, 0, len(models))
 		for _, m := range models {
@@ -99,7 +122,7 @@ func TestModelsWithKey(ctx context.Context, channel *model.Channel, key string, 
 		return results
 	}
 
-	isEmbedding := outbound.IsEmbeddingChannelType(channel.Type)
+	isEmbedding := provider.IsEmbeddingProvider(pid) || outbound.IsEmbeddingChannelType(channel.Type)
 
 	results := make([]TestModelResult, 0, len(models))
 	for _, modelName := range models {

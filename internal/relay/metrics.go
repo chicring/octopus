@@ -76,6 +76,23 @@ func (m *RelayMetrics) SetInternalResponse(resp *transformerModel.InternalLLMRes
 	m.Stats.OutputCost = float64(usage.CompletionTokens) * modelPrice.Output * 1e-6
 }
 
+// SaveEarlyFailure 记录早期失败（解析失败、模型不支持等），此时无渠道信息
+func (m *RelayMetrics) SaveEarlyFailure(err error) {
+	duration := time.Since(m.StartTime)
+	globalStats := model.StatsMetrics{
+		WaitTime:       duration.Milliseconds(),
+		RequestFailed:  1,
+	}
+	op.StatsTotalUpdate(globalStats)
+	op.StatsHourlyUpdate(globalStats)
+	op.StatsDailyUpdate(context.Background(), globalStats)
+	op.StatsAPIKeyUpdate(m.APIKeyID, globalStats)
+	if m.RequestModel != "" {
+		op.StatsModelUpdate(m.RequestModel, globalStats)
+	}
+	m.saveLog(context.Background(), err, duration, nil, 0, "")
+}
+
 func (m *RelayMetrics) Save(ctx context.Context, success bool, err error, attempts []model.ChannelAttempt) {
 	duration := time.Since(m.StartTime)
 
@@ -128,7 +145,7 @@ func (m *RelayMetrics) Save(ctx context.Context, success bool, err error, attemp
 		m.Stats.InputCost, m.Stats.OutputCost, m.Stats.InputCost+m.Stats.OutputCost,
 		len(attempts))
 
-	m.saveLog(ctx, err, duration, attempts, channelID, channelName)
+	m.saveLog(context.Background(), err, duration, attempts, channelID, channelName)
 }
 
 func finalChannel(attempts []model.ChannelAttempt) (int, string) {
@@ -178,7 +195,7 @@ func (m *RelayMetrics) saveLog(ctx context.Context, err error, duration time.Dur
 		TotalAttempts:    len(attempts),
 	}
 
-	if apiKey, getErr := op.APIKeyGet(m.APIKeyID, ctx); getErr == nil {
+	if apiKey, getErr := op.APIKeyGet(m.APIKeyID, context.Background()); getErr == nil {
 		relayLog.RequestAPIKeyName = apiKey.Name
 	}
 
@@ -220,7 +237,7 @@ func (m *RelayMetrics) saveLog(ctx context.Context, err error, duration time.Dur
 		relayLog.Error = err.Error()
 	}
 
-	if logErr := op.RelayLogAdd(ctx, relayLog); logErr != nil {
+	if logErr := op.RelayLogAdd(context.Background(), relayLog); logErr != nil {
 		log.Warnf("failed to save relay log: %v", logErr)
 	}
 }

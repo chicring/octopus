@@ -9,6 +9,7 @@ import (
 
 	"github.com/bestruirui/octopus/internal/db"
 	"github.com/bestruirui/octopus/internal/model"
+	"github.com/bestruirui/octopus/internal/provider"
 	"github.com/bestruirui/octopus/internal/utils/cache"
 	"github.com/bestruirui/octopus/internal/utils/log"
 	"github.com/bestruirui/octopus/internal/utils/xstrings"
@@ -205,6 +206,17 @@ func ChannelUpdate(req *model.ChannelUpdateRequest, ctx context.Context) (*model
 	if req.Type != nil {
 		selectFields = append(selectFields, "type")
 		updates.Type = *req.Type
+	}
+	if req.ProviderID != nil {
+		selectFields = append(selectFields, "provider_id")
+		updates.ProviderID = *req.ProviderID
+	}
+	if req.Type != nil && req.ProviderID == nil {
+		// type 更新但 provider_id 未显式提供，从 type 推导 provider_id
+		if pid := provider.ResolveProviderIDFromType(*req.Type); pid != "" {
+			selectFields = append(selectFields, "provider_id")
+			updates.ProviderID = string(pid)
+		}
 	}
 	if req.Enabled != nil {
 		selectFields = append(selectFields, "enabled")

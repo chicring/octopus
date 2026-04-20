@@ -17,6 +17,7 @@ const (
 	TaskSyncLLM      = "sync_llm"
 	TaskCleanLLM     = "clean_llm"
 	TaskBaseUrlDelay = "base_url_delay"
+	TaskOAuthCleanup = "oauth_cleanup"
 )
 
 func Init() {
@@ -59,4 +60,7 @@ func Init() {
 			log.Warnf("relay log save db task failed: %v", err)
 		}
 	})
+
+	// 注册 OAuth session 清理任务
+	Register(TaskOAuthCleanup, 1*time.Hour, false, op.CleanupExpiredOAuthSessions)
 }

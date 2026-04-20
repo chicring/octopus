@@ -9,6 +9,8 @@ import (
 	"github.com/bestruirui/octopus/internal/utils/log"
 	"github.com/bestruirui/octopus/internal/utils/shutdown"
 	"github.com/spf13/cobra"
+
+	_ "github.com/bestruirui/octopus/internal/provider/builtin"
 )
 
 var cfgFile string

@@ -7,6 +7,7 @@ import (
 
 	"github.com/bestruirui/octopus/internal/db/migrate"
 	"github.com/bestruirui/octopus/internal/model"
+	"github.com/bestruirui/octopus/internal/provider/auth"
 	"github.com/glebarez/sqlite"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
@@ -68,6 +69,7 @@ func InitDB(dbType, dsn string, debug bool) error {
 		&model.StatsAPIKey{},
 		&model.RelayLog{},
 		&migrate.MigrationRecord{},
+		&auth.OAuthSession{},
 	); err != nil {
 		return err
 	}

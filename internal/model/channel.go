@@ -19,6 +19,7 @@ type Channel struct {
 	ID            int                   `json:"id" gorm:"primaryKey"`
 	Name          string                `json:"name" gorm:"unique;not null"`
 	Type          outbound.OutboundType `json:"type"`
+	ProviderID    string                `json:"provider_id" gorm:"size:64;index"`
 	Enabled       bool                  `json:"enabled" gorm:"default:true"`
 	BaseUrls      []BaseUrl             `json:"base_urls" gorm:"serializer:json"`
 	Keys          []ChannelKey          `json:"keys" gorm:"foreignKey:ChannelID"`
@@ -63,6 +64,7 @@ type ChannelUpdateRequest struct {
 	ID            int                    `json:"id" binding:"required"`
 	Name          *string                `json:"name,omitempty"`
 	Type          *outbound.OutboundType `json:"type,omitempty"`
+	ProviderID    *string                `json:"provider_id,omitempty"`
 	Enabled       *bool                  `json:"enabled,omitempty"`
 	BaseUrls      *[]BaseUrl             `json:"base_urls,omitempty"`
 	Model         *string                `json:"model,omitempty"`

@@ -10,6 +10,7 @@ import (
 	"github.com/bestruirui/octopus/internal/helper"
 	"github.com/bestruirui/octopus/internal/model"
 	"github.com/bestruirui/octopus/internal/op"
+	"github.com/bestruirui/octopus/internal/provider"
 	"github.com/bestruirui/octopus/internal/server/middleware"
 	"github.com/bestruirui/octopus/internal/server/resp"
 	"github.com/bestruirui/octopus/internal/server/router"
@@ -88,6 +89,26 @@ func createChannel(c *gin.Context) {
 		resp.Error(c, http.StatusBadRequest, resp.ErrInvalidJSON)
 		return
 	}
+	// 归一化 provider_id 和 type
+	// 优先使用 provider_id：如果提供了 provider_id，从 provider_id 推导 type
+	// 否则从 type 推导 provider_id
+	if channel.ProviderID != "" {
+		pid, lt, err := provider.NormalizeChannelType(&channel.ProviderID, nil)
+		if err != nil {
+			resp.Error(c, http.StatusBadRequest, err.Error())
+			return
+		}
+		channel.ProviderID = pid
+		channel.Type = lt
+	} else {
+		pid, lt, err := provider.NormalizeChannelType(nil, &channel.Type)
+		if err != nil {
+			resp.Error(c, http.StatusBadRequest, err.Error())
+			return
+		}
+		channel.ProviderID = pid
+		channel.Type = lt
+	}
 	if err := op.ChannelCreate(&channel, c.Request.Context()); err != nil {
 		resp.Error(c, http.StatusInternalServerError, err.Error())
 		return
@@ -111,6 +132,34 @@ func updateChannel(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.Error(c, http.StatusBadRequest, resp.ErrInvalidJSON)
 		return
+	}
+	// 归一化 provider_id 和 type
+	if req.ProviderID != nil || req.Type != nil {
+		pid, lt, err := provider.NormalizeChannelType(req.ProviderID, req.Type)
+		if err != nil {
+			resp.Error(c, http.StatusBadRequest, err.Error())
+			return
+		}
+		hadProviderID := req.ProviderID != nil
+		hadType := req.Type != nil
+		// 只设置实际提供的字段，避免零值覆盖
+		if hadProviderID {
+			req.ProviderID = &pid
+		}
+		if hadType {
+			req.Type = &lt
+		}
+		// 如果只提供了 provider_id，推导的 type 也需要持久化
+		if hadProviderID && !hadType {
+			p := provider.Get(provider.ProviderID(pid))
+			if p != nil && p.LegacyType() != nil {
+				req.Type = &lt
+			}
+		}
+		// 如果只提供了 type，推导的 provider_id 也需要持久化
+		if hadType && !hadProviderID && pid != "" {
+			req.ProviderID = &pid
+		}
 	}
 	channel, err := op.ChannelUpdate(&req, c.Request.Context())
 	if err != nil {

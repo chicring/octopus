@@ -587,5 +587,20 @@
             "testResult": "测试结果",
             "testNoModels": "请先添加模型"
         }
+    },
+    "provider": {
+        "form": {
+            "selectPreset": "选择提供商预设...",
+            "authorize": "授权",
+            "authStarting": "正在启动授权...",
+            "authDeviceInstruction": "在验证页面输入以下代码完成授权。",
+            "copy": "复制",
+            "openVerification": "打开验证页面",
+            "authPolling": "等待授权中...",
+            "authWebPolling": "等待新窗口中完成授权...",
+            "authSuccess": "授权成功",
+            "authFailed": "授权失败",
+            "copied": "已复制！"
+        }
     }
 }

@@ -587,5 +587,20 @@
             "testResult": "測試結果",
             "testNoModels": "請先新增模型"
         }
+    },
+    "provider": {
+        "form": {
+            "selectPreset": "選擇提供商預設...",
+            "authorize": "授權",
+            "authStarting": "正在啟動授權...",
+            "authDeviceInstruction": "在驗證頁面輸入以下代碼完成授權。",
+            "copy": "複製",
+            "openVerification": "打開驗證頁面",
+            "authPolling": "等待授權中...",
+            "authWebPolling": "等待新窗口中完成授權...",
+            "authSuccess": "授權成功",
+            "authFailed": "授權失敗",
+            "copied": "已複製！"
+        }
     }
 }

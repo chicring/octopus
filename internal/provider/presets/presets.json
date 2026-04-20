@@ -1,0 +1,74 @@
+[
+  {
+    "name": "OpenAI",
+    "provider_id": "openai-chat",
+    "default_base_url": "https://api.openai.com",
+    "auth_type": "manual"
+  },
+  {
+    "name": "OpenAI Response",
+    "provider_id": "openai-response",
+    "default_base_url": "https://api.openai.com",
+    "auth_type": "manual"
+  },
+  {
+    "name": "OpenAI Embedding",
+    "provider_id": "openai-embedding",
+    "default_base_url": "https://api.openai.com",
+    "auth_type": "manual"
+  },
+  {
+    "name": "Anthropic",
+    "provider_id": "anthropic",
+    "default_base_url": "https://api.anthropic.com",
+    "auth_type": "manual"
+  },
+  {
+    "name": "Google Gemini",
+    "provider_id": "gemini",
+    "default_base_url": "https://generativelanguage.googleapis.com/v1beta",
+    "auth_type": "manual"
+  },
+  {
+    "name": "Volcengine",
+    "provider_id": "volcengine",
+    "default_base_url": "https://ark.cn-beijing.volces.com/api/v3",
+    "auth_type": "manual"
+  },
+  {
+    "name": "OpenRouter",
+    "provider_id": "openai-chat",
+    "default_base_url": "https://openrouter.ai/api/v1",
+    "auth_type": "manual"
+  },
+  {
+    "name": "DeepSeek",
+    "provider_id": "openai-chat",
+    "default_base_url": "https://api.deepseek.com",
+    "auth_type": "manual"
+  },
+  {
+    "name": "智谱AI",
+    "provider_id": "openai-chat",
+    "default_base_url": "https://open.bigmodel.cn/api/paas/v4",
+    "auth_type": "manual"
+  },
+  {
+    "name": "硅基流动",
+    "provider_id": "openai-chat",
+    "default_base_url": "https://api.siliconflow.cn/v1",
+    "auth_type": "manual"
+  },
+  {
+    "name": "Groq",
+    "provider_id": "openai-chat",
+    "default_base_url": "https://api.groq.com/openai/v1",
+    "auth_type": "manual"
+  },
+  {
+    "name": "Mistral",
+    "provider_id": "openai-chat",
+    "default_base_url": "https://api.mistral.ai/v1",
+    "auth_type": "manual"
+  }
+]

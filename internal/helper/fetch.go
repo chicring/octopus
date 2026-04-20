@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/bestruirui/octopus/internal/model"
+	"github.com/bestruirui/octopus/internal/provider"
 	"github.com/bestruirui/octopus/internal/transformer/outbound"
 	"github.com/dlclark/regexp2"
 )
@@ -17,13 +18,22 @@ func FetchModels(ctx context.Context, request model.Channel) ([]string, error) {
 		return nil, err
 	}
 	fetchModel := make([]string, 0)
-	switch request.Type {
-	case outbound.OutboundTypeAnthropic:
-		fetchModel, err = fetchAnthropicModels(client, ctx, request)
-	case outbound.OutboundTypeGemini:
-		fetchModel, err = fetchGeminiModels(client, ctx, request)
-	default:
-		fetchModel, err = fetchOpenAIModels(client, ctx, request)
+	// 优先使用 provider ModelFetcher，回退到 legacy switch
+	pid := provider.ResolveProviderIDFromType(request.Type)
+	if request.ProviderID != "" {
+		pid = provider.ProviderID(request.ProviderID)
+	}
+	if fetcher := provider.GetModelFetcher(pid); fetcher != nil {
+		fetchModel, err = fetcher(client, ctx, request)
+	} else {
+		switch request.Type {
+		case outbound.OutboundTypeAnthropic:
+			fetchModel, err = fetchAnthropicModels(client, ctx, request)
+		case outbound.OutboundTypeGemini:
+			fetchModel, err = fetchGeminiModels(client, ctx, request)
+		default:
+			fetchModel, err = fetchOpenAIModels(client, ctx, request)
+		}
 	}
 	if err != nil {
 		return nil, err
@@ -110,12 +120,12 @@ func fetchGeminiModels(client *http.Client, ctx context.Context, request model.C
 		if err != nil {
 			return nil, err
 		}
-		defer resp.Body.Close()
 
 		var result model.GeminiModelList
-
-		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-			return nil, err
+		decodeErr := json.NewDecoder(resp.Body).Decode(&result)
+		resp.Body.Close()
+		if decodeErr != nil {
+			return nil, decodeErr
 		}
 
 		for _, m := range result.Models {
@@ -166,12 +176,12 @@ func fetchAnthropicModels(client *http.Client, ctx context.Context, request mode
 		if err != nil {
 			return nil, err
 		}
-		defer resp.Body.Close()
 
 		var result model.AnthropicModelList
-
-		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-			return nil, err
+		decodeErr := json.NewDecoder(resp.Body).Decode(&result)
+		resp.Body.Close()
+		if decodeErr != nil {
+			return nil, decodeErr
 		}
 
 		for _, m := range result.Data {

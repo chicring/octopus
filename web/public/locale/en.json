@@ -587,5 +587,20 @@
             "testResult": "Test Results",
             "testNoModels": "Please add models first"
         }
+    },
+    "provider": {
+        "form": {
+            "selectPreset": "Select a provider preset...",
+            "authorize": "Authorize",
+            "authStarting": "Starting authorization...",
+            "authDeviceInstruction": "Enter the code below on the verification page to authorize.",
+            "copy": "Copy",
+            "openVerification": "Open Verification Page",
+            "authPolling": "Waiting for authorization...",
+            "authWebPolling": "Waiting for authorization in the new window...",
+            "authSuccess": "Authorization successful",
+            "authFailed": "Authorization failed",
+            "copied": "Copied!"
+        }
     }
 }

@@ -56,6 +56,7 @@ export type Channel = {
     id: number;
     name: string;
     type: ChannelType;
+    provider_id: string;
     enabled: boolean;
     base_urls: BaseUrl[];
     keys: ChannelKey[];
