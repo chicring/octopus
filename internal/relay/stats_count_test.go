@@ -789,6 +789,224 @@ func TestOutputTime_StatsMetricsAddOutputTime(t *testing.T) {
 	assertEqual(t, "OutputTime", a.OutputTime, 12500)
 }
 
+// ============================================================================
+// 跨渠道重试场景测试
+// ============================================================================
+
+// TestCrossChannelRetry_StatsConsistency 渠道A失败→渠道B成功：统计不双重计数
+func TestCrossChannelRetry_StatsConsistency(t *testing.T) {
+	s := newStatsSnapshot()
+
+	// 渠道A(key100) 失败
+	attemptSim(&s, 1, 100, false, 0, 0)
+	// 渠道B(key200) 成功
+	attemptSim(&s, 2, 200, true, 100, 50)
+	// metrics.Save 记录最终渠道B的成功
+	metricsSaveSim(&s, 2, true, 100, 50)
+
+	// 全局：1次成功
+	assertEqual(t, "TotalSuccess", s.TotalSuccess, 1)
+	assertEqual(t, "TotalFailed", s.TotalFailed, 0)
+	assertEqual(t, "TotalTokens", s.TotalTokens, 150)
+
+	// 渠道A：仅1次失败（来自 attempt）
+	assertEqual(t, "ChannelA Failed", s.ChannelFailed[1], 1)
+	assertEqual(t, "ChannelA Success", s.ChannelSuccess[1], 0)
+
+	// 渠道B：1次成功（来自 Save），0次失败
+	assertEqual(t, "ChannelB Success", s.ChannelSuccess[2], 1)
+	assertEqual(t, "ChannelB Failed", s.ChannelFailed[2], 0)
+	assertEqual(t, "ChannelB Tokens", s.ChannelTokens[2], 150)
+
+	// Key维度
+	assertEqual(t, "Key100 Requests", s.KeyRequests[100], 1) // A的失败尝试
+	assertEqual(t, "Key200 Requests", s.KeyRequests[200], 1) // B的成功尝试
+}
+
+// TestCrossChannelRetry_AllFailed 渠道A失败→渠道B也失败：全局1次失败
+func TestCrossChannelRetry_AllFailed(t *testing.T) {
+	s := newStatsSnapshot()
+
+	// 渠道A 失败
+	attemptSim(&s, 1, 100, false, 0, 0)
+	// 渠道B 也失败
+	attemptSim(&s, 2, 200, false, 0, 0)
+	// metrics.Save 记录失败，finalChannel=B（最后一个失败的）
+	metricsSaveSim(&s, 2, false, 0, 0)
+
+	// 全局：1次失败（不是2次）
+	assertEqual(t, "TotalFailed", s.TotalFailed, 1)
+	assertEqual(t, "TotalSuccess", s.TotalSuccess, 0)
+
+	// 每个渠道各1次失败（来自各自的 attempt）
+	assertEqual(t, "ChannelA Failed", s.ChannelFailed[1], 1)
+	assertEqual(t, "ChannelB Failed", s.ChannelFailed[2], 1)
+}
+
+// TestCrossChannelRetry_RepeatedFailureToA 渠道A持续故障：连续请求都先试A再fallback到B
+// 每次请求只产生1条日志，渠道A的failed计数持续增长
+func TestCrossChannelRetry_RepeatedFailureToA(t *testing.T) {
+	s := newStatsSnapshot()
+
+	// 模拟3次请求，每次都是A失败→B成功
+	for i := 0; i < 3; i++ {
+		attemptSim(&s, 1, 100, false, 0, 0) // A失败
+		attemptSim(&s, 2, 200, true, 100, 50) // B成功
+		metricsSaveSim(&s, 2, true, 100, 50)
+	}
+
+	// 全局：3次成功
+	assertEqual(t, "TotalSuccess", s.TotalSuccess, 3)
+	assertEqual(t, "TotalFailed", s.TotalFailed, 0)
+
+	// 渠道A：3次失败（每次请求A都失败一次）
+	assertEqual(t, "ChannelA Failed", s.ChannelFailed[1], 3)
+	assertEqual(t, "ChannelA Success", s.ChannelSuccess[1], 0)
+
+	// 渠道B：3次成功
+	assertEqual(t, "ChannelB Success", s.ChannelSuccess[2], 3)
+	assertEqual(t, "ChannelB Failed", s.ChannelFailed[2], 0)
+
+	// Key100被尝试3次（都失败），Key200被尝试3次（都成功）
+	assertEqual(t, "Key100 Requests", s.KeyRequests[100], 3)
+	assertEqual(t, "Key200 Requests", s.KeyRequests[200], 3)
+}
+
+// TestCrossChannelRetry_SkippedThenSuccess 渠道A被跳过→渠道B成功
+func TestCrossChannelRetry_SkippedThenSuccess(t *testing.T) {
+	s := newStatsSnapshot()
+
+	// 渠道A被跳过（不调用attemptSim，无统计）
+	// 渠道B成功
+	attemptSim(&s, 2, 200, true, 100, 50)
+	metricsSaveSim(&s, 2, true, 100, 50)
+
+	assertEqual(t, "TotalSuccess", s.TotalSuccess, 1)
+	assertEqual(t, "ChannelA Failed", s.ChannelFailed[1], 0)
+	assertEqual(t, "ChannelB Success", s.ChannelSuccess[2], 1)
+}
+
+// ============================================================================
+// finalChannel 逻辑测试
+// ============================================================================
+
+func TestFinalChannel_SuccessAttempt(t *testing.T) {
+	attempts := []model.ChannelAttempt{
+		{ChannelID: 1, ChannelName: "A", Status: model.AttemptFailed},
+		{ChannelID: 2, ChannelName: "B", Status: model.AttemptSuccess},
+	}
+	id, name := finalChannel(attempts)
+	if id != 2 || name != "B" {
+		t.Errorf("finalChannel: got (%d, %s), want (2, B)", id, name)
+	}
+}
+
+func TestFinalChannel_AllFailed(t *testing.T) {
+	attempts := []model.ChannelAttempt{
+		{ChannelID: 1, ChannelName: "A", Status: model.AttemptFailed},
+		{ChannelID: 2, ChannelName: "B", Status: model.AttemptFailed},
+	}
+	id, name := finalChannel(attempts)
+	// 应返回最后一个失败的渠道
+	if id != 2 || name != "B" {
+		t.Errorf("finalChannel: got (%d, %s), want (2, B)", id, name)
+	}
+}
+
+func TestFinalChannel_SkippedOnly(t *testing.T) {
+	attempts := []model.ChannelAttempt{
+		{ChannelID: 1, ChannelName: "A", Status: model.AttemptSkipped},
+		{ChannelID: 2, ChannelName: "B", Status: model.AttemptSkipped},
+	}
+	id, name := finalChannel(attempts)
+	// 应返回最后一个被跳过的渠道
+	if id != 2 || name != "B" {
+		t.Errorf("finalChannel: got (%d, %s), want (2, B)", id, name)
+	}
+}
+
+func TestFinalChannel_FailedThenSkippedThenSuccess(t *testing.T) {
+	attempts := []model.ChannelAttempt{
+		{ChannelID: 1, ChannelName: "A", Status: model.AttemptFailed},
+		{ChannelID: 2, ChannelName: "B", Status: model.AttemptSkipped},
+		{ChannelID: 3, ChannelName: "C", Status: model.AttemptSuccess},
+	}
+	id, name := finalChannel(attempts)
+	if id != 3 || name != "C" {
+		t.Errorf("finalChannel: got (%d, %s), want (3, C)", id, name)
+	}
+}
+
+func TestFinalChannel_EmptyAttempts(t *testing.T) {
+	id, name := finalChannel(nil)
+	if id != 0 || name != "" {
+		t.Errorf("finalChannel: got (%d, %s), want (0, '')", id, name)
+	}
+}
+
+func TestFinalChannel_CircuitBreakThenSuccess(t *testing.T) {
+	attempts := []model.ChannelAttempt{
+		{ChannelID: 1, ChannelName: "A", Status: model.AttemptCircuitBreak},
+		{ChannelID: 2, ChannelName: "B", Status: model.AttemptSuccess},
+	}
+	id, name := finalChannel(attempts)
+	if id != 2 || name != "B" {
+		t.Errorf("finalChannel: got (%d, %s), want (2, B)", id, name)
+	}
+}
+
+// ============================================================================
+// 跨渠道重试后日志内容验证
+// ============================================================================
+
+// TestCrossChannelRetry_LogFields 验证重试后日志的关键字段
+// 渠道A失败→渠道B成功：日志应归属渠道B，包含两次attempt
+func TestCrossChannelRetry_LogFields(t *testing.T) {
+	attempts := []model.ChannelAttempt{
+		{ChannelID: 1, ChannelName: "A", ChannelKeyID: 100, Status: model.AttemptFailed, AttemptNum: 1, Msg: "upstream error"},
+		{ChannelID: 2, ChannelName: "B", ChannelKeyID: 200, Status: model.AttemptSuccess, AttemptNum: 2},
+	}
+
+	// finalChannel 应选成功的渠道B
+	id, name := finalChannel(attempts)
+	if id != 2 {
+		t.Errorf("log channelID: got %d, want 2", id)
+	}
+	if name != "B" {
+		t.Errorf("log channelName: got %s, want B", name)
+	}
+
+	// 日志应包含2次attempt
+	if len(attempts) != 2 {
+		t.Errorf("log attempts: got %d, want 2", len(attempts))
+	}
+
+	// 第一次attempt是失败
+	if attempts[0].Status != model.AttemptFailed {
+		t.Errorf("attempt[0] status: got %s, want failed", attempts[0].Status)
+	}
+	// 第二次attempt是成功
+	if attempts[1].Status != model.AttemptSuccess {
+		t.Errorf("attempt[1] status: got %s, want success", attempts[1].Status)
+	}
+}
+
+// TestCrossChannelRetry_FailedLogFields 渠道A失败→渠道B也失败：日志归属最后一个失败的渠道
+func TestCrossChannelRetry_FailedLogFields(t *testing.T) {
+	attempts := []model.ChannelAttempt{
+		{ChannelID: 1, ChannelName: "A", ChannelKeyID: 100, Status: model.AttemptFailed, AttemptNum: 1, Msg: "timeout"},
+		{ChannelID: 2, ChannelName: "B", ChannelKeyID: 200, Status: model.AttemptFailed, AttemptNum: 2, Msg: "upstream error"},
+	}
+
+	id, name := finalChannel(attempts)
+	if id != 2 {
+		t.Errorf("log channelID: got %d, want 2", id)
+	}
+	if name != "B" {
+		t.Errorf("log channelName: got %s, want B", name)
+	}
+}
+
 func assertEqual(t *testing.T, name string, got, want int64) {
 	t.Helper()
 	if got != want {
