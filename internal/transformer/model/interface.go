@@ -19,6 +19,10 @@ type Inbound interface {
 	// 流式场景：将储存的流式响应聚合为完整的响应
 	// 非流式场景：返回储存的完整响应
 	GetInternalResponse(ctx context.Context) (*InternalLLMResponse, error)
+
+	// Reset 清除内部累积的响应状态（streamChunks/storedResponse）
+	// 在每次重试尝试前调用，避免前次尝试的残留数据污染后续的响应聚合
+	Reset()
 }
 
 type Outbound interface {

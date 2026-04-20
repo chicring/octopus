@@ -51,6 +51,30 @@ type ResponseInbound struct {
 	storedResponse *model.InternalLLMResponse
 }
 
+func (i *ResponseInbound) Reset() {
+	i.hasResponseCreated = false
+	i.hasMessageItemStarted = false
+	i.hasReasoningItemStarted = false
+	i.hasContentPartStarted = false
+	i.hasFinished = false
+	i.responseCompleted = false
+	i.responseID = ""
+	i.model = ""
+	i.createdAt = 0
+	i.outputIndex = 0
+	i.contentIndex = 0
+	i.sequenceNumber = 0
+	i.currentItemID = ""
+	i.accumulatedText.Reset()
+	i.accumulatedReasoning.Reset()
+	i.toolCalls = nil
+	i.toolCallItemStarted = nil
+	i.toolCallOutputIndex = nil
+	i.usage = nil
+	i.streamChunks = nil
+	i.storedResponse = nil
+}
+
 func (i *ResponseInbound) TransformRequest(ctx context.Context, body []byte) (*model.InternalLLMRequest, error) {
 	var req ResponsesRequest
 	if err := json.Unmarshal(body, &req); err != nil {

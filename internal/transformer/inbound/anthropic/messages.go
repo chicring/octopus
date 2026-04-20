@@ -33,6 +33,23 @@ type MessagesInbound struct {
 	storedResponse *model.InternalLLMResponse
 }
 
+func (i *MessagesInbound) Reset() {
+	i.hasStarted = false
+	i.hasTextContentStarted = false
+	i.hasThinkingContentStarted = false
+	i.hasToolContentStarted = false
+	i.hasFinished = false
+	i.messageStopped = false
+	i.messageID = ""
+	i.modelName = ""
+	i.contentIndex = 0
+	i.stopReason = nil
+	i.toolCallIndices = nil
+	i.inputToken = 0
+	i.streamChunks = nil
+	i.storedResponse = nil
+}
+
 func (i *MessagesInbound) TransformRequest(ctx context.Context, body []byte) (*model.InternalLLMRequest, error) {
 	var anthropicReq MessageRequest
 	if err := json.Unmarshal(body, &anthropicReq); err != nil {

@@ -14,6 +14,11 @@ type ChatInbound struct {
 	storedResponse *model.InternalLLMResponse
 }
 
+func (i *ChatInbound) Reset() {
+	i.streamChunks = nil
+	i.storedResponse = nil
+}
+
 func (i *ChatInbound) TransformRequest(ctx context.Context, body []byte) (*model.InternalLLMRequest, error) {
 	var request model.InternalLLMRequest
 	if err := json.Unmarshal(body, &request); err != nil {

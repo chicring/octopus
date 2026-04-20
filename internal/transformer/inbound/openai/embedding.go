@@ -13,6 +13,10 @@ type EmbeddingInbound struct {
 	storedResponse *model.InternalLLMResponse
 }
 
+func (i *EmbeddingInbound) Reset() {
+	i.storedResponse = nil
+}
+
 // OpenAIEmbeddingRequest 是 OpenAI 标准的 embedding 请求格式
 type OpenAIEmbeddingRequest struct {
 	Model          string               `json:"model"`
