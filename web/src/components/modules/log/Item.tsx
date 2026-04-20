@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState, useEffect } from 'react';
-import { Clock, Cpu, Zap, AlertCircle, ArrowDownToLine, ArrowUpFromLine, DollarSign, ArrowRight, ArrowDown, Send, MessageSquare, Loader2, RotateCw, ChevronDown, ChevronUp, Pin, KeyRound } from 'lucide-react';
+import { Clock, Cpu, Zap, AlertCircle, ArrowDownToLine, ArrowUpFromLine, DollarSign, ArrowRight, ArrowDown, Send, MessageSquare, Loader2, RotateCw, ChevronDown, ChevronUp, Pin, KeyRound, Gauge } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { motion, AnimatePresence } from 'motion/react';
 import JsonView from '@uiw/react-json-view';
@@ -299,7 +299,7 @@ export function LogCard({ log }: { log: RelayLog }) {
                                     <Pin className="size-3.5 shrink-0 text-amber-500" />
                                 )}
                             </div>
-                            <div className="grid grid-cols-2 md:grid-cols-7 gap-x-4 gap-y-2 text-xs tabular-nums text-muted-foreground">
+                            <div className="grid grid-cols-2 md:grid-cols-8 gap-x-4 gap-y-2 text-xs tabular-nums text-muted-foreground">
                                 <div className="flex items-center gap-1.5">
                                     <Clock className="size-3.5 shrink-0" style={{ color: brandColor }} />
                                     <span>{formatTime(log.time)}</span>
@@ -328,6 +328,16 @@ export function LogCard({ log }: { log: RelayLog }) {
                                     <ArrowUpFromLine className="size-3.5 shrink-0 text-purple-500" />
                                     <span>{t('output')} {log.output_tokens.toLocaleString()}</span>
                                 </div>
+                                {(() => {
+                                    const outputTime = log.use_time - log.ftut;
+                                    const tps = outputTime > 0 ? (log.output_tokens / outputTime * 1000) : (log.use_time > 0 ? (log.output_tokens / log.use_time * 1000) : 0);
+                                    return tps > 0 ? (
+                                        <div className="flex items-center gap-1.5">
+                                            <Gauge className="size-3.5 shrink-0 text-cyan-500" />
+                                            <span>{t('tps')} {tps.toFixed(1)}</span>
+                                        </div>
+                                    ) : null;
+                                })()}
                                 <div className="flex items-center gap-1.5">
                                     <DollarSign className="size-3.5 shrink-0 text-emerald-500" />
                                     <span className="font-medium text-emerald-600 dark:text-emerald-400">
@@ -512,6 +522,16 @@ export function LogCard({ log }: { log: RelayLog }) {
                                 <Cpu className="size-3.5 text-blue-500" />
                                 <span>{t('totalTime')}: {formatDuration(log.use_time)}</span>
                             </div>
+                            {(() => {
+                                const outputTime = log.use_time - log.ftut;
+                                const tps = outputTime > 0 ? (log.output_tokens / outputTime * 1000) : (log.use_time > 0 ? (log.output_tokens / log.use_time * 1000) : 0);
+                                return tps > 0 ? (
+                                    <div className="flex items-center gap-1.5">
+                                        <Gauge className="size-3.5 text-cyan-500" />
+                                        <span>{t('tps')}: {tps.toFixed(1)} tok/s</span>
+                                    </div>
+                                ) : null;
+                            })()}
                             <div className="flex items-center gap-1.5">
                                 <DollarSign className="size-3.5 text-emerald-500" />
                                 <span className="font-medium text-emerald-600 dark:text-emerald-400">

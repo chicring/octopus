@@ -112,7 +112,10 @@
             "inputTokens": "輸入 Tokens",
             "inputCost": "輸入費用",
             "outputTokens": "輸出 Tokens",
-            "outputCost": "輸出費用"
+            "outputCost": "輸出費用",
+            "tpsStats": "TPS 統計",
+            "avgTps": "平均 TPS",
+            "outputTime": "輸出時間"
         },
         "chart": {
             "title": "趨勢",
@@ -123,7 +126,9 @@
             "metricType": {
                 "cost": "金額",
                 "count": "次數",
-                "tokens": "Tokens"
+                "tokens": "Tokens",
+                "tps": "TPS",
+                "totalTps": "平均 TPS"
             },
             "period": {
                 "today": "今天",
@@ -446,6 +451,7 @@
             "errorInfo": "錯誤訊息",
             "firstToken": "首字",
             "totalTime": "總耗時",
+            "tps": "TPS",
             "input": "輸入",
             "output": "輸出",
             "cost": "費用",

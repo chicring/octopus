@@ -11,7 +11,9 @@ import {
     ArrowUpFromLine,
     Rewind,
     DollarSign,
-    FastForward
+    FastForward,
+    Gauge,
+    Timer
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useStatsTotal } from '@/api/endpoints/stats';
@@ -111,11 +113,33 @@ export function Total() {
                     unit: statsTotalFormatted?.output_cost.formatted.unit
                 }
             ]
+        },
+        {
+            title: t('tpsStats'),
+            headerIcon: Gauge,
+            items: [
+                {
+                    label: t('avgTps'),
+                    value: statsTotalFormatted?.output_tps.formatted.value,
+                    icon: Gauge,
+                    color: 'text-primary',
+                    bgColor: 'bg-chart-5/10',
+                    unit: statsTotalFormatted?.output_tps.formatted.unit
+                },
+                {
+                    label: t('outputTime'),
+                    value: statsTotalFormatted?.output_time.formatted.value,
+                    icon: Timer,
+                    color: 'text-primary',
+                    bgColor: 'bg-accent/10',
+                    unit: statsTotalFormatted?.output_time.formatted.unit
+                }
+            ]
         }
     ];
 
     return (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             {cards.map((card, index) => (
                 <motion.section
                     key={index}

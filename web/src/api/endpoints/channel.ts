@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../client';
 import { logger } from '@/lib/logger';
-import { formatCount, formatMoney, formatTime } from '@/lib/utils';
+import { formatCount, formatMoney, formatTime, formatRate } from '@/lib/utils';
 import { StatsChannel, type StatsMetricsFormatted } from './stats';
 /**
  * 渠道类型枚举
@@ -168,6 +168,8 @@ export function useChannelList() {
                 request_failed: formatCount(item.stats.request_failed),
                 request_count: formatCount(item.stats.request_success + item.stats.request_failed),
                 wait_time: formatTime(item.stats.wait_time),
+                output_time: formatTime(item.stats.output_time),
+                output_tps: formatRate(item.stats.output_time > 0 ? (item.stats.output_token / item.stats.output_time * 1000) : 0),
             }
         })) as Array<{ raw: Channel; formatted: StatsMetricsFormatted }>,
         refetchInterval: 30000,

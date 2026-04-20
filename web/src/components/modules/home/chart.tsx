@@ -5,7 +5,7 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/
 import { useMemo } from 'react';
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 import { useTranslations } from 'next-intl';
-import { formatCount, formatMoney } from '@/lib/utils';
+import { formatCount, formatMoney, formatRate } from '@/lib/utils';
 import dayjs from 'dayjs';
 import { AnimatedNumber } from '@/components/common/AnimatedNumber';
 import { Tabs, TabsList, TabsTrigger } from '@/components/animate-ui/components/animate/tabs';
@@ -28,7 +28,7 @@ export function StatsChart() {
     }, [statsDaily]);
 
     const getChartDataKey = (type: ChartMetricType) => {
-        return type === 'cost' ? 'total_cost' : type === 'count' ? 'request_count' : 'total_token';
+        return type === 'cost' ? 'total_cost' : type === 'count' ? 'request_count' : type === 'tokens' ? 'total_token' : 'output_tps';
     };
 
     const chartData = useMemo(() => {
@@ -41,7 +41,9 @@ export function StatsChart() {
                     ? stat.total_cost.raw
                     : chartMetricType === 'count'
                         ? stat.request_count.raw
-                        : (stat.input_token.raw + stat.output_token.raw),
+                        : chartMetricType === 'tps'
+                            ? (stat.output_time.raw > 0 ? (stat.output_token.raw / stat.output_time.raw * 1000) : 0)
+                            : (stat.input_token.raw + stat.output_token.raw),
             }));
         } else {
             const days = Number(period);
@@ -51,21 +53,27 @@ export function StatsChart() {
                     ? stat.total_cost.raw
                     : chartMetricType === 'count'
                         ? (stat.request_success.raw + stat.request_failed.raw)
-                        : (stat.input_token.raw + stat.output_token.raw),
+                        : chartMetricType === 'tps'
+                            ? (stat.output_time.raw > 0 ? (stat.output_token.raw / stat.output_time.raw * 1000) : 0)
+                            : (stat.input_token.raw + stat.output_token.raw),
             }));
         }
     }, [sortedDaily, statsHourly, period, chartMetricType]);
 
     const totals = useMemo(() => {
         if (period === '1') {
-            if (!statsHourly) return { requests: 0, cost: 0, tokens: 0 };
+            if (!statsHourly) return { requests: 0, cost: 0, tokens: 0, tps: 0 };
             const requests = statsHourly.reduce((acc, stat) => acc + stat.request_count.raw, 0);
             const cost = statsHourly.reduce((acc, stat) => acc + stat.total_cost.raw, 0);
             const tokens = statsHourly.reduce((acc, stat) => acc + stat.input_token.raw + stat.output_token.raw, 0);
+            const totalOutputToken = statsHourly.reduce((acc, stat) => acc + stat.output_token.raw, 0);
+            const totalOutputTime = statsHourly.reduce((acc, stat) => acc + stat.output_time.raw, 0);
+            const tps = totalOutputTime > 0 ? (totalOutputToken / totalOutputTime * 1000) : 0;
             return {
                 requests,
                 cost,
                 tokens,
+                tps,
             };
         } else {
             const days = Number(period);
@@ -73,10 +81,14 @@ export function StatsChart() {
             const requests = recentStats.reduce((acc, stat) => acc + stat.request_success.raw + stat.request_failed.raw, 0);
             const cost = recentStats.reduce((acc, stat) => acc + stat.total_cost.raw, 0);
             const tokens = recentStats.reduce((acc, stat) => acc + stat.input_token.raw + stat.output_token.raw, 0);
+            const totalOutputToken = recentStats.reduce((acc, stat) => acc + stat.output_token.raw, 0);
+            const totalOutputTime = recentStats.reduce((acc, stat) => acc + stat.output_time.raw, 0);
+            const tps = totalOutputTime > 0 ? (totalOutputToken / totalOutputTime * 1000) : 0;
             return {
                 requests,
                 cost,
                 tokens,
+                tps,
             };
         }
     }, [sortedDaily, statsHourly, period]);
@@ -87,6 +99,7 @@ export function StatsChart() {
             'total_cost': t('totalCost'),
             'request_count': t('totalRequests'),
             'total_token': t('totalTokens'),
+            'output_tps': t('totalTps'),
         };
         return {
             [dataKey]: { label: labels[dataKey] },
@@ -113,13 +126,15 @@ export function StatsChart() {
     const getChartStroke = (type: ChartMetricType) => {
         if (type === 'cost') return 'var(--chart-1)';
         if (type === 'count') return 'var(--chart-2)';
-        return 'var(--chart-3)';
+        if (type === 'tokens') return 'var(--chart-3)';
+        return 'var(--chart-4)';
     };
 
     const getChartFill = (type: ChartMetricType) => {
         if (type === 'cost') return 'url(#fillMetric1)';
         if (type === 'count') return 'url(#fillMetric2)';
-        return 'url(#fillMetric3)';
+        if (type === 'tokens') return 'url(#fillMetric3)';
+        return 'url(#fillMetric4)';
     };
 
     return (
@@ -132,6 +147,7 @@ export function StatsChart() {
                             <TabsTrigger value="cost">{t('metricType.cost')}</TabsTrigger>
                             <TabsTrigger value="count">{t('metricType.count')}</TabsTrigger>
                             <TabsTrigger value="tokens">{t('metricType.tokens')}</TabsTrigger>
+                            <TabsTrigger value="tps">{t('metricType.tps')}</TabsTrigger>
                         </TabsList>
                     </Tabs>
                 </div>
@@ -162,6 +178,14 @@ export function StatsChart() {
                                 <span className="ml-0.5 text-sm text-muted-foreground">{formatCount(totals.tokens).formatted.unit}</span>
                             </div>
                         </div>
+                        <div className="w-px bg-border self-stretch"></div>
+                        <div>
+                            <div className="text-xs text-muted-foreground">{t('totalTps')}</div>
+                            <div className="text-xl font-semibold">
+                                <AnimatedNumber value={formatRate(totals.tps).formatted.value} />
+                                <span className="ml-0.5 text-sm text-muted-foreground">{formatRate(totals.tps).formatted.unit} tok/s</span>
+                            </div>
+                        </div>
                     </div>
                     <div
                         className="flex gap-2 text-sm cursor-pointer hover:opacity-80 transition-opacity"
@@ -189,6 +213,10 @@ export function StatsChart() {
                             <stop offset="5%" stopColor="var(--chart-3)" stopOpacity={1.0} />
                             <stop offset="95%" stopColor="var(--chart-3)" stopOpacity={0.1} />
                         </linearGradient>
+                        <linearGradient id="fillMetric4" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="var(--chart-4)" stopOpacity={1.0} />
+                            <stop offset="95%" stopColor="var(--chart-4)" stopOpacity={0.1} />
+                        </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
                     <XAxis dataKey="date" tickLine={false} axisLine={false} />
@@ -199,11 +227,13 @@ export function StatsChart() {
                             if (chartMetricType === 'cost') {
                                 const formatted = formatMoney(value);
                                 return `${formatted.formatted.value}${formatted.formatted.unit}`;
-                            } else if (chartMetricType === 'count' || chartMetricType === 'tokens') {
+                            } else if (chartMetricType === 'tps') {
+                                const formatted = formatRate(value);
+                                return `${formatted.formatted.value}${formatted.formatted.unit}`;
+                            } else {
                                 const formatted = formatCount(value);
                                 return `${formatted.formatted.value}${formatted.formatted.unit}`;
                             }
-                            return value.toString();
                         }}
                     />
                     <ChartTooltip cursor={false} content={<ChartTooltipContent indicator="line" />} />

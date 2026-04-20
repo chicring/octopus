@@ -112,7 +112,10 @@
             "inputTokens": "Input Tokens",
             "inputCost": "Input Cost",
             "outputTokens": "Output Tokens",
-            "outputCost": "Output Cost"
+            "outputCost": "Output Cost",
+            "tpsStats": "TPS Stats",
+            "avgTps": "Avg TPS",
+            "outputTime": "Output Time"
         },
         "chart": {
             "title": "Trend",
@@ -123,7 +126,9 @@
             "metricType": {
                 "cost": "Cost",
                 "count": "Count",
-                "tokens": "Tokens"
+                "tokens": "Tokens",
+            "tps": "TPS",
+            "totalTps": "Avg TPS"
             },
             "period": {
                 "today": "Today",
@@ -446,6 +451,7 @@
             "errorInfo": "Error Info",
             "firstToken": "TTFT",
             "totalTime": "Total",
+            "tps": "TPS",
             "input": "Input",
             "output": "Output",
             "cost": "Cost",

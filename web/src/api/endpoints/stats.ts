@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '../client';
-import { formatCount, formatMoney, formatTime } from '@/lib/utils';
+import { formatCount, formatMoney, formatTime, formatRate } from '@/lib/utils';
 
 /**
  * 统计数据
@@ -11,6 +11,7 @@ interface StatsMetrics {
     input_cost: number;
     output_cost: number;
     wait_time: number;
+    output_time: number;
     request_success: number;
     request_failed: number;
 }
@@ -21,6 +22,8 @@ export interface StatsMetricsFormatted {
     input_cost: ReturnType<typeof formatMoney>;
     output_cost: ReturnType<typeof formatMoney>;
     wait_time: ReturnType<typeof formatTime>;
+    output_time: ReturnType<typeof formatTime>;
+    output_tps: ReturnType<typeof formatRate>;
     request_success: ReturnType<typeof formatCount>;
     request_failed: ReturnType<typeof formatCount>;
 
@@ -106,6 +109,8 @@ export function useStatsDaily() {
             output_cost: formatMoney(item.output_cost),
             total_cost: formatMoney(item.input_cost + item.output_cost),
             wait_time: formatTime(item.wait_time),
+            output_time: formatTime(item.output_time),
+            output_tps: formatRate(item.output_time > 0 ? (item.output_token / item.output_time * 1000) : 0),
             request_success: formatCount(item.request_success),
             request_failed: formatCount(item.request_failed),
             request_count: formatCount(item.request_success + item.request_failed),
@@ -134,6 +139,8 @@ export function useStatsHourly() {
             output_cost: formatMoney(item.output_cost),
             total_cost: formatMoney(item.input_cost + item.output_cost),
             wait_time: formatTime(item.wait_time),
+            output_time: formatTime(item.output_time),
+            output_tps: formatRate(item.output_time > 0 ? (item.output_token / item.output_time * 1000) : 0),
             request_success: formatCount(item.request_success),
             request_failed: formatCount(item.request_failed),
             request_count: formatCount(item.request_success + item.request_failed),
@@ -157,6 +164,8 @@ export function useStatsTotal() {
             output_cost: formatMoney(data.output_cost),
             total_cost: formatMoney(data.input_cost + data.output_cost),
             wait_time: formatTime(data.wait_time),
+            output_time: formatTime(data.output_time),
+            output_tps: formatRate(data.output_time > 0 ? (data.output_token / data.output_time * 1000) : 0),
             request_success: formatCount(data.request_success),
             request_failed: formatCount(data.request_failed),
             request_count: formatCount(data.request_success + data.request_failed),
@@ -186,6 +195,8 @@ export function useStatsAPIKey() {
             output_cost: formatMoney(item.output_cost),
             total_cost: formatMoney(item.input_cost + item.output_cost),
             wait_time: formatTime(item.wait_time),
+            output_time: formatTime(item.output_time),
+            output_tps: formatRate(item.output_time > 0 ? (item.output_token / item.output_time * 1000) : 0),
             request_success: formatCount(item.request_success),
             request_failed: formatCount(item.request_failed),
             request_count: formatCount(item.request_success + item.request_failed),
@@ -213,6 +224,8 @@ export function useStatsModel() {
             output_cost: formatMoney(item.output_cost),
             total_cost: formatMoney(item.input_cost + item.output_cost),
             wait_time: formatTime(item.wait_time),
+            output_time: formatTime(item.output_time),
+            output_tps: formatRate(item.output_time > 0 ? (item.output_token / item.output_time * 1000) : 0),
             request_success: formatCount(item.request_success),
             request_failed: formatCount(item.request_failed),
             request_count: formatCount(item.request_success + item.request_failed),

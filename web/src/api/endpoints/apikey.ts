@@ -3,7 +3,7 @@ import { apiClient } from '../client';
 import { logger } from '@/lib/logger';
 import { useAuthStore } from './user';
 import { StatsAPIKey, StatsAPIKeyFormatted } from './stats';
-import { formatCount, formatMoney, formatTime } from '@/lib/utils';
+import { formatCount, formatMoney, formatTime, formatRate } from '@/lib/utils';
 
 /**
  * API Key 数据
@@ -70,6 +70,8 @@ export function useAPIKeyDashboardStats() {
                 output_cost: formatMoney(data.stats.output_cost),
                 total_cost: formatMoney(data.stats.input_cost + data.stats.output_cost),
                 wait_time: formatTime(data.stats.wait_time),
+                output_time: formatTime(data.stats.output_time),
+                output_tps: formatRate(data.stats.output_time > 0 ? (data.stats.output_token / data.stats.output_time * 1000) : 0),
                 request_success: formatCount(data.stats.request_success),
                 request_failed: formatCount(data.stats.request_failed),
                 request_count: formatCount(data.stats.request_success + data.stats.request_failed),
@@ -216,6 +218,8 @@ export function useAPIKeyStats() {
             output_cost: formatMoney(data.output_cost),
             total_cost: formatMoney(data.input_cost + data.output_cost),
             wait_time: formatTime(data.wait_time),
+            output_time: formatTime(data.output_time),
+            output_tps: formatRate(data.output_time > 0 ? (data.output_token / data.output_time * 1000) : 0),
             request_success: formatCount(data.request_success),
             request_failed: formatCount(data.request_failed),
             request_count: formatCount(data.request_success + data.request_failed),

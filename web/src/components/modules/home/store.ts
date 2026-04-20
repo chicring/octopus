@@ -5,7 +5,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 
 export type RankDimension = 'channel' | 'model';
 export type RankSortMode = 'cost' | 'count' | 'tokens';
-export type ChartMetricType = 'cost' | 'count' | 'tokens';
+export type ChartMetricType = 'cost' | 'count' | 'tokens' | 'tps';
 export type ChartPeriod = '1' | '7' | '30';
 
 interface HomeViewState {

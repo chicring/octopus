@@ -96,8 +96,18 @@ func (m *RelayMetrics) SaveEarlyFailure(err error) {
 func (m *RelayMetrics) Save(ctx context.Context, success bool, err error, attempts []model.ChannelAttempt) {
 	duration := time.Since(m.StartTime)
 
+	// 计算输出阶段耗时（总耗时 - 首 Token 时间）
+	outputTime := duration.Milliseconds()
+	if !m.FirstTokenTime.IsZero() {
+		ftutMs := m.FirstTokenTime.Sub(m.StartTime).Milliseconds()
+		if ftutMs > 0 && outputTime > ftutMs {
+			outputTime = outputTime - ftutMs
+		}
+	}
+
 	globalStats := model.StatsMetrics{
 		WaitTime:    duration.Milliseconds(),
+		OutputTime:  outputTime,
 		InputToken:  m.Stats.InputToken,
 		OutputToken: m.Stats.OutputToken,
 		InputCost:   m.Stats.InputCost,
@@ -120,6 +130,7 @@ func (m *RelayMetrics) Save(ctx context.Context, success bool, err error, attemp
 	if channelID > 0 {
 		channelStats := model.StatsMetrics{
 			WaitTime:    duration.Milliseconds(),
+			OutputTime:  outputTime,
 			InputToken:  m.Stats.InputToken,
 			OutputToken: m.Stats.OutputToken,
 			InputCost:   m.Stats.InputCost,

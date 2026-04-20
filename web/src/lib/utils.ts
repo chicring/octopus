@@ -34,3 +34,10 @@ export function formatTime(ms: number | undefined): { raw: number, formatted: { 
     formatted: formatNumber(ms, [86400000, 3600000, 60000, 1000], ['', 'd', 'h', 'm', 's', 'ms']),
   };
 }
+
+export function formatRate(num: number | undefined): { raw: number, formatted: { value: string, unit: string } } {
+  return {
+    raw: num ?? 0,
+    formatted: formatNumber(num, [1000000, 1000, 1], ['', 'M', 'K', '', '', '']),
+  };
+}
