@@ -38,6 +38,6 @@ export function formatTime(ms: number | undefined): { raw: number, formatted: { 
 export function formatRate(num: number | undefined): { raw: number, formatted: { value: string, unit: string } } {
   return {
     raw: num ?? 0,
-    formatted: formatNumber(num, [1000000, 1000, 1], ['', 'M', 'K', '', '', '']),
+    formatted: formatNumber(num, [1000000, 1000, 1], ['tok/s', 'M tok/s', 'K tok/s', 'tok/s', 'tok/s', 'tok/s']),
   };
 }

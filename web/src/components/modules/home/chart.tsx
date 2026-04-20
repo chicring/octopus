@@ -183,7 +183,7 @@ export function StatsChart() {
                             <div className="text-xs text-muted-foreground">{t('totalTps')}</div>
                             <div className="text-xl font-semibold">
                                 <AnimatedNumber value={formatRate(totals.tps).formatted.value} />
-                                <span className="ml-0.5 text-sm text-muted-foreground">{formatRate(totals.tps).formatted.unit} tok/s</span>
+                                <span className="ml-0.5 text-sm text-muted-foreground">{formatRate(totals.tps).formatted.unit}</span>
                             </div>
                         </div>
                     </div>

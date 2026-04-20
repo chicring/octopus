@@ -685,6 +685,7 @@ func TestStatsMetrics_Add(t *testing.T) {
 		InputCost:      0.001,
 		OutputCost:     0.002,
 		WaitTime:       500,
+		OutputTime:     400,
 		RequestSuccess: 3,
 		RequestFailed:  1,
 	}
@@ -695,6 +696,7 @@ func TestStatsMetrics_Add(t *testing.T) {
 		InputCost:      0.003,
 		OutputCost:     0.004,
 		WaitTime:       300,
+		OutputTime:     250,
 		RequestSuccess: 2,
 		RequestFailed:  0,
 	}
@@ -706,6 +708,85 @@ func TestStatsMetrics_Add(t *testing.T) {
 	assertEqual(t, "RequestSuccess", a.RequestSuccess, 5)
 	assertEqual(t, "RequestFailed", a.RequestFailed, 1)
 	assertEqual(t, "WaitTime", a.WaitTime, 800)
+	assertEqual(t, "OutputTime", a.OutputTime, 650)
+}
+
+// ============================================================================
+// OutputTime / TPS 计算测试
+// ============================================================================
+
+// computeOutputTime 模拟 metrics.Save() 中的 OutputTime 计算逻辑
+func computeOutputTime(durationMs int64, firstTokenTimeSet bool, ftutMs int64) int64 {
+	outputTime := durationMs
+	if firstTokenTimeSet {
+		if ftutMs > 0 && outputTime > ftutMs {
+			outputTime = outputTime - ftutMs
+		}
+	}
+	return outputTime
+}
+
+func TestOutputTime_StreamingWithFtut(t *testing.T) {
+	// 流式请求：duration=5000ms, ftut=500ms -> outputTime=4500ms
+	outputTime := computeOutputTime(5000, true, 500)
+	assertEqual(t, "OutputTime", outputTime, 4500)
+
+	// TPS = outputToken / outputTime * 1000 = 100 / 4500 * 1000 ≈ 22.22
+	tps := float64(100) / float64(outputTime) * 1000
+	if tps < 22.21 || tps > 22.23 {
+		t.Errorf("TPS: got %.2f, want ~22.22", tps)
+	}
+}
+
+func TestOutputTime_NonStreamingNoFtut(t *testing.T) {
+	// 非流式请求：duration=5000ms, ftut未设置 -> outputTime=5000ms
+	outputTime := computeOutputTime(5000, false, 0)
+	assertEqual(t, "OutputTime", outputTime, 5000)
+
+	tps := float64(100) / float64(outputTime) * 1000
+	if tps < 19.99 || tps > 20.01 {
+		t.Errorf("TPS: got %.2f, want 20.00", tps)
+	}
+}
+
+func TestOutputTime_FtutEqualsDuration(t *testing.T) {
+	// ftut == duration：首token刚好在结束时到达 -> fallback to duration
+	outputTime := computeOutputTime(5000, true, 5000)
+	assertEqual(t, "OutputTime", outputTime, 5000)
+}
+
+func TestOutputTime_FtutExceedsDuration(t *testing.T) {
+	// ftut > duration：异常情况 -> fallback to duration
+	outputTime := computeOutputTime(3000, true, 5000)
+	assertEqual(t, "OutputTime", outputTime, 3000)
+}
+
+func TestOutputTime_ZeroDuration(t *testing.T) {
+	// 极端：duration=0
+	outputTime := computeOutputTime(0, true, 0)
+	assertEqual(t, "OutputTime", outputTime, 0)
+}
+
+func TestOutputTime_AggregatedTps(t *testing.T) {
+	// 模拟聚合 TPS：两次请求
+	// 请求1: 100 output tokens, 4500ms output time
+	// 请求2: 200 output tokens, 8000ms output time
+	// 聚合 TPS = (100+200) / (4500+8000) * 1000 = 24.00
+	totalOutputToken := int64(100 + 200)
+	totalOutputTime := int64(4500 + 8000)
+	tps := float64(totalOutputToken) / float64(totalOutputTime) * 1000
+	if tps < 23.99 || tps > 24.01 {
+		t.Errorf("Aggregated TPS: got %.2f, want 24.00", tps)
+	}
+}
+
+func TestOutputTime_StatsMetricsAddOutputTime(t *testing.T) {
+	// 验证 StatsMetrics.Add 正确累加 OutputTime
+	a := model.StatsMetrics{OutputToken: 100, OutputTime: 4500}
+	b := model.StatsMetrics{OutputToken: 200, OutputTime: 8000}
+	a.Add(b)
+	assertEqual(t, "OutputToken", a.OutputToken, 300)
+	assertEqual(t, "OutputTime", a.OutputTime, 12500)
 }
 
 func assertEqual(t *testing.T, name string, got, want int64) {
