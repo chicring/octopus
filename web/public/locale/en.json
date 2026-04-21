@@ -127,8 +127,8 @@
                 "cost": "Cost",
                 "count": "Count",
                 "tokens": "Tokens",
-            "tps": "TPS",
-            "totalTps": "Avg TPS"
+                "tps": "TPS",
+                "totalTps": "Avg TPS"
             },
             "period": {
                 "today": "Today",
@@ -444,7 +444,15 @@
             "showErrorOnly": "Errors Only",
             "connected": "Connected",
             "disconnected": "Disconnected",
-            "scrollToTop": "Scroll to top"
+            "scrollToTop": "Scroll to top",
+            "filterAPIKey": "API Key",
+            "filterModel": "Model",
+            "searchAPIKey": "Search API keys...",
+            "searchModel": "Search models...",
+            "noAPIKeys": "No API keys",
+            "noModels": "No models",
+            "selectAll": "Select All",
+            "deselectAll": "Deselect All"
         },
         "card": {
             "error": "Error",

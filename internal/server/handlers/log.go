@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/bestruirui/octopus/internal/op"
 	"github.com/bestruirui/octopus/internal/server/middleware"
@@ -46,6 +47,16 @@ func listLog(c *gin.Context) {
 	startTimeStr := c.Query("start_time")
 	endTimeStr := c.Query("end_time")
 	hasError := c.Query("has_error") == "true"
+	apiKeyNamesStr := c.Query("api_key_names")
+	var apiKeyNames []string
+	if apiKeyNamesStr != "" {
+		apiKeyNames = strings.Split(apiKeyNamesStr, ",")
+	}
+	modelNamesStr := c.Query("model_names")
+	var modelNames []string
+	if modelNamesStr != "" {
+		modelNames = strings.Split(modelNamesStr, ",")
+	}
 
 	if page < 1 {
 		page = 1
@@ -70,7 +81,7 @@ func listLog(c *gin.Context) {
 		endTime = &et
 	}
 
-	logs, err := op.RelayLogList(c.Request.Context(), startTime, endTime, page, pageSize, hasError)
+	logs, err := op.RelayLogList(c.Request.Context(), startTime, endTime, page, pageSize, hasError, apiKeyNames, modelNames)
 	if err != nil {
 		resp.Error(c, http.StatusInternalServerError, err.Error())
 		return

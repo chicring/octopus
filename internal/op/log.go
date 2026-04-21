@@ -191,7 +191,7 @@ func relayLogCleanup(ctx context.Context) error {
 // startTime 和 endTime 为 nil 时表示不限制时间范围
 // hasError 为 true 时只返回有错误信息的日志
 // 不返回 request_content 和 response_content 以提升性能
-func RelayLogList(ctx context.Context, startTime, endTime *int, page, pageSize int, hasError bool) ([]model.RelayLog, error) {
+func RelayLogList(ctx context.Context, startTime, endTime *int, page, pageSize int, hasError bool, apiKeyNames []string, modelNames []string) ([]model.RelayLog, error) {
 	enabled, err := SettingGetBool(model.SettingKeyRelayLogKeepEnabled)
 	if err != nil {
 		return nil, err
@@ -210,6 +210,32 @@ func RelayLogList(ctx context.Context, startTime, endTime *int, page, pageSize i
 		// hasError 筛选：只保留有非空错误信息的日志
 		if hasError && strings.TrimSpace(log.Error) == "" {
 			continue
+		}
+		// apiKeyNames 筛选
+		if len(apiKeyNames) > 0 {
+			matched := false
+			for _, name := range apiKeyNames {
+				if log.RequestAPIKeyName == name {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				continue
+			}
+		}
+		// modelNames 筛选
+		if len(modelNames) > 0 {
+			matched := false
+			for _, name := range modelNames {
+				if log.RequestModelName == name {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				continue
+			}
 		}
 		log.RequestContent = ""
 		log.ResponseContent = ""
@@ -252,6 +278,12 @@ func RelayLogList(ctx context.Context, startTime, endTime *int, page, pageSize i
 			if hasError {
 				// 与缓存路径保持一致：排除空白错误
 				query = query.Where("error IS NOT NULL AND error != '' AND TRIM(error) != ''")
+			}
+			if len(apiKeyNames) > 0 {
+				query = query.Where("request_api_key_name IN ?", apiKeyNames)
+			}
+			if len(modelNames) > 0 {
+				query = query.Where("request_model_name IN ?", modelNames)
 			}
 
 			var dbLogs []model.RelayLog

@@ -444,7 +444,15 @@
             "showErrorOnly": "仅错误",
             "connected": "已连接",
             "disconnected": "已断开",
-            "scrollToTop": "滚动到顶部"
+            "scrollToTop": "滚动到顶部",
+            "filterAPIKey": "API 密钥",
+            "filterModel": "模型",
+            "searchAPIKey": "搜索 API 密钥...",
+            "searchModel": "搜索模型...",
+            "noAPIKeys": "暂无 API 密钥",
+            "noModels": "暂无模型",
+            "selectAll": "全选",
+            "deselectAll": "取消全选"
         },
         "card": {
             "error": "错误",

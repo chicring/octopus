@@ -18,9 +18,9 @@ export interface ChannelAttempt {
     channel_name: string;
     channel_key_remark?: string;
     model_name: string;
-    attempt_num: number;    // 第几次尝试
+    attempt_num: number;
     status: AttemptStatus;
-    duration: number;       // 耗时(毫秒)
+    duration: number;
     sticky?: boolean;
     msg?: string;
 }
@@ -30,22 +30,22 @@ export interface ChannelAttempt {
  */
 export interface RelayLog {
     id: number;
-    time: number;                // 时间戳
-    request_model_name: string;  // 请求模型名称
-    request_api_key_name?: string; // 请求使用的 API Key 名称
-    channel: number;             // 实际使用的渠道ID
-    channel_name: string;        // 渠道名称
-    actual_model_name: string;   // 实际使用模型名称
-    input_tokens: number;        // 输入Token
-    output_tokens: number;       // 输出Token
-    ftut: number;                // 首字时间(毫秒)
-    use_time: number;            // 总用时(毫秒)
-    cost: number;                // 消耗费用
-    request_content?: string;     // 请求内容（仅详情接口返回）
-    response_content?: string;    // 响应内容（仅详情接口返回）
-    error: string;               // 错误信息
-    attempts?: ChannelAttempt[]; // 所有尝试记录
-    total_attempts?: number;     // 总尝试次数
+    time: number;
+    request_model_name: string;
+    request_api_key_name?: string;
+    channel: number;
+    channel_name: string;
+    actual_model_name: string;
+    input_tokens: number;
+    output_tokens: number;
+    ftut: number;
+    use_time: number;
+    cost: number;
+    request_content?: string;
+    response_content?: string;
+    error: string;
+    attempts?: ChannelAttempt[];
+    total_attempts?: number;
 }
 
 /**
@@ -60,11 +60,6 @@ export interface LogListParams {
 
 /**
  * 清空日志 Hook
- *
- * @example
- * const clearLogs = useClearLogs();
- *
- * clearLogs.mutate();
  */
 export function useClearLogs() {
     const queryClient = useQueryClient();
@@ -83,10 +78,14 @@ export function useClearLogs() {
     });
 }
 
-const logsInfiniteQueryKey = (pageSize: number, filterError: boolean) => ['logs', 'infinite', pageSize, filterError] as const;
+const logsInfiniteQueryKey = (
+    pageSize: number,
+    filterError: boolean,
+    filterAPIKeyNames: string[],
+    filterModelNames: string[]
+) => ['logs', 'infinite', pageSize, filterError, filterAPIKeyNames, filterModelNames] as const;
 
 // 模块级别的手动断开标志，持久化用户选择
-// 使用 sessionStorage 确保跨页面导航时保持状态，但关闭标签页后重置
 function getManualDisconnectFlag(): boolean {
     if (typeof window === 'undefined') return false;
     return sessionStorage.getItem('log_stream_manual_disconnect') === 'true';
@@ -104,39 +103,33 @@ function setManualDisconnectFlag(value: boolean): void {
 /**
  * 日志管理 Hook
  * 整合初始加载、SSE 实时推送、滚动加载更多
- *
- * @example
- * const { logs, isConnected, hasMore, isLoadingMore, loadMore, filterError, setFilterError, disconnect, reconnect } = useLogs();
- *
- * // logs 自动包含历史日志和实时日志，按时间倒序
- * logs.forEach(log => console.log(log.request_model_name));
- *
- * // 滚动到底部时加载更多
- * if (hasMore && !isLoadingMore) loadMore();
- *
- * // 筛选错误日志
- * setFilterError(true);
- *
- * // 断开/重连 SSE
- * disconnect();
- * reconnect();
  */
 export function useLogs(options: { pageSize?: number } = {}) {
     const { pageSize = 20 } = options;
 
     const [filterError, setFilterError] = useState(false);
+    const [filterAPIKeyNames, setFilterAPIKeyNames] = useState<string[]>([]);
+    const [filterModelNames, setFilterModelNames] = useState<string[]>([]);
     const [isConnected, setIsConnected] = useState(false);
     const [error, setError] = useState<Error | null>(null);
-    // 使用 reconnectNonce 强制触发重连
     const [reconnectNonce, setReconnectNonce] = useState(0);
 
     const eventSourceRef = useRef<EventSource | null>(null);
     const connectGenerationRef = useRef(0);
 
+    // 使用 ref 保存筛选条件，避免 SSE 回调因状态变化而重新注册
+    const filterErrorRef = useRef(filterError);
+    const filterAPIKeyNamesRef = useRef(filterAPIKeyNames);
+    const filterModelNamesRef = useRef(filterModelNames);
+
+    useEffect(() => { filterErrorRef.current = filterError; }, [filterError]);
+    useEffect(() => { filterAPIKeyNamesRef.current = filterAPIKeyNames; }, [filterAPIKeyNames]);
+    useEffect(() => { filterModelNamesRef.current = filterModelNames; }, [filterModelNames]);
+
     const queryClient = useQueryClient();
 
     const logsQuery = useInfiniteQuery({
-        queryKey: logsInfiniteQueryKey(pageSize, filterError),
+        queryKey: logsInfiniteQueryKey(pageSize, filterError, filterAPIKeyNames, filterModelNames),
         initialPageParam: 1,
         queryFn: async ({ pageParam }) => {
             const params = new URLSearchParams();
@@ -144,6 +137,12 @@ export function useLogs(options: { pageSize?: number } = {}) {
             params.set('page_size', String(pageSize));
             if (filterError) {
                 params.set('has_error', 'true');
+            }
+            if (filterAPIKeyNames.length > 0) {
+                params.set('api_key_names', filterAPIKeyNames.join(','));
+            }
+            if (filterModelNames.length > 0) {
+                params.set('model_names', filterModelNames.join(','));
             }
             const result = await apiClient.get<RelayLog[] | null>(`/api/v1/log/list?${params.toString()}`);
             return result ?? [];
@@ -187,7 +186,6 @@ export function useLogs(options: { pageSize?: number } = {}) {
     const closeEventSource = useCallback((target?: EventSource | null) => {
         const source = target ?? eventSourceRef.current;
         if (!source) return;
-        // 清理 handlers 防止内存泄漏
         source.onopen = null;
         source.onmessage = null;
         source.onerror = null;
@@ -197,8 +195,24 @@ export function useLogs(options: { pageSize?: number } = {}) {
         }
     }, []);
 
+    // 写入缓存的辅助函数
+    const writeLogToCache = useCallback(
+        (log: RelayLog, queryKey: readonly unknown[]) => {
+            queryClient.setQueryData(
+                queryKey,
+                (old: InfiniteData<RelayLog[], number> | undefined) => {
+                    if (!old) return { pages: [[log]], pageParams: [1] };
+                    const exists = old.pages.some((p) => p?.some((x) => x.id === log.id));
+                    if (exists) return old;
+                    const firstPage = old.pages[0] ?? [];
+                    return { ...old, pages: [[log, ...firstPage], ...old.pages.slice(1)] };
+                }
+            );
+        },
+        [queryClient]
+    );
+
     useEffect(() => {
-        // 检查用户是否手动断开（从 sessionStorage 读取）
         if (getManualDisconnectFlag()) {
             return;
         }
@@ -225,37 +239,34 @@ export function useLogs(options: { pageSize?: number } = {}) {
                 };
 
                 eventSource.onmessage = (event) => {
-                    // 防止过期实例写入
                     if (cancelled || connectGenerationRef.current !== currentGen) return;
 
                     try {
                         const log: RelayLog = JSON.parse(event.data);
 
-                        // 双写：同时更新两个缓存，筛选逻辑在各自缓存的 queryFn 中处理
-                        // 写入全量缓存
-                        queryClient.setQueryData(
-                            logsInfiniteQueryKey(pageSize, false),
-                            (old: InfiniteData<RelayLog[], number> | undefined) => {
-                                if (!old) return { pages: [[log]], pageParams: [1] };
-                                const exists = old.pages.some((p) => p?.some((x) => x.id === log.id));
-                                if (exists) return old;
-                                const firstPage = old.pages[0] ?? [];
-                                return { ...old, pages: [[log, ...firstPage], ...old.pages.slice(1)] };
-                            }
-                        );
+                        const fe = filterErrorRef.current;
+                        const akn = filterAPIKeyNamesRef.current;
+                        const mn = filterModelNamesRef.current;
 
-                        // 如果有错误，也写入错误筛选缓存
+                        // 写入全量缓存（无筛选）
+                        writeLogToCache(log, logsInfiniteQueryKey(pageSize, false, [], []));
+
+                        // 如果有错误，也写入错误筛选缓存（无 API Key/模型筛选）
                         if (log.error?.trim()) {
-                            queryClient.setQueryData(
-                                logsInfiniteQueryKey(pageSize, true),
-                                (old: InfiniteData<RelayLog[], number> | undefined) => {
-                                    if (!old) return { pages: [[log]], pageParams: [1] };
-                                    const exists = old.pages.some((p) => p?.some((x) => x.id === log.id));
-                                    if (exists) return old;
-                                    const firstPage = old.pages[0] ?? [];
-                                    return { ...old, pages: [[log, ...firstPage], ...old.pages.slice(1)] };
+                            writeLogToCache(log, logsInfiniteQueryKey(pageSize, true, [], []));
+                        }
+
+                        // 写入当前活跃筛选缓存
+                        if (akn.length > 0 || mn.length > 0) {
+                            const matchesAPIKey = akn.length === 0 || akn.includes(log.request_api_key_name ?? '');
+                            const matchesModel = mn.length === 0 || mn.includes(log.request_model_name);
+
+                            if (matchesAPIKey && matchesModel) {
+                                writeLogToCache(log, logsInfiniteQueryKey(pageSize, false, akn, mn));
+                                if (log.error?.trim()) {
+                                    writeLogToCache(log, logsInfiniteQueryKey(pageSize, true, akn, mn));
                                 }
-                            );
+                            }
                         }
                     } catch (e) {
                         logger.error('解析日志数据失败:', e);
@@ -288,11 +299,11 @@ export function useLogs(options: { pageSize?: number } = {}) {
             cancelled = true;
             closeEventSource();
         };
-    }, [closeEventSource, pageSize, queryClient, reconnectNonce]); // 移除 filterError 依赖
+    }, [closeEventSource, pageSize, queryClient, reconnectNonce, writeLogToCache]);
 
     const clear = useCallback(() => {
-        queryClient.removeQueries({ queryKey: logsInfiniteQueryKey(pageSize, filterError) });
-    }, [pageSize, filterError, queryClient]);
+        queryClient.removeQueries({ queryKey: logsInfiniteQueryKey(pageSize, filterError, filterAPIKeyNames, filterModelNames) });
+    }, [pageSize, filterError, filterAPIKeyNames, filterModelNames, queryClient]);
 
     const disconnect = useCallback(() => {
         setManualDisconnectFlag(true);
@@ -320,6 +331,10 @@ export function useLogs(options: { pageSize?: number } = {}) {
         clear,
         filterError,
         setFilterError,
+        filterAPIKeyNames,
+        setFilterAPIKeyNames,
+        filterModelNames,
+        setFilterModelNames,
         disconnect,
         reconnect,
     };
