@@ -430,7 +430,16 @@ func (ra *relayAttempt) handleStreamResponse(ctx context.Context, response *http
 			}
 
 			data, err := ra.transformStreamData(ctx, r.data)
-			if err != nil || len(data) == 0 {
+			if err != nil {
+				var respErr *model.ResponseError
+				if errors.As(err, &respErr) {
+					_ = response.Body.Close()
+					return fmt.Errorf("upstream stream error: %w", respErr)
+				}
+				log.Warnf("failed to transform stream: %v", err)
+				continue
+			}
+			if len(data) == 0 {
 				continue
 			}
 			if firstToken {

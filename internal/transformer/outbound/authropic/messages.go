@@ -272,6 +272,21 @@ func (o *MessageOutbound) TransformStream(ctx context.Context, eventData []byte)
 			resp.Usage = o.streamUsage
 		}
 
+	case "error":
+		var errResp struct {
+			Type  string                          `json:"type"`
+			Error anthropicModel.ErrorDetail `json:"error"`
+		}
+		if err := json.Unmarshal(eventData, &errResp); err == nil && errResp.Error.Message != "" {
+			return nil, &model.ResponseError{
+				Detail: model.ErrorDetail{
+					Type:    errResp.Error.Type,
+					Message: errResp.Error.Message,
+				},
+			}
+		}
+		return nil, fmt.Errorf("anthropic stream error: %s", string(eventData))
+
 	case "content_block_stop", "ping":
 		return nil, nil
 
