@@ -202,17 +202,19 @@ func (ra *relayAttempt) attempt() attemptResult {
 
 	if fwdErr == nil {
 		// ====== 成功 ======
-		if !ra.collectResponse() {
+		ok, emptyReason := ra.collectResponse()
+		if !ok {
 			// 上游返回 2xx 但响应为空（如余额不足返回空响应），视为失败以触发重试
+			emptyRespErr := fmt.Errorf("channel %s returned empty response (status %d): %s", ra.channel.Name, statusCode, emptyReason)
 			ra.usedKey.TotalRequests++
 			op.ChannelKeyUpdate(ra.usedKey)
-			span.End(dbmodel.AttemptFailed, statusCode, "empty response from upstream")
+			span.End(dbmodel.AttemptFailed, statusCode, emptyRespErr.Error())
 			op.StatsChannelUpdate(ra.channel.ID, dbmodel.StatsMetrics{RequestFailed: 1})
 			balancer.RecordFailure(ra.channel.ID, ra.usedKey.ID, ra.internalRequest.Model)
 			return attemptResult{
 				Success: false,
 				Written: ra.c.Writer.Written(),
-				Err:     fmt.Errorf("channel %s returned empty response", ra.channel.Name),
+				Err:     emptyRespErr,
 			}
 		}
 		ra.usedKey.TotalCost += ra.metrics.Stats.InputCost + ra.metrics.Stats.OutputCost
@@ -491,12 +493,15 @@ func (ra *relayAttempt) handleResponse(ctx context.Context, response *http.Respo
 }
 
 // collectResponse 收集响应信息，返回是否收集到有效响应
-func (ra *relayAttempt) collectResponse() bool {
+func (ra *relayAttempt) collectResponse() (bool, string) {
 	internalResponse, err := ra.inAdapter.GetInternalResponse(context.Background())
-	if err != nil || internalResponse == nil {
-		return false
+	if err != nil {
+		return false, fmt.Sprintf("GetInternalResponse error: %v", err)
+	}
+	if internalResponse == nil {
+		return false, "upstream returned empty response body"
 	}
 
 	ra.metrics.SetInternalResponse(internalResponse, ra.internalRequest.Model)
-	return true
+	return true, ""
 }

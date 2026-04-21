@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/bestruirui/octopus/internal/model"
@@ -1038,7 +1039,7 @@ func TestEmptyResponseTreatedAsFailure(t *testing.T) {
 // TestEmptyResponseTreatedAsFailure_LogFields 空响应失败后重试成功：日志归属正确
 func TestEmptyResponseTreatedAsFailure_LogFields(t *testing.T) {
 	attempts := []model.ChannelAttempt{
-		{ChannelID: 1, ChannelName: "A", ChannelKeyID: 100, Status: model.AttemptFailed, AttemptNum: 1, Msg: "empty response from upstream"},
+		{ChannelID: 1, ChannelName: "A", ChannelKeyID: 100, Status: model.AttemptFailed, AttemptNum: 1, Msg: "channel A returned empty response (status 200): upstream returned empty response body"},
 		{ChannelID: 2, ChannelName: "B", ChannelKeyID: 200, Status: model.AttemptSuccess, AttemptNum: 2},
 	}
 
@@ -1048,12 +1049,15 @@ func TestEmptyResponseTreatedAsFailure_LogFields(t *testing.T) {
 		t.Errorf("finalChannel: got (%d, %s), want (2, B)", id, name)
 	}
 
-	// 第一次 attempt 是失败（空响应）
+	// 第一次 attempt 是失败（空响应），包含状态码和原因
 	if attempts[0].Status != model.AttemptFailed {
 		t.Errorf("attempt[0] status: got %s, want failed", attempts[0].Status)
 	}
-	if attempts[0].Msg != "empty response from upstream" {
-		t.Errorf("attempt[0] msg: got %s, want 'empty response from upstream'", attempts[0].Msg)
+	if !strings.Contains(attempts[0].Msg, "status 200") {
+		t.Errorf("attempt[0] msg should contain status code: got %s", attempts[0].Msg)
+	}
+	if !strings.Contains(attempts[0].Msg, "empty response") {
+		t.Errorf("attempt[0] msg should contain 'empty response': got %s", attempts[0].Msg)
 	}
 }
 
