@@ -139,11 +139,11 @@ export function Total() {
     ];
 
     return (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
             {cards.map((card, index) => (
                 <motion.section
                     key={index}
-                    className="rounded-3xl bg-card border-card-border border p-5 text-card-foreground flex flex-row items-center gap-4"
+                    className="rounded-2xl bg-card border border-border/50 p-4 text-card-foreground flex flex-col gap-3"
                     initial={{ opacity: 0, y: 20, filter: 'blur(8px)' }}
                     animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
                     transition={{
@@ -152,25 +152,27 @@ export function Total() {
                         delay: index * 0.08,
                     }}
                 >
-                    <div className="flex flex-col items-center justify-center gap-3 border-r border-border/50 pr-4 py-1 self-stretch">
-                        <card.headerIcon className="w-4 h-4" />
-                        <h3 className="font-medium text-sm [writing-mode:vertical-lr]">{card.title}</h3>
+                    <div className="flex items-center gap-2">
+                        <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-primary/10">
+                            <card.headerIcon className="w-3.5 h-3.5 text-primary" />
+                        </div>
+                        <h3 className="font-medium text-sm text-muted-foreground truncate">{card.title}</h3>
                     </div>
 
-                    <div className="flex flex-col gap-4 flex-1 min-w-0">
+                    <div className="flex flex-col gap-3">
                         {card.items.map((item, idx) => (
                             <div key={idx} className="flex items-center gap-3">
-                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${item.bgColor} ${item.color}`}>
-                                    <item.icon className="w-5 h-5" />
+                                <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${item.bgColor} ${item.color}`}>
+                                    <item.icon className="w-4 h-4" />
                                 </div>
                                 <div className="flex flex-col min-w-0">
-                                    <span className="text-xs text-muted-foreground">{item.label}</span>
+                                    <span className="text-xs text-muted-foreground truncate">{item.label}</span>
                                     <div className="flex items-baseline gap-1">
-                                        <span className="text-xl">
+                                        <span className="text-lg font-semibold tabular-nums">
                                             <AnimatedNumber value={item.value} />
                                         </span>
                                         {item.unit && (
-                                            <span className="text-sm text-muted-foreground">{item.unit}</span>
+                                            <span className="text-xs text-muted-foreground">{item.unit}</span>
                                         )}
                                     </div>
                                 </div>

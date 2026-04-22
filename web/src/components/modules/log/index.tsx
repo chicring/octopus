@@ -5,11 +5,10 @@ import { useLogs } from '@/api/endpoints/log';
 import { useAPIKeyList } from '@/api/endpoints/apikey';
 import { useGroupList } from '@/api/endpoints/group';
 import { LogCard } from './Item';
-import { Loader2, ArrowUp, Wifi, WifiOff } from 'lucide-react';
+import { Loader2, ArrowUp, Wifi, WifiOff, AlertTriangle } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { VirtualizedGrid } from '@/components/common/VirtualizedGrid';
 import { MultiSelect } from '@/components/common/MultiSelect';
-import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -123,28 +122,38 @@ export function Log() {
                     deselectAllText={t('controls.deselectAll')}
                 />
                 <div className="flex-1" />
-                <label className="flex min-h-11 items-center gap-2 text-sm">
-                    <Switch
-                        checked={filterError}
-                        onCheckedChange={setFilterError}
-                    />
-                    <span className="text-muted-foreground">{t('controls.showErrorOnly')}</span>
-                </label>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setFilterError(!filterError)}
+                    className={cn(
+                        'min-h-11 gap-2 px-3 rounded-xl border-border',
+                        filterError && 'border-primary/30 bg-primary/5'
+                    )}
+                >
+                    <AlertTriangle className={cn('h-4 w-4', filterError ? 'text-primary' : 'text-muted-foreground')} />
+                    <span className={cn('text-sm', filterError ? 'text-foreground' : 'text-muted-foreground')}>
+                        {t('controls.showErrorOnly')}
+                    </span>
+                </Button>
                 <Button
                     variant="outline"
                     size="sm"
                     onClick={() => isConnected ? disconnect() : reconnect()}
-                    className="min-h-11 min-w-11 gap-2 px-4"
+                    className={cn(
+                        'min-h-11 gap-2 px-3 rounded-xl border-border',
+                        isConnected && 'border-primary/30 bg-primary/5'
+                    )}
                 >
                     {isConnected ? (
                         <>
-                            <Wifi className="h-4 w-4 text-green-500" />
-                            <span>{t('controls.connected')}</span>
+                            <Wifi className="h-4 w-4 text-primary" />
+                            <span className="text-sm">{t('controls.connected')}</span>
                         </>
                     ) : (
                         <>
                             <WifiOff className="h-4 w-4 text-muted-foreground" />
-                            <span>{t('controls.disconnected')}</span>
+                            <span className="text-sm text-muted-foreground">{t('controls.disconnected')}</span>
                         </>
                     )}
                 </Button>
