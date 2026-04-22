@@ -100,17 +100,20 @@ func Handler(inboundType inbound.InboundType, c *gin.Context) {
 		}
 		if !channel.Enabled {
 			iter.Skip(channel.ID, 0, channel.Name, "channel disabled")
+			lastErr = fmt.Errorf("channel %s disabled", channel.Name)
 			continue
 		}
 
 		usedKey := op.ChannelGetKey(channel.ID)
 		if usedKey.ChannelKey == "" {
 			iter.Skip(channel.ID, 0, channel.Name, "no available key")
+			lastErr = fmt.Errorf("channel %s: no available key", channel.Name)
 			continue
 		}
 
 		// 熔断检查
 		if iter.SkipCircuitBreak(channel.ID, usedKey.ID, channel.Name) {
+			lastErr = fmt.Errorf("channel %s: circuit breaker tripped", channel.Name)
 			continue
 		}
 
