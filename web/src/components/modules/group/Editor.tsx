@@ -344,7 +344,7 @@ export function GroupEditor({
             mode,
             first_token_time_out: firstTokenTimeOut,
             session_keep_time: sessionKeepTime,
-        reasoning_effort_override: reasoningEffortOverride,
+            reasoning_effort_override: reasoningEffortOverride,
             members: selectedMembers,
         });
     };
@@ -462,12 +462,12 @@ export function GroupEditor({
                                     </Tooltip>
                                 </TooltipProvider>
                             </FieldLabel>
-                            <Select value={reasoningEffortOverride} onValueChange={setReasoningEffortOverride}>
+                            <Select value={reasoningEffortOverride || '_none'} onValueChange={(v) => setReasoningEffortOverride(v === '_none' ? '' : v)}>
                                 <SelectTrigger id="group-reasoning-effort-override" className="rounded-xl">
                                     <SelectValue placeholder={t('form.reasoningEffortOverrideNone')} />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="">{t('form.reasoningEffortOverrideNone')}</SelectItem>
+                                    <SelectItem value="_none">{t('form.reasoningEffortOverrideNone')}</SelectItem>
                                     <SelectItem value="low">low</SelectItem>
                                     <SelectItem value="medium">medium</SelectItem>
                                     <SelectItem value="high">high</SelectItem>
