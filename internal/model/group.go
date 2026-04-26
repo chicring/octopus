@@ -10,13 +10,14 @@ const (
 )
 
 type Group struct {
-	ID                int         `json:"id" gorm:"primaryKey"`
-	Name              string      `json:"name" gorm:"unique;not null"`
-	Mode              GroupMode   `json:"mode" gorm:"not null"`
-	MatchRegex        string      `json:"match_regex"`
-	FirstTokenTimeOut int         `json:"first_token_time_out"` // 单个渠道首个Token响应超时时间(秒)
-	SessionKeepTime   int         `json:"session_keep_time"`    // 会话保持时间(秒) 0 为禁用
-	Items             []GroupItem `json:"items,omitempty" gorm:"foreignKey:GroupID"`
+	ID                      int         `json:"id" gorm:"primaryKey"`
+	Name                    string      `json:"name" gorm:"unique;not null"`
+	Mode                    GroupMode   `json:"mode" gorm:"not null"`
+	MatchRegex              string      `json:"match_regex"`
+	FirstTokenTimeOut       int         `json:"first_token_time_out"`                // 单个渠道首个Token响应超时时间(秒)
+	SessionKeepTime         int         `json:"session_keep_time"`                   // 会话保持时间(秒) 0 为禁用
+	ReasoningEffortOverride string      `json:"reasoning_effort_override"`           // 覆盖思考等级: low/medium/high/max, 空字符串表示不覆盖
+	Items                   []GroupItem `json:"items,omitempty" gorm:"foreignKey:GroupID"`
 }
 
 type GroupItem struct {
@@ -30,15 +31,16 @@ type GroupItem struct {
 
 // GroupUpdateRequest 分组更新请求 - 仅包含变更的数据
 type GroupUpdateRequest struct {
-	ID                int                      `json:"id" binding:"required"`
-	Name              *string                  `json:"name,omitempty"`                 // 仅在名称变更时发送
-	Mode              *GroupMode               `json:"mode,omitempty"`                 // 仅在模式变更时发送
-	MatchRegex        *string                  `json:"match_regex,omitempty"`          // 仅在匹配正则变更时发送
-	FirstTokenTimeOut *int                     `json:"first_token_time_out,omitempty"` // 仅在超时变更时发送(秒)
-	SessionKeepTime   *int                     `json:"session_keep_time,omitempty"`    // 仅在会话保持时间变更时发送(秒)
-	ItemsToAdd        []GroupItemAddRequest    `json:"items_to_add,omitempty"`         // 新增的 items
-	ItemsToUpdate     []GroupItemUpdateRequest `json:"items_to_update,omitempty"`      // 更新的 items (priority 变更)
-	ItemsToDelete     []int                    `json:"items_to_delete,omitempty"`      // 删除的 item IDs
+	ID                      int                      `json:"id" binding:"required"`
+	Name                    *string                  `json:"name,omitempty"`                          // 仅在名称变更时发送
+	Mode                    *GroupMode               `json:"mode,omitempty"`                          // 仅在模式变更时发送
+	MatchRegex              *string                  `json:"match_regex,omitempty"`                   // 仅在匹配正则变更时发送
+	FirstTokenTimeOut       *int                     `json:"first_token_time_out,omitempty"`          // 仅在超时变更时发送(秒)
+	SessionKeepTime         *int                     `json:"session_keep_time,omitempty"`             // 仅在会话保持时间变更时发送(秒)
+	ReasoningEffortOverride *string                  `json:"reasoning_effort_override,omitempty"`     // 仅在思考等级覆盖变更时发送
+	ItemsToAdd              []GroupItemAddRequest    `json:"items_to_add,omitempty"`                  // 新增的 items
+	ItemsToUpdate           []GroupItemUpdateRequest `json:"items_to_update,omitempty"`               // 更新的 items (priority 变更)
+	ItemsToDelete           []int                    `json:"items_to_delete,omitempty"`               // 删除的 item IDs
 }
 
 // GroupItemAddRequest 新增 item 请求

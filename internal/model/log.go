@@ -32,6 +32,7 @@ type RelayLog struct {
 	ChannelId         int              `json:"channel"`                                  // 实际使用的渠道ID
 	ChannelName       string           `json:"channel_name"`                             // 渠道名称
 	ActualModelName   string           `json:"actual_model_name"`                        // 实际使用模型名称
+	ReasoningEffort   string           `json:"reasoning_effort"`                         // 实际发送的思考等级: low/medium/high/max, 空字符串表示非推理请求
 	InputTokens       int              `json:"input_tokens"`                             // 输入Token
 	OutputTokens      int              `json:"output_tokens"`                            // 输出 Token
 	Ftut              int              `json:"ftut"`                                     // 首字时间(毫秒)

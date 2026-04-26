@@ -36,6 +36,7 @@ export interface RelayLog {
     channel: number;
     channel_name: string;
     actual_model_name: string;
+    reasoning_effort?: string;
     input_tokens: number;
     output_tokens: number;
     ftut: number;

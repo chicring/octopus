@@ -195,12 +195,18 @@ func (m *RelayMetrics) saveLog(ctx context.Context, err error, duration time.Dur
 		actualModel = m.RequestModel
 	}
 
+	var reasoningEffort string
+	if m.InternalRequest != nil {
+		reasoningEffort = m.InternalRequest.ReasoningEffort
+	}
+
 	relayLog := model.RelayLog{
 		Time:             m.StartTime.Unix(),
 		RequestModelName: m.RequestModel,
 		ChannelName:      channelName,
 		ChannelId:        channelID,
 		ActualModelName:  actualModel,
+		ReasoningEffort:  reasoningEffort,
 		UseTime:          int(duration.Milliseconds()),
 		Attempts:         attempts,
 		TotalAttempts:    len(attempts),

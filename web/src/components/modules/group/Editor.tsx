@@ -8,6 +8,8 @@ import { useModelChannelList, type LLMChannel } from '@/api/endpoints/model';
 import { Button } from '@/components/ui/button';
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Accordion, AccordionContent, AccordionItem } from '@/components/ui/accordion';
 import { cn } from '@/lib/utils';
 import { getModelIcon } from '@/lib/model-icons';
@@ -26,6 +28,7 @@ export type GroupEditorValues = {
     mode: GroupMode;
     first_token_time_out: number;
     session_keep_time: number;
+    reasoning_effort_override: string;
     members: SelectedMember[];
 };
 
@@ -257,6 +260,7 @@ export function GroupEditor({
     const [mode, setMode] = useState<GroupMode>((initial?.mode ?? 1) as GroupMode);
     const [firstTokenTimeOut, setFirstTokenTimeOut] = useState<number>(initial?.first_token_time_out ?? 0);
     const [sessionKeepTime, setSessionKeepTime] = useState<number>(initial?.session_keep_time ?? 0);
+    const [reasoningEffortOverride, setReasoningEffortOverride] = useState<string>(initial?.reasoning_effort_override ?? '');
     const [selectedMembers, setSelectedMembers] = useState<SelectedMember[]>(initial?.members ?? []);
     const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
 
@@ -340,6 +344,7 @@ export function GroupEditor({
             mode,
             first_token_time_out: firstTokenTimeOut,
             session_keep_time: sessionKeepTime,
+        reasoning_effort_override: reasoningEffortOverride,
             members: selectedMembers,
         });
     };
@@ -441,6 +446,34 @@ export function GroupEditor({
                                 }}
                                 className="rounded-xl"
                             />
+                        </Field>
+
+                        <Field>
+                            <FieldLabel htmlFor="group-reasoning-effort-override">
+                                {t('form.reasoningEffortOverride')}
+                                <TooltipProvider>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <HelpCircle className="size-4 text-muted-foreground cursor-help" />
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                            {t('form.reasoningEffortOverrideHint')}
+                                        </TooltipContent>
+                                    </Tooltip>
+                                </TooltipProvider>
+                            </FieldLabel>
+                            <Select value={reasoningEffortOverride} onValueChange={setReasoningEffortOverride}>
+                                <SelectTrigger id="group-reasoning-effort-override" className="rounded-xl">
+                                    <SelectValue placeholder={t('form.reasoningEffortOverrideNone')} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="">{t('form.reasoningEffortOverrideNone')}</SelectItem>
+                                    <SelectItem value="low">low</SelectItem>
+                                    <SelectItem value="medium">medium</SelectItem>
+                                    <SelectItem value="high">high</SelectItem>
+                                    <SelectItem value="max">max</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </Field>
                     </div>
 

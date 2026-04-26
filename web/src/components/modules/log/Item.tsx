@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState, useEffect } from 'react';
-import { Clock, Cpu, Zap, AlertCircle, ArrowDownToLine, ArrowUpFromLine, DollarSign, ArrowRight, ArrowDown, Send, MessageSquare, Loader2, RotateCw, ChevronDown, ChevronUp, Pin, KeyRound, Gauge } from 'lucide-react';
+import { Clock, Cpu, Zap, AlertCircle, ArrowDownToLine, ArrowUpFromLine, DollarSign, ArrowRight, ArrowDown, Send, MessageSquare, Loader2, RotateCw, ChevronDown, ChevronUp, Pin, KeyRound, Gauge, Brain } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { motion, AnimatePresence } from 'motion/react';
 import JsonView from '@uiw/react-json-view';
@@ -39,6 +39,27 @@ function formatTime(timestamp: number): string {
 function formatDuration(ms: number): string {
     if (ms < 1000) return `${ms}ms`;
     return `${(ms / 1000).toFixed(2)}s`;
+}
+
+const REASONING_EFFORT_COLORS: Record<string, string> = {
+    low: '#6b7280',
+    medium: '#f59e0b',
+    high: '#8b5cf6',
+    max: '#ef4444',
+};
+
+function ReasoningEffortBadge({ effort }: { effort: string }) {
+    const color = REASONING_EFFORT_COLORS[effort] ?? '#6b7280';
+    return (
+        <Badge
+            variant="secondary"
+            className="shrink-0 text-xs px-1.5 py-0"
+            style={{ backgroundColor: `${color}15`, color }}
+        >
+            <Brain className="size-3 mr-1 opacity-80" />
+            {effort}
+        </Badge>
+    );
 }
 
 interface RetryBadgeWithTooltipProps {
@@ -295,6 +316,9 @@ export function LogCard({ log }: { log: RelayLog }) {
                                 <span className="text-muted-foreground truncate" title={log.actual_model_name}>
                                     {log.actual_model_name}
                                 </span>
+                                {log.reasoning_effort && (
+                                    <ReasoningEffortBadge effort={log.reasoning_effort} />
+                                )}
                                 {log.attempts?.some(a => a.sticky) && (
                                     <Pin className="size-3.5 shrink-0 text-amber-500" />
                                 )}
@@ -377,6 +401,9 @@ export function LogCard({ log }: { log: RelayLog }) {
                                 </Badge>
                             )}
                             <span className="text-muted-foreground">{log.actual_model_name}</span>
+                            {log.reasoning_effort && (
+                                <ReasoningEffortBadge effort={log.reasoning_effort} />
+                            )}
                             {log.attempts?.some(a => a.sticky) && (
                                 <Pin className="size-3.5 shrink-0 text-amber-500" />
                             )}

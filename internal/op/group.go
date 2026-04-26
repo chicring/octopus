@@ -106,6 +106,10 @@ func GroupUpdate(req *model.GroupUpdateRequest, ctx context.Context) (*model.Gro
 		selectFields = append(selectFields, "session_keep_time")
 		updates.SessionKeepTime = *req.SessionKeepTime
 	}
+	if req.ReasoningEffortOverride != nil {
+		selectFields = append(selectFields, "reasoning_effort_override")
+		updates.ReasoningEffortOverride = *req.ReasoningEffortOverride
+	}
 
 	if len(selectFields) > 0 {
 		if err := tx.Model(&model.Group{}).Where("id = ?", req.ID).Select(selectFields).Updates(&updates).Error; err != nil {

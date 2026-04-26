@@ -1,12 +1,13 @@
 'use client';
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { Trash2, X, Pencil } from 'lucide-react';
+import { Trash2, X, Pencil, Brain } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { type Group, useDeleteGroup, useUpdateGroup } from '@/api/endpoints/group';
 import { useModelChannelList } from '@/api/endpoints/model';
 import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
 import { toast } from '@/components/common/Toast';
 import { CopyIconButton } from '@/components/common/CopyButton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/animate-ui/components/animate/tooltip';
@@ -55,6 +56,7 @@ function EditDialogContent({ group, displayMembers, isSubmitting, onSubmit }: Ed
                         mode: group.mode,
                         first_token_time_out: group.first_token_time_out ?? 0,
                         session_keep_time: group.session_keep_time ?? 0,
+                        reasoning_effort_override: group.reasoning_effort_override ?? '',
                         members: displayMembers,
                     }}
                     submitText={t('detail.actions.save')}
@@ -222,6 +224,8 @@ export function GroupCard({ group }: { group: Group }) {
         if (nextRegex !== (group.match_regex ?? '')) payload.match_regex = nextRegex;
         if (nextFirstTokenTimeOut !== (group.first_token_time_out ?? 0)) payload.first_token_time_out = nextFirstTokenTimeOut;
         if (nextSessionKeepTime !== (group.session_keep_time ?? 0)) payload.session_keep_time = nextSessionKeepTime;
+        const nextReasoningEffortOverride = values.reasoning_effort_override ?? '';
+        if (nextReasoningEffortOverride !== (group.reasoning_effort_override ?? '')) payload.reasoning_effort_override = nextReasoningEffortOverride;
         if (items_to_add.length) payload.items_to_add = items_to_add;
         if (items_to_update.length) payload.items_to_update = items_to_update;
         if (items_to_delete.length) payload.items_to_delete = items_to_delete;
@@ -238,7 +242,7 @@ export function GroupCard({ group }: { group: Group }) {
             },
             onError,
         });
-    }, [group.first_token_time_out, group.session_keep_time, group.id, group.items, group.match_regex, group.mode, group.name, onSuccess, onError, updateGroup]);
+    }, [group.first_token_time_out, group.session_keep_time, group.reasoning_effort_override, group.id, group.items, group.match_regex, group.mode, group.name, onSuccess, onError, updateGroup]);
 
     return (
         <article className="flex flex-col rounded-3xl border border-border bg-card text-card-foreground p-4 custom-shadow">
@@ -250,6 +254,12 @@ export function GroupCard({ group }: { group: Group }) {
                         </TooltipTrigger>
                         <TooltipContent key={group.name}>{group.name}</TooltipContent>
                     </Tooltip>
+                    {group.reasoning_effort_override && (
+                        <Badge variant="secondary" className="shrink-0 text-xs px-1.5 py-0 ml-2 bg-purple-500/15 text-purple-600 dark:text-purple-400">
+                            <Brain className="size-3 mr-1 opacity-80" />
+                            {group.reasoning_effort_override}
+                        </Badge>
+                    )}
                 </div>
 
                 <div className="flex items-center gap-1 shrink-0">

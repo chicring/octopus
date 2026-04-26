@@ -58,6 +58,13 @@ func Handler(inboundType inbound.InboundType, c *gin.Context) {
 		return
 	}
 
+	// 分组覆盖思考等级
+	if group.ReasoningEffortOverride != "" {
+		internalRequest.ReasoningEffort = group.ReasoningEffortOverride
+		internalRequest.ReasoningBudget = nil
+		internalRequest.AdaptiveThinking = false
+	}
+
 	// 创建迭代器（策略排序 + 粘性优先）
 	iter := balancer.NewIterator(group, apiKeyID, requestModel)
 	if iter.Len() == 0 {
