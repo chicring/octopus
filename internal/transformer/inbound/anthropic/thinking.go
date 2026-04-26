@@ -7,8 +7,12 @@ func thinkingBudgetToReasoningEffort(budgetTokens int64) string {
 		return EffortLow
 	} else if budgetTokens <= 15000 {
 		return EffortMedium
-	} else {
+	} else if budgetTokens <= 32768 {
 		return EffortHigh
+	} else if budgetTokens <= 65536 {
+		return EffortXHigh
+	} else {
+		return EffortMax
 	}
 }
 
@@ -16,5 +20,7 @@ func thinkingBudgetToReasoningEffort(budgetTokens int64) string {
 var defaultReasoningEffortMapping = map[string]int64{
 	EffortLow:    5000,
 	EffortMedium: 15000,
-	EffortHigh:   30000,
+	EffortHigh:   32768,
+	EffortXHigh:  65536,
+	EffortMax:    131072,
 }

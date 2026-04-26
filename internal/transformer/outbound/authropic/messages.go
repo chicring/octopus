@@ -790,6 +790,10 @@ func getThinkingBudget(effort string, budget *int64) *int64 {
 		result = 8192
 	case anthropicModel.EffortHigh:
 		result = 32768
+	case anthropicModel.EffortXHigh:
+		result = 65536
+	case anthropicModel.EffortMax:
+		result = 131072
 	default:
 		result = 8192
 	}

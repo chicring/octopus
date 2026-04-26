@@ -145,6 +145,7 @@ const (
 
 // Effort level constants for OutputConfig
 const (
+	EffortXHigh  = "xhigh"
 	EffortMax    = "max"
 	EffortHigh   = "high"
 	EffortMedium = "medium"
@@ -157,7 +158,7 @@ type Thinking struct {
 }
 
 type OutputConfig struct {
-	Effort string `json:"effort,omitempty" validate:"omitempty,oneof=max high medium low"`
+	Effort string `json:"effort,omitempty" validate:"omitempty,oneof=xhigh max high medium low"`
 }
 
 type ToolChoice struct {

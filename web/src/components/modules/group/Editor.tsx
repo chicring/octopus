@@ -471,6 +471,7 @@ export function GroupEditor({
                                     <SelectItem value="low">low</SelectItem>
                                     <SelectItem value="medium">medium</SelectItem>
                                     <SelectItem value="high">high</SelectItem>
+                                    <SelectItem value="xhigh">xhigh</SelectItem>
                                     <SelectItem value="max">max</SelectItem>
                                 </SelectContent>
                             </Select>

@@ -45,7 +45,8 @@ const REASONING_EFFORT_COLORS: Record<string, string> = {
     low: '#6b7280',
     medium: '#f59e0b',
     high: '#8b5cf6',
-    max: '#ef4444',
+    xhigh: '#e11d48',
+    max: '#dc2626',
 };
 
 function ReasoningEffortBadge({ effort }: { effort: string }) {
