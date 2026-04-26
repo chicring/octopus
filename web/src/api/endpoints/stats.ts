@@ -79,6 +79,21 @@ export interface StatsModelFormatted extends StatsMetricsFormatted {
 }
 
 /**
+ * 实时监控指标
+ */
+export interface StatsRealtime {
+  window_size_sec: number;
+  rps: number;
+  rpm: number;
+  tps: number;
+  tpm: number;
+}
+
+export async function getStatsRealtime(): Promise<StatsRealtime> {
+  return apiClient.get<StatsRealtime>("/api/v1/stats/realtime");
+}
+
+/**
  * 获取今日统计数据 Hook
  */
 export function useStatsToday() {
@@ -123,6 +138,14 @@ export function useStatsDaily() {
 /**
  * 获取总统计数据 Hook
  */
+export function useStatsRealtime() {
+  return useQuery({
+    queryKey: ["stats", "realtime"],
+    queryFn: () => getStatsRealtime(),
+    refetchInterval: 5000,
+  });
+}
+
 export function useStatsHourly() {
     return useQuery({
         queryKey: ['stats', 'hourly'],

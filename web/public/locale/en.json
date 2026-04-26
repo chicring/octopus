@@ -93,6 +93,16 @@
         }
     },
     "home": {
+        "realtime": {
+            "rps": "RPS",
+            "rpm": "RPM",
+            "tps": "TPS",
+            "tpm": "TPM",
+            "rpsDescription": "Requests per second",
+            "rpmDescription": "Requests per minute",
+            "tpsDescription": "Output tokens per second",
+            "tpmDescription": "Output tokens per minute"
+        },
         "activity": {
             "requestCount": "Requests",
             "waitTime": "Wait Time",

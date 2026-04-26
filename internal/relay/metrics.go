@@ -87,6 +87,7 @@ func (m *RelayMetrics) SaveEarlyFailure(err error) {
 	op.StatsHourlyUpdate(globalStats)
 	op.StatsDailyUpdate(context.Background(), globalStats)
 	op.StatsAPIKeyUpdate(m.APIKeyID, globalStats)
+	op.StatsRealtimeRecord(0) // 早期失败无输出 Token
 	if m.RequestModel != "" {
 		op.StatsModelUpdate(m.RequestModel, globalStats)
 	}
@@ -149,6 +150,9 @@ func (m *RelayMetrics) Save(ctx context.Context, success bool, err error, attemp
 	if modelName != "" {
 		op.StatsModelUpdate(modelName, globalStats)
 	}
+
+	// 实时监控计数
+	op.StatsRealtimeRecord(m.Stats.OutputToken)
 
 	log.Infof("relay complete: model=%s, channel=%d(%s), success=%t, duration=%dms, input_token=%d, output_token=%d, input_cost=%f, output_cost=%f, total_cost=%f, attempts=%d",
 		m.RequestModel, channelID, channelName, success, duration.Milliseconds(),

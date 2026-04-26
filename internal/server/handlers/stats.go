@@ -36,6 +36,10 @@ func init() {
 		AddRoute(
 			router.NewRoute("/model", http.MethodGet).
 				Handle(getStatsModel),
+		).
+		AddRoute(
+			router.NewRoute("/realtime", http.MethodGet).
+				Handle(getStatsRealtime),
 		)
 }
 
@@ -66,4 +70,8 @@ func getStatsAPIKey(c *gin.Context) {
 
 func getStatsModel(c *gin.Context) {
 	resp.Success(c, op.StatsModelList())
+}
+
+func getStatsRealtime(c *gin.Context) {
+	resp.Success(c, op.StatsRealtimeGet())
 }
