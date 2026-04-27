@@ -18,6 +18,7 @@ interface MultiSelectProps {
     emptyText?: string;
     selectAllText?: string;
     deselectAllText?: string;
+    className?: string;
 }
 
 export function MultiSelect({
@@ -29,6 +30,7 @@ export function MultiSelect({
     emptyText,
     selectAllText,
     deselectAllText,
+    className,
 }: MultiSelectProps) {
     const [open, setOpen] = useState(false);
     const [search, setSearch] = useState('');
@@ -66,8 +68,9 @@ export function MultiSelect({
                     variant="outline"
                     size="sm"
                     className={cn(
-                        'min-h-11 gap-2 px-3 rounded-xl border-border',
-                        selected.length > 0 && 'border-primary/30'
+                        'gap-2 px-3 h-9 rounded-xl border-border',
+                        selected.length > 0 && 'border-primary/30',
+                        className
                     )}
                 >
                     <span className="text-sm text-muted-foreground">{placeholder}</span>

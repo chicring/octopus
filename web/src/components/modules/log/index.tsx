@@ -100,7 +100,7 @@ export function Log() {
     return (
         <div className="flex flex-col h-full min-h-0">
             {/* 顶部控制栏 */}
-            <div className="flex shrink-0 flex-wrap items-center gap-3 px-4 py-2">
+            <div className="flex shrink-0 items-center gap-2 px-4 py-2 overflow-x-auto">
                 <MultiSelect
                     options={apiKeyOptions}
                     selected={filterAPIKeyNames}
@@ -110,6 +110,7 @@ export function Log() {
                     emptyText={t('controls.noAPIKeys')}
                     selectAllText={t('controls.selectAll')}
                     deselectAllText={t('controls.deselectAll')}
+                    className="shrink-0"
                 />
                 <MultiSelect
                     options={modelOptions}
@@ -120,19 +121,20 @@ export function Log() {
                     emptyText={t('controls.noModels')}
                     selectAllText={t('controls.selectAll')}
                     deselectAllText={t('controls.deselectAll')}
+                    className="shrink-0"
                 />
-                <div className="flex-1" />
+                <div className="flex-1 min-w-2" />
                 <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setFilterError(!filterError)}
                     className={cn(
-                        'min-h-11 gap-2 px-3 rounded-xl border-border',
+                        'shrink-0 gap-2 px-3 h-9 rounded-xl border-border',
                         filterError && 'border-primary/30 bg-primary/5'
                     )}
                 >
                     <AlertTriangle className={cn('h-4 w-4', filterError ? 'text-primary' : 'text-muted-foreground')} />
-                    <span className={cn('text-sm', filterError ? 'text-foreground' : 'text-muted-foreground')}>
+                    <span className={cn('text-sm sr-only sm:not-sr-only', filterError ? 'text-foreground' : 'text-muted-foreground')}>
                         {t('controls.showErrorOnly')}
                     </span>
                 </Button>
@@ -141,19 +143,19 @@ export function Log() {
                     size="sm"
                     onClick={() => isConnected ? disconnect() : reconnect()}
                     className={cn(
-                        'min-h-11 gap-2 px-3 rounded-xl border-border',
+                        'shrink-0 gap-2 px-3 h-9 rounded-xl border-border',
                         isConnected && 'border-primary/30 bg-primary/5'
                     )}
                 >
                     {isConnected ? (
                         <>
                             <Wifi className="h-4 w-4 text-primary" />
-                            <span className="text-sm">{t('controls.connected')}</span>
+                            <span className="text-sm sr-only sm:not-sr-only">{t('controls.connected')}</span>
                         </>
                     ) : (
                         <>
                             <WifiOff className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-sm text-muted-foreground">{t('controls.disconnected')}</span>
+                            <span className="text-sm text-muted-foreground sr-only sm:not-sr-only">{t('controls.disconnected')}</span>
                         </>
                     )}
                 </Button>
