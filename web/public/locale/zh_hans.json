@@ -144,7 +144,16 @@
             "noData": "暂无排行数据",
             "successRate": "成功率",
             "channelDimension": "渠道",
-            "modelDimension": "模型"
+            "modelDimension": "模型",
+            "keyDimension": "密钥"
+        },
+        "keyUsage": {
+            "title": "密钥用量",
+            "selectKey": "选择密钥",
+            "tokens": "Tokens",
+            "requests": "请求数",
+            "days": "{count} 天",
+            "noData": "暂无数据"
         }
     },
     "setting": {

@@ -229,6 +229,29 @@ export function useStatsAPIKey() {
     });
 }
 
+export interface StatsAPIKeyDaily {
+  api_key_id: number;
+  date: string;
+  input_token: number;
+  output_token: number;
+  input_cost: number;
+  output_cost: number;
+  wait_time: number;
+  output_time: number;
+  request_success: number;
+  request_failed: number;
+}
+
+export function useStatsAPIKeyDaily(apiKeyID: number | null, days = 30) {
+  return useQuery({
+    queryKey: ['stats', 'apikey-daily', apiKeyID, days],
+    queryFn: () => apiClient.get<StatsAPIKeyDaily[]>(`/api/v1/stats/apikey/${apiKeyID}/daily?days=${days}`),
+    enabled: apiKeyID != null,
+    refetchInterval: 30000,
+    refetchOnMount: 'always',
+  });
+}
+
 /**
  * 获取模型统计数据列表 Hook
  */

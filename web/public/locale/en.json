@@ -144,7 +144,16 @@
             "noData": "No ranking data",
             "successRate": "Success Rate",
             "channelDimension": "Channel",
-            "modelDimension": "Model"
+            "modelDimension": "Model",
+            "keyDimension": "Key"
+        },
+        "keyUsage": {
+            "title": "Key Usage",
+            "selectKey": "Select Key",
+            "tokens": "Tokens",
+            "requests": "Requests",
+            "days": "{count} Days",
+            "noData": "No data available"
         }
     },
     "setting": {

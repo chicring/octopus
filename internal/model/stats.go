@@ -1,5 +1,13 @@
 package model
 
+type StatsAPIKeyDaily struct {
+	APIKeyID uint   `json:"api_key_id" gorm:"primaryKey;not null"` // API Key ID
+	Date     string `json:"date" gorm:"primaryKey;not null"`       // 日期，格式：20060102
+	StatsMetrics
+}
+
+func (StatsAPIKeyDaily) TableName() string { return "stats_api_key_dailies" }
+
 type StatsMetrics struct {
 	InputToken     int64   `json:"input_token" gorm:"bigint"`
 	OutputToken    int64   `json:"output_token" gorm:"bigint"`
@@ -17,8 +25,8 @@ type StatsTotal struct {
 }
 
 type StatsHourly struct {
-	Hour int    `json:"hour" gorm:"primaryKey"`
-	Date string `json:"date" gorm:"not null"` // 记录最后更新日期，格式：20060102
+	Date string `json:"date" gorm:"primaryKey;not null"` // 日期，格式：20060102
+	Hour int    `json:"hour" gorm:"primaryKey;not null"` // 小时 0-23
 	StatsMetrics
 }
 

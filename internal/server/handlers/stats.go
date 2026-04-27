@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/bestruirui/octopus/internal/op"
 	"github.com/bestruirui/octopus/internal/server/middleware"
@@ -40,6 +41,10 @@ func init() {
 		AddRoute(
 			router.NewRoute("/realtime", http.MethodGet).
 				Handle(getStatsRealtime),
+		).
+		AddRoute(
+			router.NewRoute("/apikey/:id/daily", http.MethodGet).
+				Handle(getStatsAPIKeyDaily),
 		)
 }
 
@@ -74,4 +79,24 @@ func getStatsModel(c *gin.Context) {
 
 func getStatsRealtime(c *gin.Context) {
 	resp.Success(c, op.StatsRealtimeGet())
+}
+
+func getStatsAPIKeyDaily(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		resp.Error(c, http.StatusBadRequest, "invalid api key id")
+		return
+	}
+	daysStr := c.DefaultQuery("days", "30")
+	days, err := strconv.Atoi(daysStr)
+	if err != nil || days < 1 || days > 365 {
+		days = 30
+	}
+	stats, err := op.StatsAPIKeyDailyGet(c.Request.Context(), uint(id), days)
+	if err != nil {
+		resp.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	resp.Success(c, stats)
 }

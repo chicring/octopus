@@ -3,6 +3,7 @@
 import { Activity } from './activity';
 import { Total } from './total';
 import { StatsChart } from './chart';
+import { KeyUsage } from './KeyUsage';
 import { Rank } from './rank';
 import { PageWrapper } from '@/components/common/PageWrapper';
 
@@ -12,6 +13,7 @@ export function Home() {
             <Total />
             <Activity />
             <StatsChart />
+            <KeyUsage />
             <Rank />
         </PageWrapper>
     );

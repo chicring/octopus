@@ -87,6 +87,9 @@ func (m *RelayMetrics) SaveEarlyFailure(err error) {
 	op.StatsHourlyUpdate(globalStats)
 	op.StatsDailyUpdate(context.Background(), globalStats)
 	op.StatsAPIKeyUpdate(m.APIKeyID, globalStats)
+	if m.APIKeyID > 0 {
+		op.StatsAPIKeyDailyUpdate(uint(m.APIKeyID), globalStats)
+	}
 	op.StatsRealtimeRecord(0) // 早期失败无输出 Token
 	if m.RequestModel != "" {
 		op.StatsModelUpdate(m.RequestModel, globalStats)
@@ -125,6 +128,9 @@ func (m *RelayMetrics) Save(ctx context.Context, success bool, err error, attemp
 	op.StatsHourlyUpdate(globalStats)
 	op.StatsDailyUpdate(context.Background(), globalStats)
 	op.StatsAPIKeyUpdate(m.APIKeyID, globalStats)
+	if m.APIKeyID > 0 {
+		op.StatsAPIKeyDailyUpdate(uint(m.APIKeyID), globalStats)
+	}
 	// 仅在有有效渠道时更新渠道统计（避免 channel=0 的无效记录）
 	// 渠道维度：Token/Cost/WaitTime 由 Save 统一记录，成功时记录 success，
 	// 失败时不记录 RequestFailed（attempt() 已按每次尝试记录）

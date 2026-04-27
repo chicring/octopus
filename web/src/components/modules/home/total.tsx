@@ -3,9 +3,7 @@
 import { motion } from 'motion/react';
 import {
     Activity,
-    ArrowDownToLine,
     ChartColumnBig,
-    ArrowUpFromLine,
     Gauge,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -52,39 +50,17 @@ export function Total() {
                     value: statsTotalFormatted?.total_cost.formatted.value,
                     unit: statsTotalFormatted?.total_cost.formatted.unit,
                 },
-            ],
-        },
-        {
-            title: t('inputStats'),
-            headerIcon: ArrowDownToLine,
-            accent: 'bg-chart-3',
-            items: [
                 {
                     label: t('inputTokens'),
                     value: statsTotalFormatted?.input_token.formatted.value,
                     unit: statsTotalFormatted?.input_token.formatted.unit,
+                    sub: true,
                 },
-                {
-                    label: t('inputCost'),
-                    value: statsTotalFormatted?.input_cost.formatted.value,
-                    unit: statsTotalFormatted?.input_cost.formatted.unit,
-                },
-            ],
-        },
-        {
-            title: t('outputStats'),
-            headerIcon: ArrowUpFromLine,
-            accent: 'bg-chart-4',
-            items: [
                 {
                     label: t('outputTokens'),
                     value: statsTotalFormatted?.output_token.formatted.value,
                     unit: statsTotalFormatted?.output_token.formatted.unit,
-                },
-                {
-                    label: t('outputCost'),
-                    value: statsTotalFormatted?.output_cost.formatted.value,
-                    unit: statsTotalFormatted?.output_cost.formatted.unit,
+                    sub: true,
                 },
             ],
         },
@@ -108,7 +84,7 @@ export function Total() {
     ];
 
     return (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-3 gap-3">
             {cards.map((card, index) => (
                 <motion.section
                     key={card.title}
@@ -123,18 +99,18 @@ export function Total() {
                 >
                     <div className={`h-0.5 ${card.accent}`} />
 
-                    <div className="flex flex-col gap-3 p-4">
+                    <div className="flex flex-col gap-2 p-4">
                         <div className="flex items-center gap-1.5">
                             <card.headerIcon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                             <h3 className="font-medium text-xs text-muted-foreground truncate">{card.title}</h3>
                         </div>
 
-                        <div className="flex flex-col gap-2">
+                        <div className="flex flex-col gap-1.5">
                             {card.items.map((item) => (
-                                <div key={item.label} className="flex flex-col">
+                                <div key={item.label} className={`flex flex-col ${'sub' in item && item.sub ? 'opacity-60' : ''}`}>
                                     <span className="text-[11px] text-muted-foreground/70 truncate">{item.label}</span>
                                     <div className="flex items-baseline gap-0.5">
-                                        <span className="text-lg font-semibold tabular-nums leading-tight">
+                                        <span className={`font-semibold tabular-nums leading-tight ${'sub' in item && item.sub ? 'text-sm' : 'text-lg'}`}>
                                             <AnimatedNumber value={item.value} />
                                         </span>
                                         {item.unit && (
