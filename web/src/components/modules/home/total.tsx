@@ -3,181 +3,147 @@
 import { motion } from 'motion/react';
 import {
     Activity,
-    MessageSquare,
-    Clock,
     ArrowDownToLine,
     ChartColumnBig,
-    Bot,
     ArrowUpFromLine,
-    Rewind,
-    DollarSign,
-    FastForward,
     Gauge,
-    Timer
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useStatsTotal } from '@/api/endpoints/stats';
+import { useStatsTotal, useStatsRealtime } from '@/api/endpoints/stats';
 import { AnimatedNumber } from '@/components/common/AnimatedNumber';
 import { EASING } from '@/lib/animations/fluid-transitions';
 
 
 export function Total() {
     const { data: statsTotalFormatted } = useStatsTotal();
+    const { data: statsRealtime } = useStatsRealtime();
     const t = useTranslations('home.total');
 
     const cards = [
         {
             title: t('requestStats'),
             headerIcon: Activity,
+            accent: 'bg-primary',
             items: [
                 {
                     label: t('requestCount'),
                     value: statsTotalFormatted?.request_count.formatted.value,
-                    icon: MessageSquare,
-                    color: 'text-primary',
-                    bgColor: 'bg-primary/10',
-                    unit: statsTotalFormatted?.request_count.formatted.unit
+                    unit: statsTotalFormatted?.request_count.formatted.unit,
                 },
                 {
                     label: t('timeConsumed'),
                     value: statsTotalFormatted?.wait_time.formatted.value,
-                    icon: Clock,
-                    color: 'text-primary',
-                    bgColor: 'bg-accent/10',
-                    unit: statsTotalFormatted?.wait_time.formatted.unit
-                }
-            ]
+                    unit: statsTotalFormatted?.wait_time.formatted.unit,
+                },
+            ],
         },
         {
             title: t('totalStats'),
             headerIcon: ChartColumnBig,
+            accent: 'bg-chart-1',
             items: [
                 {
                     label: t('totalToken'),
                     value: statsTotalFormatted?.total_token.formatted.value,
-                    icon: Bot,
-                    color: 'text-primary',
-                    bgColor: 'bg-chart-1/10',
-                    unit: statsTotalFormatted?.total_token.formatted.unit
+                    unit: statsTotalFormatted?.total_token.formatted.unit,
                 },
                 {
                     label: t('totalCost'),
                     value: statsTotalFormatted?.total_cost.formatted.value,
-                    icon: DollarSign,
-                    color: 'text-primary',
-                    bgColor: 'bg-chart-2/10',
-                    unit: statsTotalFormatted?.total_cost.formatted.unit
-                }
-            ]
+                    unit: statsTotalFormatted?.total_cost.formatted.unit,
+                },
+            ],
         },
         {
             title: t('inputStats'),
             headerIcon: ArrowDownToLine,
+            accent: 'bg-chart-3',
             items: [
                 {
                     label: t('inputTokens'),
                     value: statsTotalFormatted?.input_token.formatted.value,
-                    icon: Rewind,
-                    color: 'text-primary',
-                    bgColor: 'bg-chart-3/10',
-                    unit: statsTotalFormatted?.input_token.formatted.unit
+                    unit: statsTotalFormatted?.input_token.formatted.unit,
                 },
                 {
                     label: t('inputCost'),
                     value: statsTotalFormatted?.input_cost.formatted.value,
-                    icon: DollarSign,
-                    color: 'text-primary',
-                    bgColor: 'bg-chart-3/10',
-                    unit: statsTotalFormatted?.input_cost.formatted.unit
-                }
-            ]
+                    unit: statsTotalFormatted?.input_cost.formatted.unit,
+                },
+            ],
         },
         {
             title: t('outputStats'),
             headerIcon: ArrowUpFromLine,
+            accent: 'bg-chart-4',
             items: [
                 {
                     label: t('outputTokens'),
                     value: statsTotalFormatted?.output_token.formatted.value,
-                    icon: FastForward,
-                    color: 'text-primary',
-                    bgColor: 'bg-chart-4/10',
-                    unit: statsTotalFormatted?.output_token.formatted.unit
+                    unit: statsTotalFormatted?.output_token.formatted.unit,
                 },
                 {
                     label: t('outputCost'),
                     value: statsTotalFormatted?.output_cost.formatted.value,
-                    icon: DollarSign,
-                    color: 'text-primary',
-                    bgColor: 'bg-chart-4/10',
-                    unit: statsTotalFormatted?.output_cost.formatted.unit
-                }
-            ]
+                    unit: statsTotalFormatted?.output_cost.formatted.unit,
+                },
+            ],
         },
         {
-            title: t('tpsStats'),
+            title: t('realtimeStats'),
             headerIcon: Gauge,
+            accent: 'bg-chart-5',
             items: [
                 {
-                    label: t('avgTps'),
-                    value: statsTotalFormatted?.output_tps.formatted.value,
-                    icon: Gauge,
-                    color: 'text-primary',
-                    bgColor: 'bg-chart-5/10',
-                    unit: statsTotalFormatted?.output_tps.formatted.unit
+                    label: t('rps'),
+                    value: (statsRealtime?.rps ?? 0).toString(),
+                    unit: 'req/s',
                 },
                 {
-                    label: t('outputTime'),
-                    value: statsTotalFormatted?.output_time.formatted.value,
-                    icon: Timer,
-                    color: 'text-primary',
-                    bgColor: 'bg-accent/10',
-                    unit: statsTotalFormatted?.output_time.formatted.unit
-                }
-            ]
-        }
+                    label: t('tps'),
+                    value: (statsRealtime?.tps ?? 0).toString(),
+                    unit: 'tok/s',
+                },
+            ],
+        },
     ];
 
     return (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             {cards.map((card, index) => (
                 <motion.section
-                    key={index}
-                    className="rounded-2xl bg-card border border-border/50 p-4 text-card-foreground flex flex-col gap-3"
+                    key={card.title}
+                    className="rounded-2xl bg-card border border-border/50 overflow-hidden text-card-foreground flex flex-col"
                     initial={{ opacity: 0, y: 20, filter: 'blur(8px)' }}
                     animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
                     transition={{
                         duration: 0.5,
                         ease: EASING.easeOutExpo,
-                        delay: index * 0.08,
+                        delay: index * 0.06,
                     }}
                 >
-                    <div className="flex items-center gap-2">
-                        <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-primary/10">
-                            <card.headerIcon className="w-3.5 h-3.5 text-primary" />
-                        </div>
-                        <h3 className="font-medium text-sm text-muted-foreground truncate">{card.title}</h3>
-                    </div>
+                    <div className={`h-0.5 ${card.accent}`} />
 
-                    <div className="flex flex-col gap-3">
-                        {card.items.map((item, idx) => (
-                            <div key={idx} className="flex items-center gap-3">
-                                <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${item.bgColor} ${item.color}`}>
-                                    <item.icon className="w-4 h-4" />
-                                </div>
-                                <div className="flex flex-col min-w-0">
-                                    <span className="text-xs text-muted-foreground truncate">{item.label}</span>
-                                    <div className="flex items-baseline gap-1">
-                                        <span className="text-lg font-semibold tabular-nums">
+                    <div className="flex flex-col gap-3 p-4">
+                        <div className="flex items-center gap-1.5">
+                            <card.headerIcon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                            <h3 className="font-medium text-xs text-muted-foreground truncate">{card.title}</h3>
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                            {card.items.map((item) => (
+                                <div key={item.label} className="flex flex-col">
+                                    <span className="text-[11px] text-muted-foreground/70 truncate">{item.label}</span>
+                                    <div className="flex items-baseline gap-0.5">
+                                        <span className="text-lg font-semibold tabular-nums leading-tight">
                                             <AnimatedNumber value={item.value} />
                                         </span>
                                         {item.unit && (
-                                            <span className="text-xs text-muted-foreground">{item.unit}</span>
+                                            <span className="text-[11px] text-muted-foreground/60">{item.unit}</span>
                                         )}
                                     </div>
                                 </div>
-                            </div>
-                        ))}
+                            ))}
+                        </div>
                     </div>
                 </motion.section>
             ))}

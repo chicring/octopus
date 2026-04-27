@@ -93,16 +93,6 @@
         }
     },
     "home": {
-        "realtime": {
-            "rps": "RPS",
-            "rpm": "RPM",
-            "tps": "TPS",
-            "tpm": "TPM",
-            "rpsDescription": "Requests per second",
-            "rpmDescription": "Requests per minute",
-            "tpsDescription": "Output tokens per second",
-            "tpmDescription": "Output tokens per minute"
-        },
         "activity": {
             "requestCount": "Requests",
             "waitTime": "Wait Time",
@@ -123,9 +113,9 @@
             "inputCost": "Input Cost",
             "outputTokens": "Output Tokens",
             "outputCost": "Output Cost",
-            "tpsStats": "TPS Stats",
-            "avgTps": "Avg TPS",
-            "outputTime": "Output Time"
+            "realtimeStats": "Realtime",
+            "rps": "RPS",
+            "tps": "TPS"
         },
         "chart": {
             "title": "Trend",

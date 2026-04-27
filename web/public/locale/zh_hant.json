@@ -93,16 +93,6 @@
         }
     },
     "home": {
-        "realtime": {
-            "rps": "RPS",
-            "rpm": "RPM",
-            "tps": "TPS",
-            "tpm": "TPM",
-            "rpsDescription": "當前每秒請求數",
-            "rpmDescription": "當前每分鐘請求數",
-            "tpsDescription": "當前每秒輸出 Token 數",
-            "tpmDescription": "當前每分鐘輸出 Token 數"
-        },
         "activity": {
             "requestCount": "請求次數",
             "waitTime": "等待時間",
@@ -123,9 +113,9 @@
             "inputCost": "輸入費用",
             "outputTokens": "輸出 Tokens",
             "outputCost": "輸出費用",
-            "tpsStats": "TPS 統計",
-            "avgTps": "平均 TPS",
-            "outputTime": "輸出時間"
+            "realtimeStats": "即時監控",
+            "rps": "RPS",
+            "tps": "TPS"
         },
         "chart": {
             "title": "趨勢",
