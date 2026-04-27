@@ -25,20 +25,21 @@ func TestRealtime_SameSecondAccumulate(t *testing.T) {
 
 	got := StatsRealtimeGet()
 
-	// RPS: 3 次请求在当前秒
-	if got.RPS != 3 {
-		t.Errorf("RPS: got %d, want 3", got.RPS)
-	}
-	// TPS: 600 tokens 在当前秒
-	if got.TPS != 600 {
-		t.Errorf("TPS: got %d, want 600", got.TPS)
-	}
-	// RPM: 同一秒内的请求也在 60 秒窗口内
+	// RPM: 3 次请求在 60 秒窗口内
 	if got.RPM != 3 {
 		t.Errorf("RPM: got %d, want 3", got.RPM)
 	}
+	// TPM: 600 tokens 在 60 秒窗口内
 	if got.TPM != 600 {
 		t.Errorf("TPM: got %d, want 600", got.TPM)
+	}
+	// RPS = RPM / 60 = 0 (integer division)
+	if got.RPS != 0 {
+		t.Errorf("RPS: got %d, want 0", got.RPS)
+	}
+	// TPS = TPM / 60 = 10
+	if got.TPS != 10 {
+		t.Errorf("TPS: got %d, want 10", got.TPS)
 	}
 }
 
@@ -49,8 +50,11 @@ func TestRealtime_EarlyFailureZeroOutputToken(t *testing.T) {
 	StatsRealtimeRecord(0)
 
 	got := StatsRealtimeGet()
-	if got.RPS != 1 {
-		t.Errorf("RPS: got %d, want 1", got.RPS)
+	if got.RPM != 1 {
+		t.Errorf("RPM: got %d, want 1", got.RPM)
+	}
+	if got.RPS != 0 {
+		t.Errorf("RPS: got %d, want 0", got.RPS)
 	}
 	if got.TPS != 0 {
 		t.Errorf("TPS: got %d, want 0", got.TPS)
@@ -80,13 +84,22 @@ func TestRealtime_CrossSecondOverwrite(t *testing.T) {
 
 	got := StatsRealtimeGet()
 
+	// RPM: 旧桶被覆盖后，当前秒 1 次请求 + 其他桶可能有的数据
 	// 当前秒只有 1 次请求（StatsRealtimeRecord 覆盖了旧桶后 +1）
-	if got.RPS != 1 {
-		t.Errorf("RPS: got %d, want 1", got.RPS)
+	if got.RPM != 1 {
+		t.Errorf("RPM: got %d, want 1", got.RPM)
 	}
-	// 当前秒 TPS = 50（覆盖后写入的）
-	if got.TPS != 50 {
-		t.Errorf("TPS: got %d, want 50", got.TPS)
+	// TPM = 50（覆盖后写入的）
+	if got.TPM != 50 {
+		t.Errorf("TPM: got %d, want 50", got.TPM)
+	}
+	// RPS = RPM / 60 = 0
+	if got.RPS != 0 {
+		t.Errorf("RPS: got %d, want 0", got.RPS)
+	}
+	// TPS = TPM / 60 = 0
+	if got.TPS != 0 {
+		t.Errorf("TPS: got %d, want 0", got.TPS)
 	}
 }
 
@@ -158,13 +171,13 @@ func TestRealtime_MultipleSecondsWindow(t *testing.T) {
 	if got.TPM != 300 {
 		t.Errorf("TPM: got %d, want 300", got.TPM)
 	}
-	// RPS: 仅当前秒 = 10
-	if got.RPS != 10 {
-		t.Errorf("RPS: got %d, want 10", got.RPS)
+	// RPS = RPM / 60 = 0 (integer division)
+	if got.RPS != 0 {
+		t.Errorf("RPS: got %d, want 0", got.RPS)
 	}
-	// TPS: 仅当前秒 = 100
-	if got.TPS != 100 {
-		t.Errorf("TPS: got %d, want 100", got.TPS)
+	// TPS = TPM / 60 = 5
+	if got.TPS != 5 {
+		t.Errorf("TPS: got %d, want 5", got.TPS)
 	}
 }
 
@@ -195,6 +208,14 @@ func TestRealtime_ConcurrentRecord(t *testing.T) {
 	}
 	if got.TPM != totalExpected { // 每次 record 1 token
 		t.Errorf("TPM: got %d, want %d", got.TPM, totalExpected)
+	}
+	// RPS = RPM / 60
+	if got.RPS != totalExpected/60 {
+		t.Errorf("RPS: got %d, want %d", got.RPS, totalExpected/60)
+	}
+	// TPS = TPM / 60
+	if got.TPS != totalExpected/60 {
+		t.Errorf("TPS: got %d, want %d", got.TPS, totalExpected/60)
 	}
 }
 

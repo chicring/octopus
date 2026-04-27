@@ -40,14 +40,14 @@ func StatsRealtimeRecord(outputTokens int64) {
 }
 
 // StatsRealtimeGet 返回当前实时指标快照
+// RPS/TPS = RPM/TPM / windowSize（60秒滑动窗口的平均每秒速率）
 func StatsRealtimeGet() model.StatsRealtime {
 	now := time.Now().Unix()
 
 	globalRealtimeWindow.mu.RLock()
 	defer globalRealtimeWindow.mu.RUnlock()
 
-	var rpm, tpm int64   // 近 60 秒
-	var rps, tps int64   // 当前秒
+	var rpm, tpm int64 // 近 60 秒
 
 	for i := 0; i < realtimeWindowSize; i++ {
 		b := &globalRealtimeWindow.buckets[i]
@@ -57,17 +57,13 @@ func StatsRealtimeGet() model.StatsRealtime {
 		}
 		rpm += b.Requests
 		tpm += b.OutputTokens
-		if age == 0 {
-			rps += b.Requests
-			tps += b.OutputTokens
-		}
 	}
 
 	return model.StatsRealtime{
 		WindowSizeSec: realtimeWindowSize,
-		RPS:           rps,
+		RPS:           rpm / int64(realtimeWindowSize),
 		RPM:           rpm,
-		TPS:           tps,
+		TPS:           tpm / int64(realtimeWindowSize),
 		TPM:           tpm,
 	}
 }
