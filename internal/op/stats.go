@@ -152,75 +152,104 @@ func persistStatsSnapshots(
 	apiKeyIDs []int,
 	apiKeyDailyKeys []apiKeyDailyKey,
 ) error {
-	dbConn := db.GetDB().WithContext(ctx)
-
-	if result := dbConn.Save(&totalSnap); result.Error != nil {
-		return result.Error
-	}
-	if result := dbConn.Save(&dailySnap); result.Error != nil {
-		return result.Error
-	}
-
-	todayDate := time.Now().Format("20060102")
-	hourlyStats := make([]model.StatsHourly, 0, 24)
-	for hour := 0; hour < 24; hour++ {
-		if hourlyAll[hour].Date == todayDate {
-			hourlyStats = append(hourlyStats, hourlyAll[hour])
-		}
-	}
-	if len(hourlyStats) > 0 {
-		if result := dbConn.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "date"}, {Name: "hour"}},
-			UpdateAll: true,
-		}).Create(&hourlyStats); result.Error != nil {
+	return db.GetDB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if result := tx.Save(&totalSnap); result.Error != nil {
 			return result.Error
 		}
-	}
-
-	for _, id := range channelIDs {
-		ch, ok := statsChannelCache.Get(id)
-		if !ok {
-			continue
-		}
-		if result := dbConn.Save(&ch); result.Error != nil {
+		if result := tx.Save(&dailySnap); result.Error != nil {
 			return result.Error
 		}
-	}
 
-	for _, name := range modelNames {
-		m, ok := statsModelCache.Get(name)
-		if !ok {
-			continue
+		todayDate := time.Now().Format("20060102")
+		hourlyStats := make([]model.StatsHourly, 0, 24)
+		for hour := 0; hour < 24; hour++ {
+			if hourlyAll[hour].Date == todayDate {
+				hourlyStats = append(hourlyStats, hourlyAll[hour])
+			}
 		}
-		if result := dbConn.Save(&m); result.Error != nil {
-			return result.Error
+		if len(hourlyStats) > 0 {
+			if result := tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "date"}, {Name: "hour"}},
+				UpdateAll: true,
+			}).Create(&hourlyStats); result.Error != nil {
+				return result.Error
+			}
 		}
-	}
 
-	for _, id := range apiKeyIDs {
-		ak, ok := statsAPIKeyCache.Get(id)
-		if !ok {
-			continue
+		// 批量收集 Channel 统计
+		if len(channelIDs) > 0 {
+			var channels []model.StatsChannel
+			for _, id := range channelIDs {
+				if ch, ok := statsChannelCache.Get(id); ok {
+					channels = append(channels, ch)
+				}
+			}
+			if len(channels) > 0 {
+				if result := tx.Clauses(clause.OnConflict{
+					Columns:   []clause.Column{{Name: "channel_id"}},
+					UpdateAll: true,
+				}).Create(&channels); result.Error != nil {
+					return result.Error
+				}
+			}
 		}
-		if result := dbConn.Save(&ak); result.Error != nil {
-			return result.Error
-		}
-	}
 
-	for _, k := range apiKeyDailyKeys {
-		akd, ok := statsAPIKeyDailyCache.Get(k)
-		if !ok {
-			continue
+		// 批量收集 Model 统计
+		if len(modelNames) > 0 {
+			var models []model.StatsModel
+			for _, name := range modelNames {
+				if m, ok := statsModelCache.Get(name); ok {
+					models = append(models, m)
+				}
+			}
+			if len(models) > 0 {
+				if result := tx.Clauses(clause.OnConflict{
+					Columns:   []clause.Column{{Name: "name"}},
+					UpdateAll: true,
+				}).Create(&models); result.Error != nil {
+					return result.Error
+				}
+			}
 		}
-		if result := dbConn.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "api_key_id"}, {Name: "date"}},
-			UpdateAll: true,
-		}).Create(&akd); result.Error != nil {
-			return result.Error
-		}
-	}
 
-	return nil
+		// 批量收集 APIKey 统计
+		if len(apiKeyIDs) > 0 {
+			var apiKeys []model.StatsAPIKey
+			for _, id := range apiKeyIDs {
+				if ak, ok := statsAPIKeyCache.Get(id); ok {
+					apiKeys = append(apiKeys, ak)
+				}
+			}
+			if len(apiKeys) > 0 {
+				if result := tx.Clauses(clause.OnConflict{
+					Columns:   []clause.Column{{Name: "api_key_id"}},
+					UpdateAll: true,
+				}).Create(&apiKeys); result.Error != nil {
+					return result.Error
+				}
+			}
+		}
+
+		// 批量收集 APIKeyDaily 统计
+		if len(apiKeyDailyKeys) > 0 {
+			var apiKeyDailies []model.StatsAPIKeyDaily
+			for _, k := range apiKeyDailyKeys {
+				if akd, ok := statsAPIKeyDailyCache.Get(k); ok {
+					apiKeyDailies = append(apiKeyDailies, akd)
+				}
+			}
+			if len(apiKeyDailies) > 0 {
+				if result := tx.Clauses(clause.OnConflict{
+					Columns:   []clause.Column{{Name: "api_key_id"}, {Name: "date"}},
+					UpdateAll: true,
+				}).Create(&apiKeyDailies); result.Error != nil {
+					return result.Error
+				}
+			}
+		}
+
+		return nil
+	})
 }
 
 func statsSaveDBWithDailyOverride(ctx context.Context, dailyOverride model.StatsDaily) error {
@@ -306,12 +335,22 @@ func StatsDailyUpdate(ctx context.Context, metrics model.StatsMetrics) error {
 		return nil
 	}
 
+	// 日期变更：将旧数据标记为 dirty，由定时任务刷盘，不阻塞当前请求
 	prevDaily := statsDailyCache
 	statsDailyCache = model.StatsDaily{Date: today}
 	statsDailyCache.StatsMetrics.Add(metrics)
 	statsDailyCacheLock.Unlock()
 
-	return statsSaveDBWithDailyOverride(ctx, prevDaily)
+	// 异步刷盘旧日数据
+	go func() {
+		bgCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		if err := statsSaveDBWithDailyOverride(bgCtx, prevDaily); err != nil {
+			log.Errorf("async save previous daily stats failed: %v", err)
+		}
+	}()
+
+	return nil
 }
 
 func StatsTotalUpdate(metrics model.StatsMetrics) error {

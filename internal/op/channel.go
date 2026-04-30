@@ -13,6 +13,7 @@ import (
 	"github.com/bestruirui/octopus/internal/utils/cache"
 	"github.com/bestruirui/octopus/internal/utils/log"
 	"github.com/bestruirui/octopus/internal/utils/xstrings"
+	"gorm.io/gorm"
 )
 
 var channelCache = cache.New[int, model.Channel](16)
@@ -156,31 +157,41 @@ func ChannelKeySaveDB(ctx context.Context) error {
 		return nil
 	}
 
-	dbConn := db.GetDB().WithContext(ctx)
-	var firstErr error
+	// 收集所有需要更新的 Key
+	var keys []model.ChannelKey
 	for _, id := range keyIDs {
-		k, ok := channelKeyCache.Get(id)
-		if !ok {
-			continue
+		if k, ok := channelKeyCache.Get(id); ok {
+			keys = append(keys, k)
 		}
-		if err := dbConn.Save(&k).Error; err != nil {
-			if firstErr == nil {
-				firstErr = err
+	}
+
+	if len(keys) == 0 {
+		return nil
+	}
+
+	// 使用事务批量写入，减少磁盘 fsync 次数
+	err := db.GetDB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for i := range keys {
+			if err := tx.Save(&keys[i]).Error; err != nil {
+				return err
 			}
-			log.Errorf("failed to save channel key %d: %v", id, err)
 		}
+		return nil
+	})
+
+	if err != nil {
+		log.Errorf("failed to batch save channel keys: %v", err)
+		return err
 	}
 
-	// 仅在无错误时清空 dirty set，确保失败时下次重试
-	if firstErr == nil {
-		channelKeyCacheNeedUpdateLock.Lock()
-		for _, id := range keyIDs {
-			delete(channelKeyCacheNeedUpdate, id)
-		}
-		channelKeyCacheNeedUpdateLock.Unlock()
+	// 成功后清空 dirty set
+	channelKeyCacheNeedUpdateLock.Lock()
+	for _, id := range keyIDs {
+		delete(channelKeyCacheNeedUpdate, id)
 	}
+	channelKeyCacheNeedUpdateLock.Unlock()
 
-	return firstErr
+	return nil
 }
 
 func ChannelUpdate(req *model.ChannelUpdateRequest, ctx context.Context) (*model.Channel, error) {

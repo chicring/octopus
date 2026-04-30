@@ -96,7 +96,7 @@ func relayLogFlushToDB(ctx context.Context) error {
 	flushedUpto := len(batch)
 	relayLogCacheLock.Unlock()
 
-	result := db.GetDB().WithContext(ctx).Create(&batch)
+	result := db.GetDB().WithContext(ctx).CreateInBatches(&batch, 100)
 	if result.Error != nil {
 		return result.Error
 	}
