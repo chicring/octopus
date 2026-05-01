@@ -22,8 +22,8 @@ var clientRules = []clientRule{
 	// === 已确认 UA 格式的客户端 ===
 	// Claude Code: UA = "Claude-Code" 或 "claude-code/x.x.x"
 	{patterns: []string{"claude-code"}, name: "claude-code"},
-	// Roo Code: UA = "RooCode/x.x.x" 或 "roo-code"
-	{patterns: []string{"roocode", "roo-code"}, name: "roo-code"},
+	// Roo Code / Roo Cline: UA = "RooCode/x.x.x" 或 "roo-code" 或 "roo-cline/x.x.x"
+	{patterns: []string{"roocode", "roo-code", "roo-cline"}, name: "roo-code"},
 	// Cline (VSCode 扩展 saoudrizwan.claude-dev): UA = "Cline/x.x.x"
 	{patterns: []string{"cline/", "claude-dev"}, name: "cline"},
 	// Aider: UA 可能包含 "aider"
