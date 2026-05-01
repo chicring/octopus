@@ -36,7 +36,11 @@ func TestDetectClient(t *testing.T) {
 		{"warp/1.0.0", "warp"},
 		{"zed/1.0.0", "zed"},
 
-		// 优先级：专用客户端优先于通用 SDK
+		// Factory Droid / CLI
+		{"factory-droid/1.0.0", "factory-droid"},
+		{"factory/droid", "factory-droid"},
+		{"factory-cli/0.113.0", "factory-droid"},
+		{"Factory-CLI/0.114.1", "factory-droid"},
 		{"Cline/3.5.0 OpenAI/JS 4.50.0", "cline"},
 
 		// 边界匹配防误匹配

@@ -56,8 +56,8 @@ var clientRules = []clientRule{
 	{patterns: []string{"codegpt", "code-gpt"}, name: "codegpt"},
 	// Crush (短词，需边界匹配)
 	{patterns: []string{"crush/"}, name: "crush"},
-	// Factory Droid
-	{patterns: []string{"factory-droid", "factory/droid"}, name: "factory-droid"},
+	// Factory Droid / Factory CLI
+	{patterns: []string{"factory-droid", "factory/droid", "factory-cli", "factory/cli"}, name: "factory-droid"},
 	// Gemini CLI
 	{patterns: []string{"gemini-cli", "gemini/cli"}, name: "gemini-cli"},
 	// Gemini Code Assist
