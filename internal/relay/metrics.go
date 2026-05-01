@@ -20,6 +20,9 @@ type RelayMetrics struct {
 	RequestModel string
 	StartTime    time.Time
 
+	// 活跃请求追踪
+	activeRequestID int64
+
 	// 首 Token 时间
 	FirstTokenTime time.Time
 
@@ -43,6 +46,17 @@ func NewRelayMetrics(apiKeyID int, requestModel string, req *transformerModel.In
 
 func (m *RelayMetrics) SetFirstTokenTime(t time.Time) {
 	m.FirstTokenTime = t
+	if m.activeRequestID > 0 {
+		op.ActiveRequestUpdateStatus(m.activeRequestID, op.ActiveRequestStreaming)
+	}
+}
+
+func (m *RelayMetrics) SetActiveRequestID(id int64) {
+	m.activeRequestID = id
+}
+
+func (m *RelayMetrics) ActiveRequestID() int64 {
+	return m.activeRequestID
 }
 
 func (m *RelayMetrics) SetInternalResponse(resp *transformerModel.InternalLLMResponse, actualModel string) {

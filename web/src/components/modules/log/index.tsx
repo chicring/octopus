@@ -5,6 +5,7 @@ import { useLogs } from '@/api/endpoints/log';
 import { useAPIKeyList } from '@/api/endpoints/apikey';
 import { useGroupList } from '@/api/endpoints/group';
 import { LogCard } from './Item';
+import { ActiveRequestsPopover } from './ActiveRequests';
 import { Loader2, ArrowUp, Wifi, WifiOff, AlertTriangle } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { VirtualizedGrid } from '@/components/common/VirtualizedGrid';
@@ -30,6 +31,7 @@ export function Log() {
         isLoading,
         isLoadingMore,
         loadMore,
+        activeRequests,
         filterError,
         setFilterError,
         filterAPIKeyNames,
@@ -123,6 +125,7 @@ export function Log() {
                     deselectAllText={t('controls.deselectAll')}
                     className="shrink-0"
                 />
+                <ActiveRequestsPopover activeRequests={activeRequests} />
                 <div className="flex-1 min-w-2" />
                 <Button
                     variant="outline"

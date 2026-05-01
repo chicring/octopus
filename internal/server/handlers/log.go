@@ -30,6 +30,10 @@ func init() {
 				Handle(getStreamToken),
 		).
 		AddRoute(
+			router.NewRoute("/active", http.MethodGet).
+				Handle(listActiveRequests),
+		).
+		AddRoute(
 			router.NewRoute("/:id", http.MethodGet).
 				Handle(getLogDetail),
 		)
@@ -124,6 +128,11 @@ func getLogDetail(c *gin.Context) {
 	resp.Success(c, log)
 }
 
+func listActiveRequests(c *gin.Context) {
+	activeRequests := op.ActiveRequestList()
+	resp.Success(c, activeRequests)
+}
+
 func streamLog(c *gin.Context) {
 	token := c.Query("token")
 	if token == "" || !op.RelayLogStreamTokenVerify(token) {
@@ -146,6 +155,22 @@ func streamLog(c *gin.Context) {
 	logChan := op.RelayLogSubscribe()
 	defer op.RelayLogUnsubscribe(logChan)
 
+	activeChan := op.ActiveRequestSubscribe()
+	defer op.ActiveRequestUnsubscribe(activeChan)
+
+	// 先推送当前活跃请求快照
+	for _, req := range op.ActiveRequestList() {
+		event := op.ActiveRequestEvent{Type: "active_register", Request: req}
+		data, err := json.Marshal(event)
+		if err != nil {
+			continue
+		}
+		if _, err := c.Writer.Write([]byte(fmt.Sprintf("event: active\ndata: %s\n\n", data))); err != nil {
+			return
+		}
+	}
+	c.Writer.Flush()
+
 	ctx := c.Request.Context()
 
 	for {
@@ -161,6 +186,18 @@ func streamLog(c *gin.Context) {
 				continue
 			}
 			if _, err := c.Writer.Write([]byte(fmt.Sprintf("data: %s\n\n", data))); err != nil {
+				return
+			}
+			c.Writer.Flush()
+		case event, ok := <-activeChan:
+			if !ok {
+				return
+			}
+			data, err := json.Marshal(event)
+			if err != nil {
+				continue
+			}
+			if _, err := c.Writer.Write([]byte(fmt.Sprintf("event: active\ndata: %s\n\n", data))); err != nil {
 				return
 			}
 			c.Writer.Flush()

@@ -40,6 +40,17 @@ func Handler(inboundType inbound.InboundType, c *gin.Context) {
 	// 提前初始化 Metrics，确保早期失败也有日志记录
 	metrics := NewRelayMetrics(apiKeyID, requestModel, internalRequest)
 
+	// 注册活跃请求
+	var apiKeyName string
+	if apiKey, getErr := op.APIKeyGet(apiKeyID, c.Request.Context()); getErr == nil {
+		apiKeyName = apiKey.Name
+	}
+	activeID := op.ActiveRequestRegister(requestModel, apiKeyName)
+	metrics.SetActiveRequestID(activeID)
+	defer func() {
+		op.ActiveRequestUnregister(activeID)
+	}()
+
 	supportedModels := c.GetString("supported_models")
 	if supportedModels != "" {
 		supportedModelsArray := strings.Split(supportedModels, ",")
@@ -104,6 +115,12 @@ func Handler(inboundType inbound.InboundType, c *gin.Context) {
 			iter.Skip(item.ChannelID, 0, fmt.Sprintf("channel_%d", item.ChannelID), fmt.Sprintf("channel not found: %v", err))
 			lastErr = err
 			continue
+		}
+
+		// 更新活跃请求的渠道信息
+		if metrics.ActiveRequestID() > 0 {
+			op.ActiveRequestUpdateChannel(metrics.ActiveRequestID(), channel.Name, iter.Index()+1)
+			op.ActiveRequestUpdateStatus(metrics.ActiveRequestID(), op.ActiveRequestForwarding)
 		}
 		if !channel.Enabled {
 			iter.Skip(channel.ID, 0, channel.Name, "channel disabled")
@@ -202,6 +219,11 @@ func Handler(inboundType inbound.InboundType, c *gin.Context) {
 // attempt 统一管理一次通道尝试的完整生命周期
 func (ra *relayAttempt) attempt() attemptResult {
 	span := ra.iter.StartAttempt(ra.channel.ID, ra.usedKey.ID, ra.channel.Name, ra.usedKey.Remark)
+
+	// 更新活跃请求状态为等待首Token（流式请求）
+	if ra.metrics.ActiveRequestID() > 0 && ra.internalRequest.Stream != nil && *ra.internalRequest.Stream {
+		op.ActiveRequestUpdateStatus(ra.metrics.ActiveRequestID(), op.ActiveRequestWaitingFirstTok)
+	}
 
 	// 转发请求
 	statusCode, fwdErr := ra.forward()

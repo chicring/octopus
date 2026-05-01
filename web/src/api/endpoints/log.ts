@@ -50,6 +50,32 @@ export interface RelayLog {
 }
 
 /**
+ * 活跃请求状态
+ */
+export type ActiveRequestStatus = 'forwarding' | 'waiting_first_token' | 'streaming';
+
+/**
+ * 活跃请求
+ */
+export interface ActiveRequest {
+    id: number;
+    start_time: number;
+    request_model: string;
+    api_key_name: string;
+    status: ActiveRequestStatus;
+    channel_name: string;
+    attempt_count: number;
+}
+
+/**
+ * 活跃请求 SSE 事件
+ */
+export interface ActiveRequestEvent {
+    type: 'active_register' | 'active_update' | 'active_complete';
+    request: ActiveRequest;
+}
+
+/**
  * 日志列表查询参数
  */
 export interface LogListParams {
@@ -114,6 +140,7 @@ export function useLogs(options: { pageSize?: number } = {}) {
     const [isConnected, setIsConnected] = useState(false);
     const [error, setError] = useState<Error | null>(null);
     const [reconnectNonce, setReconnectNonce] = useState(0);
+    const [activeRequests, setActiveRequests] = useState<ActiveRequest[]>([]);
 
     const eventSourceRef = useRef<EventSource | null>(null);
     const connectGenerationRef = useRef(0);
@@ -274,6 +301,29 @@ export function useLogs(options: { pageSize?: number } = {}) {
                     }
                 };
 
+                // 监听活跃请求事件
+                eventSource.addEventListener('active', (event) => {
+                    if (cancelled || connectGenerationRef.current !== currentGen) return;
+
+                    try {
+                        const activeEvent: ActiveRequestEvent = JSON.parse(event.data);
+                        setActiveRequests((prev) => {
+                            switch (activeEvent.type) {
+                                case 'active_register':
+                                    return [activeEvent.request, ...prev.filter((r) => r.id !== activeEvent.request.id)];
+                                case 'active_update':
+                                    return prev.map((r) => r.id === activeEvent.request.id ? activeEvent.request : r);
+                                case 'active_complete':
+                                    return prev.filter((r) => r.id !== activeEvent.request.id);
+                                default:
+                                    return prev;
+                            }
+                        });
+                    } catch (e) {
+                        logger.error('解析活跃请求数据失败:', e);
+                    }
+                });
+
                 eventSource.onerror = () => {
                     if (cancelled || connectGenerationRef.current !== currentGen) return;
 
@@ -330,6 +380,7 @@ export function useLogs(options: { pageSize?: number } = {}) {
         isLoadingMore: logsQuery.isFetchingNextPage,
         loadMore,
         clear,
+        activeRequests,
         filterError,
         setFilterError,
         filterAPIKeyNames,
