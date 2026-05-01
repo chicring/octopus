@@ -33,15 +33,22 @@ type RelayMetrics struct {
 	// 统计指标
 	ActualModel string
 	Stats       model.StatsMetrics
+
+	// 客户端识别
+	UserAgent  string
+	ClientName string
 }
 
-func NewRelayMetrics(apiKeyID int, requestModel string, req *transformerModel.InternalLLMRequest) *RelayMetrics {
-	return &RelayMetrics{
+func NewRelayMetrics(apiKeyID int, requestModel string, req *transformerModel.InternalLLMRequest, userAgent string) *RelayMetrics {
+	m := &RelayMetrics{
 		APIKeyID:        apiKeyID,
 		RequestModel:    requestModel,
 		StartTime:       time.Now(),
 		InternalRequest: req,
+		UserAgent:       userAgent,
+		ClientName:      DetectClient(userAgent),
 	}
+	return m
 }
 
 func (m *RelayMetrics) SetFirstTokenTime(t time.Time) {
@@ -234,6 +241,8 @@ func (m *RelayMetrics) saveLog(ctx context.Context, err error, duration time.Dur
 		UseTime:          int(duration.Milliseconds()),
 		Attempts:         attempts,
 		TotalAttempts:    len(attempts),
+		UserAgent:        m.UserAgent,
+		ClientName:       m.ClientName,
 	}
 
 	if apiKey, getErr := op.APIKeyGet(m.APIKeyID, context.Background()); getErr == nil {

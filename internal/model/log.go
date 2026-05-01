@@ -43,4 +43,6 @@ type RelayLog struct {
 	Error             string           `json:"error"`                                    // 错误信息
 	Attempts          []ChannelAttempt `json:"attempts" gorm:"serializer:json"`          // 所有尝试记录
 	TotalAttempts     int              `json:"total_attempts"`                           // 总尝试次数
+	UserAgent         string           `json:"user_agent"`                               // 原始 User-Agent 头
+	ClientName        string           `json:"client_name"`                              // 解析后的客户端标识（如 claude-code, cline 等）
 }

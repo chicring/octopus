@@ -38,7 +38,7 @@ func Handler(inboundType inbound.InboundType, c *gin.Context) {
 	apiKeyID := c.GetInt("api_key_id")
 
 	// 提前初始化 Metrics，确保早期失败也有日志记录
-	metrics := NewRelayMetrics(apiKeyID, requestModel, internalRequest)
+	metrics := NewRelayMetrics(apiKeyID, requestModel, internalRequest, c.Request.UserAgent())
 
 	// 注册活跃请求
 	var apiKeyName string
@@ -220,9 +220,13 @@ func Handler(inboundType inbound.InboundType, c *gin.Context) {
 func (ra *relayAttempt) attempt() attemptResult {
 	span := ra.iter.StartAttempt(ra.channel.ID, ra.usedKey.ID, ra.channel.Name, ra.usedKey.Remark)
 
-	// 更新活跃请求状态为等待首Token（流式请求）
-	if ra.metrics.ActiveRequestID() > 0 && ra.internalRequest.Stream != nil && *ra.internalRequest.Stream {
-		op.ActiveRequestUpdateStatus(ra.metrics.ActiveRequestID(), op.ActiveRequestWaitingFirstTok)
+	// 更新活跃请求状态
+	if ra.metrics.ActiveRequestID() > 0 {
+		if ra.internalRequest.Stream != nil && *ra.internalRequest.Stream {
+			op.ActiveRequestUpdateStatus(ra.metrics.ActiveRequestID(), op.ActiveRequestWaitingFirstTok)
+		} else {
+			op.ActiveRequestUpdateStatus(ra.metrics.ActiveRequestID(), op.ActiveRequestProcessing)
+		}
 	}
 
 	// 转发请求

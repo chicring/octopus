@@ -10,6 +10,7 @@ import { githubLightTheme } from '@uiw/react-json-view/githubLight';
 import { useTheme } from 'next-themes';
 import { type RelayLog, type ChannelAttempt, getLogDetail } from '@/api/endpoints/log';
 import { getModelIcon } from '@/lib/model-icons';
+import { ClientIconBadge } from './ClientIcon';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { CopyIconButton } from '@/components/common/CopyButton';
@@ -292,7 +293,14 @@ export function LogCard({ log }: { log: RelayLog }) {
                     )}
                 >
                     <div className={cn("p-4 grid grid-cols-[auto_1fr] gap-4", hasError ? "items-start" : "items-center")}>
-                        <ModelAvatar size={40} />
+                        <div className="relative shrink-0">
+                            <ModelAvatar size={40} />
+                            {log.client_name && (
+                                <span className="absolute -bottom-1 -right-1 rounded-full bg-card border border-border shadow-sm">
+                                    <ClientIconBadge clientName={log.client_name} className="size-4 p-0.5" />
+                                </span>
+                            )}
+                        </div>
                         <div className="min-w-0 flex flex-col gap-3">
                             <div className="flex items-center gap-2 min-w-0 text-sm">
                                 <span className="font-semibold text-card-foreground truncate" title={log.request_model_name}>
@@ -383,7 +391,14 @@ export function LogCard({ log }: { log: RelayLog }) {
                     <MorphingDialogContent className="relative w-[calc(100vw-2rem)] md:w-[80vw] bg-card text-card-foreground px-6 py-4 rounded-3xl h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
                         <MorphingDialogClose className="top-4 right-5 text-muted-foreground hover:text-foreground transition-colors" />
                         <MorphingDialogTitle className="flex items-center gap-2 mb-3 text-sm">
-                            <ModelAvatar size={28} />
+                            <div className="relative shrink-0">
+                                <ModelAvatar size={28} />
+                                {log.client_name && (
+                                    <span className="absolute -bottom-1 -right-1 rounded-full bg-card border border-border shadow-sm">
+                                        <ClientIconBadge clientName={log.client_name} className="size-4 p-0.5" />
+                                    </span>
+                                )}
+                            </div>
                             <span className="font-semibold text-card-foreground">{log.request_model_name}</span>
                             <ArrowRight className="size-3.5 text-muted-foreground/50" />
                             {hasMultipleAttempts ? (

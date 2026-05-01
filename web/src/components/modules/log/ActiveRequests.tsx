@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import { Activity, Clock, KeyRound, ArrowRight } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -10,8 +10,9 @@ import { cn } from '@/lib/utils';
 import { getModelIcon } from '@/lib/model-icons';
 import type { ActiveRequest, ActiveRequestStatus } from '@/api/endpoints/log';
 
-function formatElapsed(startTime: number): string {
-    const elapsed = Math.floor(Date.now() / 1000 - startTime);
+function formatElapsed(startTime: number, now: number): string {
+    const elapsed = Math.floor(now / 1000 - startTime);
+    if (elapsed < 0) return '0s';
     if (elapsed < 60) return `${elapsed}s`;
     const min = Math.floor(elapsed / 60);
     const sec = elapsed % 60;
@@ -22,23 +23,17 @@ const STATUS_CONFIG: Record<ActiveRequestStatus, { labelKey: string; color: stri
     forwarding: { labelKey: 'forwarding', color: 'text-blue-500', dotClass: 'bg-blue-500' },
     waiting_first_token: { labelKey: 'waitingFirstToken', color: 'text-amber-500', dotClass: 'bg-amber-500' },
     streaming: { labelKey: 'streaming', color: 'text-green-500', dotClass: 'bg-green-500' },
+    processing: { labelKey: 'processing', color: 'text-purple-500', dotClass: 'bg-purple-500' },
 };
 
-function ActiveRequestItem({ request }: { request: ActiveRequest }) {
+function ActiveRequestItem({ request, now }: { request: ActiveRequest; now: number }) {
     const t = useTranslations('log.activeRequest');
-    const { Avatar: ModelAvatar, color: brandColor } = useMemo(
+    const { Avatar: ModelAvatar } = useMemo(
         () => getModelIcon(request.request_model),
         [request.request_model]
     );
     const statusConfig = STATUS_CONFIG[request.status] ?? STATUS_CONFIG.forwarding;
-    const [elapsed, setElapsed] = useState(() => formatElapsed(request.start_time));
-
-    useEffect(() => {
-        const timer = setInterval(() => {
-            setElapsed(formatElapsed(request.start_time));
-        }, 1000);
-        return () => clearInterval(timer);
-    }, [request.start_time]);
+    const elapsed = formatElapsed(request.start_time, now);
 
     return (
         <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-muted/50 transition-colors">
@@ -87,6 +82,14 @@ export function ActiveRequestsPopover({ activeRequests }: ActiveRequestsPopoverP
     const t = useTranslations('log.activeRequest');
     const count = activeRequests.length;
 
+    // 单一计时器驱动所有子项的耗时显示
+    const [now, setNow] = useState(() => Date.now());
+    useEffect(() => {
+        if (count === 0) return;
+        const timer = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(timer);
+    }, [count > 0]); // eslint-disable-line react-hooks/exhaustive-deps
+
     return (
         <Popover>
             <PopoverTrigger asChild>
@@ -125,7 +128,7 @@ export function ActiveRequestsPopover({ activeRequests }: ActiveRequestsPopoverP
                         </div>
                     ) : (
                         activeRequests.map((req) => (
-                            <ActiveRequestItem key={req.id} request={req} />
+                            <ActiveRequestItem key={req.id} request={req} now={now} />
                         ))
                     )}
                 </div>

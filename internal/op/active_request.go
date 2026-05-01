@@ -1,6 +1,7 @@
 package op
 
 import (
+	"sort"
 	"sync"
 	"time"
 
@@ -14,6 +15,7 @@ const (
 	ActiveRequestForwarding      ActiveRequestStatus = "forwarding"         // 转发中
 	ActiveRequestWaitingFirstTok ActiveRequestStatus = "waiting_first_token" // 等待首Token
 	ActiveRequestStreaming       ActiveRequestStatus = "streaming"          // 流式传输中
+	ActiveRequestProcessing      ActiveRequestStatus = "processing"        // 非流式请求处理中
 )
 
 // ActiveRequest 活跃请求信息
@@ -95,7 +97,7 @@ func ActiveRequestUnregister(id int64) {
 	notifyActiveRequestEvent("active_complete", req)
 }
 
-// ActiveRequestList 返回当前所有活跃请求快照
+// ActiveRequestList 返回当前所有活跃请求快照（按开始时间降序）
 func ActiveRequestList() []ActiveRequest {
 	activeRequestsLock.RLock()
 	defer activeRequestsLock.RUnlock()
@@ -104,6 +106,9 @@ func ActiveRequestList() []ActiveRequest {
 	for _, req := range activeRequests {
 		result = append(result, *req)
 	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].StartTime > result[j].StartTime
+	})
 	return result
 }
 
@@ -144,7 +149,7 @@ func notifyActiveRequestEvent(eventType string, req *ActiveRequest) {
 
 // ActiveRequestSubscribe 订阅活跃请求事件
 func ActiveRequestSubscribe() chan ActiveRequestEvent {
-	ch := make(chan ActiveRequestEvent, 20)
+	ch := make(chan ActiveRequestEvent, 64)
 	activeRequestSubscribersLock.Lock()
 	activeRequestSubscribers[ch] = struct{}{}
 	activeRequestSubscribersLock.Unlock()

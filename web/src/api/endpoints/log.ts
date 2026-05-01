@@ -47,12 +47,14 @@ export interface RelayLog {
     error: string;
     attempts?: ChannelAttempt[];
     total_attempts?: number;
+    user_agent?: string;
+    client_name?: string;
 }
 
 /**
  * 活跃请求状态
  */
-export type ActiveRequestStatus = 'forwarding' | 'waiting_first_token' | 'streaming';
+export type ActiveRequestStatus = 'forwarding' | 'waiting_first_token' | 'streaming' | 'processing';
 
 /**
  * 活跃请求
@@ -262,6 +264,8 @@ export function useLogs(options: { pageSize?: number } = {}) {
                         closeEventSource(eventSource);
                         return;
                     }
+                    // 重连时清空活跃请求列表，等待服务端推送最新快照
+                    setActiveRequests([]);
                     setIsConnected(true);
                     setError(null);
                 };
