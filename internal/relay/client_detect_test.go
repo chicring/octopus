@@ -10,6 +10,7 @@ func TestDetectClient(t *testing.T) {
 		// 已确认 UA 格式
 		{"Claude-Code", "claude-code"},
 		{"claude-code/1.0.0", "claude-code"},
+		{"claude-cli/2.1.119 (external, cli)", "claude-code"},
 		{"RooCode/3.5.0", "roo-code"},
 		{"roo-code/1.0", "roo-code"},
 		{"Cline/3.5.0", "cline"},

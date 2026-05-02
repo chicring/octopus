@@ -20,8 +20,8 @@ type clientRule struct {
 //   - 纯字母短词（如 amp、crush、zed）用 wordBoundaryContains 匹配，避免误匹配
 var clientRules = []clientRule{
 	// === 已确认 UA 格式的客户端 ===
-	// Claude Code: UA = "Claude-Code" 或 "claude-code/x.x.x"
-	{patterns: []string{"claude-code"}, name: "claude-code"},
+	// Claude Code: UA = "claude-code/x.x.x" 或 "claude-cli/x.x.x"
+	{patterns: []string{"claude-code", "claude-cli"}, name: "claude-code"},
 	// Roo Code / Roo Cline: UA = "RooCode/x.x.x" 或 "roo-code" 或 "roo-cline/x.x.x"
 	{patterns: []string{"roocode", "roo-code", "roo-cline"}, name: "roo-code"},
 	// Cline (VSCode 扩展 saoudrizwan.claude-dev): UA = "Cline/x.x.x"
