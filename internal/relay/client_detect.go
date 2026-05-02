@@ -15,38 +15,37 @@ type clientRule struct {
 
 // 已确认 UA 格式的客户端排在前面，关键字匹配的排在后面
 // 优先级：先匹配专用客户端，再匹配通用 SDK
-// 规则说明：
-//   - 含分隔符（-、/、空格）的模式用 Contains 匹配，因为分隔符天然形成边界
-//   - 纯字母短词（如 amp、crush、zed）用 wordBoundaryContains 匹配，避免误匹配
+// 所有匹配均使用 wordBoundaryContains，确保前后为非字母字符或字符串边界
+// UA 格式通常为 "品牌名/版本号"，如 "cline/3.5.0"、"roo-cline/3.17.5"
 var clientRules = []clientRule{
 	// === 已确认 UA 格式的客户端 ===
 	// Claude Code: UA = "claude-code/x.x.x" 或 "claude-cli/x.x.x"
 	{patterns: []string{"claude-code", "claude-cli"}, name: "claude-code"},
-	// Roo Code / Roo Cline: UA = "RooCode/x.x.x" 或 "roo-code" 或 "roo-cline/x.x.x"
-	{patterns: []string{"roocode", "roo-code", "roo-cline"}, name: "roo-code"},
-	// Cline (VSCode 扩展 saoudrizwan.claude-dev): UA = "Cline/x.x.x"
-	{patterns: []string{"cline/", "claude-dev"}, name: "cline"},
-	// Aider: UA 可能包含 "aider"
+	// Roo Code / Roo Cline: UA = "RooCode/x.x.x" 或 "roo-cline/x.x.x" 或 "roo-code/x.x.x"
+	{patterns: []string{"roocode", "roo-cline", "roo-code"}, name: "roo-code"},
+	// Cline: UA = "Cline/x.x.x"
+	{patterns: []string{"cline"}, name: "cline"},
+	// Aider: UA = "aider/x.x.x"
 	{patterns: []string{"aider"}, name: "aider"},
-	// OpenAI Codex CLI: UA 可能包含 "codex"
+	// OpenAI Codex CLI: UA = "codex/x.x.x"
 	{patterns: []string{"codex"}, name: "codex"},
-	// Continue.dev: 目前 UA = "node-fetch"，但未来可能改为 "continue"
+	// Continue.dev
 	{patterns: []string{"continue.dev", "continuedev"}, name: "continue"},
 
-	// === 通过关键字匹配的客户端 ===
-	// Cursor IDE
+	// === 通过品牌名匹配的客户端 ===
+	// Cursor IDE: UA = "Cursor/x.x.x"
 	{patterns: []string{"cursor"}, name: "cursor"},
-	// Windsurf / Codeium
+	// Windsurf / Codeium: UA = "Windsurf/x.x.x" 或 "Codeium/x.x.x"
 	{patterns: []string{"windsurf", "codeium"}, name: "windsurf"},
-	// GitHub Copilot
+	// GitHub Copilot: UA = "copilot/x.x.x" 或 "CopilotAgent/x.x.x"
 	{patterns: []string{"copilot"}, name: "copilot"},
-	// Amazon Q Developer
-	{patterns: []string{"amazon-q", "q-developer", "amazon q"}, name: "amazon-q"},
-	// Augment
+	// Amazon Q Developer: UA = "amazon-q/x.x.x" 或 "q-developer/x.x.x"
+	{patterns: []string{"amazon-q", "q-developer"}, name: "amazon-q"},
+	// Augment: UA = "augment/x.x.x"
 	{patterns: []string{"augment"}, name: "augment"},
-	// Amp (短词，需边界匹配)
-	{patterns: []string{"amp/"}, name: "amp"},
-	// auto-coder
+	// Amp: UA = "amp/x.x.x" (短词，边界匹配防误匹配)
+	{patterns: []string{"amp"}, name: "amp"},
+	// auto-coder: UA = "auto-coder/x.x.x"
 	{patterns: []string{"auto-coder", "autocoder"}, name: "auto-coder"},
 	// CodeBuddy
 	{patterns: []string{"codebuddy", "code-buddy"}, name: "codebuddy"},
@@ -54,51 +53,51 @@ var clientRules = []clientRule{
 	{patterns: []string{"codebuff", "code-buff"}, name: "codebuff"},
 	// CodeGPT
 	{patterns: []string{"codegpt", "code-gpt"}, name: "codegpt"},
-	// Crush (短词，需边界匹配)
-	{patterns: []string{"crush/"}, name: "crush"},
-	// Factory Droid / Factory CLI
-	{patterns: []string{"factory-droid", "factory/droid", "factory-cli", "factory/cli"}, name: "factory-droid"},
-	// Gemini CLI
+	// Crush (短词，边界匹配)
+	{patterns: []string{"crush"}, name: "crush"},
+	// Factory Droid / Factory CLI: UA = "factory-cli/x.x.x" 或 "factory/droid"
+	{patterns: []string{"factory-droid", "factory-cli", "factory/droid"}, name: "factory-droid"},
+	// Gemini CLI: UA = "gemini-cli/x.x.x" 或 "gemini/cli"
 	{patterns: []string{"gemini-cli", "gemini/cli"}, name: "gemini-cli"},
 	// Gemini Code Assist
-	{patterns: []string{"gemini-code-assist", "gemini code assist"}, name: "gemini-code-assist"},
-	// Goose (短词，需边界匹配)
-	{patterns: []string{"goose/"}, name: "goose"},
-	// Jules
+	{patterns: []string{"gemini-code-assist"}, name: "gemini-code-assist"},
+	// Goose (短词，边界匹配): UA = "goose/x.x.x"
+	{patterns: []string{"goose"}, name: "goose"},
+	// Jules: UA = "jules/x.x.x"
 	{patterns: []string{"jules"}, name: "jules"},
-	// Junie
+	// Junie: UA = "junie/x.x.x"
 	{patterns: []string{"junie"}, name: "junie"},
-	// Kilo Code
+	// Kilo Code: UA = "kilocode/x.x.x"
 	{patterns: []string{"kilo-code", "kilocode"}, name: "kilo-code"},
-	// Kiro (短词，需边界匹配)
-	{patterns: []string{"kiro/"}, name: "kiro"},
-	// OpenCode
+	// Kiro (短词，边界匹配): UA = "kiro/x.x.x"
+	{patterns: []string{"kiro"}, name: "kiro"},
+	// OpenCode: UA = "opencode/x.x.x"
 	{patterns: []string{"opencode"}, name: "opencode"},
-	// OpenHands
+	// OpenHands: UA = "openhands/x.x.x"
 	{patterns: []string{"openhands", "open-hands"}, name: "openhands"},
-	// Qoder
+	// Qoder: UA = "qoder/x.x.x"
 	{patterns: []string{"qoder"}, name: "qoder"},
-	// Qwen Code
-	{patterns: []string{"qwen-code", "qwen code"}, name: "qwen-code"},
-	// Replit
+	// Qwen Code: UA = "qwen-code/x.x.x"
+	{patterns: []string{"qwen-code"}, name: "qwen-code"},
+	// Replit: UA = "replit/x.x.x"
 	{patterns: []string{"replit"}, name: "replit"},
 	// RovoDev
 	{patterns: []string{"rovidev", "rovo-dev"}, name: "rovidev"},
-	// Tabnine
+	// Tabnine: UA = "tabnine/x.x.x"
 	{patterns: []string{"tabnine"}, name: "tabnine"},
-	// Trae (短词，需边界匹配)
-	{patterns: []string{"trae/"}, name: "trae"},
-	// Warp (短词，需边界匹配)
-	{patterns: []string{"warp/"}, name: "warp"},
-	// Zed (短词，需边界匹配)
-	{patterns: []string{"zed/"}, name: "zed"},
-	// 百度文心快码 (Baidu Comate)
-	{patterns: []string{"baidu-comate", "comate/", "文心快码"}, name: "baidu-comate"},
-	// 通义灵码 (Tongyi Lingma)
-	{patterns: []string{"tongyi-lingma", "lingma/", "灵码"}, name: "tongyi-lingma"},
+	// Trae (短词，边界匹配): UA = "trae/x.x.x"
+	{patterns: []string{"trae"}, name: "trae"},
+	// Warp (短词，边界匹配): UA = "warp/x.x.x"
+	{patterns: []string{"warp"}, name: "warp"},
+	// Zed (短词，边界匹配): UA = "zed/x.x.x"
+	{patterns: []string{"zed"}, name: "zed"},
+	// 百度文心快码 (Baidu Comate): UA = "comate/x.x.x"
+	{patterns: []string{"baidu-comate", "comate"}, name: "baidu-comate"},
+	// 通义灵码 (Tongyi Lingma): UA = "lingma/x.x.x"
+	{patterns: []string{"tongyi-lingma", "lingma"}, name: "tongyi-lingma"},
 
 	// === 通用 SDK（优先级最低，放在最后） ===
-	// Anthropic TypeScript SDK
+	// Anthropic TypeScript SDK: UA = "anthropic-typescript/x.x.x"
 	{patterns: []string{"anthropic-typescript", "anthropic/node"}, name: "anthropic-ts"},
 	// OpenAI Python SDK: UA = "OpenAI/Python x.x.x"
 	{patterns: []string{"openai/python"}, name: "openai-python"},
