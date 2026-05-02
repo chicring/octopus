@@ -242,12 +242,36 @@ export interface StatsAPIKeyDaily {
   request_failed: number;
 }
 
+export interface StatsAPIKeyHourly {
+  api_key_id: number;
+  date: string;
+  hour: number;
+  input_token: number;
+  output_token: number;
+  input_cost: number;
+  output_cost: number;
+  wait_time: number;
+  output_time: number;
+  request_success: number;
+  request_failed: number;
+}
+
 export function useStatsAPIKeyDaily(apiKeyID: number | null, days = 30) {
   return useQuery({
     queryKey: ['stats', 'apikey-daily', apiKeyID, days],
     queryFn: () => apiClient.get<StatsAPIKeyDaily[]>(`/api/v1/stats/apikey/${apiKeyID}/daily?days=${days}`),
     enabled: apiKeyID != null,
     refetchInterval: 30000,
+    refetchOnMount: 'always',
+  });
+}
+
+export function useStatsAPIKeyHourly(apiKeyID: number | null) {
+  return useQuery({
+    queryKey: ['stats', 'apikey-hourly', apiKeyID],
+    queryFn: () => apiClient.get<StatsAPIKeyHourly[]>(`/api/v1/stats/apikey/${apiKeyID}/hourly`),
+    enabled: apiKeyID != null,
+    refetchInterval: 10000,
     refetchOnMount: 'always',
   });
 }

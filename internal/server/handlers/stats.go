@@ -45,6 +45,10 @@ func init() {
 		AddRoute(
 			router.NewRoute("/apikey/:id/daily", http.MethodGet).
 				Handle(getStatsAPIKeyDaily),
+		).
+		AddRoute(
+			router.NewRoute("/apikey/:id/hourly", http.MethodGet).
+				Handle(getStatsAPIKeyHourly),
 		)
 }
 
@@ -94,6 +98,21 @@ func getStatsAPIKeyDaily(c *gin.Context) {
 		days = 30
 	}
 	stats, err := op.StatsAPIKeyDailyGet(c.Request.Context(), uint(id), days)
+	if err != nil {
+		resp.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	resp.Success(c, stats)
+}
+
+func getStatsAPIKeyHourly(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		resp.Error(c, http.StatusBadRequest, "invalid api key id")
+		return
+	}
+	stats, err := op.StatsAPIKeyHourlyGet(c.Request.Context(), uint(id))
 	if err != nil {
 		resp.Error(c, http.StatusInternalServerError, err.Error())
 		return

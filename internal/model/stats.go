@@ -1,5 +1,14 @@
 package model
 
+type StatsAPIKeyHourly struct {
+	APIKeyID uint   `json:"api_key_id" gorm:"primaryKey;not null"` // API Key ID
+	Date     string `json:"date" gorm:"primaryKey;not null"`       // 日期，格式：20060102
+	Hour     int    `json:"hour" gorm:"primaryKey;not null"`       // 小时 0-23
+	StatsMetrics
+}
+
+func (StatsAPIKeyHourly) TableName() string { return "stats_api_key_hourlies" }
+
 type StatsAPIKeyDaily struct {
 	APIKeyID uint   `json:"api_key_id" gorm:"primaryKey;not null"` // API Key ID
 	Date     string `json:"date" gorm:"primaryKey;not null"`       // 日期，格式：20060102
