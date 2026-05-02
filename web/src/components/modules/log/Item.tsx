@@ -296,8 +296,8 @@ export function LogCard({ log }: { log: RelayLog }) {
                         <div className="relative shrink-0">
                             <ModelAvatar size={40} />
                             {log.client_name && (
-                                <span className="absolute -bottom-1 -right-1 rounded-full bg-card border border-border shadow-sm">
-                                    <ClientIconBadge clientName={log.client_name} className="size-4 p-0.5" />
+                                <span className="absolute -bottom-0.5 -right-0.5">
+                                    <ClientIconBadge clientName={log.client_name} className="size-4" />
                                 </span>
                             )}
                         </div>
@@ -394,9 +394,7 @@ export function LogCard({ log }: { log: RelayLog }) {
                             <div className="relative shrink-0">
                                 <ModelAvatar size={28} />
                                 {log.client_name && (
-                                    <span className="absolute -bottom-1 -right-1 rounded-full bg-card border border-border shadow-sm">
-                                        <ClientIconBadge clientName={log.client_name} className="size-4 p-0.5" />
-                                    </span>
+                                    <ClientIconBadge clientName={log.client_name} className="size-3.5" />
                                 )}
                             </div>
                             <span className="font-semibold text-card-foreground">{log.request_model_name}</span>
