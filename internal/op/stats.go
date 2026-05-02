@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -21,8 +22,16 @@ var statsDailyCacheLock sync.RWMutex
 var statsTotalCache model.StatsTotal
 var statsTotalCacheLock sync.RWMutex
 
-var statsHourlyCache [24]model.StatsHourly
-var statsHourlyCacheLock sync.RWMutex
+// hourlyKey 按 (date, hour) 唯一标识一条小时统计，
+// 跨天后不同日期的同一小时槽不会互相覆盖。
+type hourlyKey struct {
+	Date string
+	Hour int
+}
+
+var statsHourlyCache = cache.New[hourlyKey, model.StatsHourly](96)
+var statsHourlyCacheNeedUpdate = make(map[hourlyKey]struct{})
+var statsHourlyCacheNeedUpdateLock sync.Mutex
 
 var statsChannelCache = cache.New[int, model.StatsChannel](16)
 var statsChannelCacheNeedUpdate = make(map[int]struct{})
@@ -44,6 +53,7 @@ type apiKeyDailyKey struct {
 	APIKeyID uint
 	Date     string
 }
+
 var statsAPIKeyDailyCache = cache.New[apiKeyDailyKey, model.StatsAPIKeyDaily](64)
 var statsAPIKeyDailyCacheLock sync.Mutex
 var statsAPIKeyDailyCacheNeedUpdate = make(map[apiKeyDailyKey]struct{})
@@ -65,7 +75,11 @@ func StatsSaveDBTask() {
 	}
 }
 
+// StatsSaveDB 将所有内存统计快照写入数据库。
+// 每个维度使用 dirty set 标记哪些条目需要刷盘，
+// 仅在事务成功后才清空对应的 dirty set。
 func StatsSaveDB(ctx context.Context) error {
+	// 1. 采集快照（在锁内拷贝，锁外构造写入列表）
 	statsTotalCacheLock.RLock()
 	totalSnap := statsTotalCache
 	statsTotalCacheLock.RUnlock()
@@ -77,11 +91,21 @@ func StatsSaveDB(ctx context.Context) error {
 	dailySnap := statsDailyCache
 	statsDailyCacheLock.RUnlock()
 
-	statsHourlyCacheLock.RLock()
-	hourlyAll := statsHourlyCache
-	statsHourlyCacheLock.RUnlock()
+	// hourly: 收集所有 dirty key 对应的快照
+	statsHourlyCacheNeedUpdateLock.Lock()
+	hourlyDirtyKeys := make([]hourlyKey, 0, len(statsHourlyCacheNeedUpdate))
+	for k := range statsHourlyCacheNeedUpdate {
+		hourlyDirtyKeys = append(hourlyDirtyKeys, k)
+	}
+	statsHourlyCacheNeedUpdateLock.Unlock()
 
-	// 收集需要持久化的 key，但不立即清空 dirty set
+	hourlySnaps := make([]model.StatsHourly, 0, len(hourlyDirtyKeys))
+	for _, k := range hourlyDirtyKeys {
+		if h, ok := statsHourlyCache.Get(k); ok {
+			hourlySnaps = append(hourlySnaps, h)
+		}
+	}
+
 	statsChannelCacheNeedUpdateLock.Lock()
 	channelIDs := make([]int, 0, len(statsChannelCacheNeedUpdate))
 	for id := range statsChannelCacheNeedUpdate {
@@ -110,10 +134,16 @@ func StatsSaveDB(ctx context.Context) error {
 	}
 	statsAPIKeyDailyCacheNeedUpdateLock.Unlock()
 
-	err := persistStatsSnapshots(ctx, totalSnap, dailySnap, hourlyAll, channelIDs, modelNames, apiKeyIDs, apiKeyDailyKeys)
+	err := persistStatsSnapshots(ctx, totalSnap, dailySnap, hourlySnaps, channelIDs, modelNames, apiKeyIDs, apiKeyDailyKeys)
 
 	// 仅在持久化成功后清空 dirty set
 	if err == nil {
+		statsHourlyCacheNeedUpdateLock.Lock()
+		for _, k := range hourlyDirtyKeys {
+			delete(statsHourlyCacheNeedUpdate, k)
+		}
+		statsHourlyCacheNeedUpdateLock.Unlock()
+
 		statsChannelCacheNeedUpdateLock.Lock()
 		for _, id := range channelIDs {
 			delete(statsChannelCacheNeedUpdate, id)
@@ -142,11 +172,13 @@ func StatsSaveDB(ctx context.Context) error {
 	return err
 }
 
+// persistStatsSnapshots 在单个事务内写入所有统计快照。
+// 所有数据在进入事务前已构造完毕，事务只负责写入。
 func persistStatsSnapshots(
 	ctx context.Context,
 	totalSnap model.StatsTotal,
 	dailySnap model.StatsDaily,
-	hourlyAll [24]model.StatsHourly,
+	hourlySnaps []model.StatsHourly,
 	channelIDs []int,
 	modelNames []string,
 	apiKeyIDs []int,
@@ -160,18 +192,12 @@ func persistStatsSnapshots(
 			return result.Error
 		}
 
-		todayDate := time.Now().Format("20060102")
-		hourlyStats := make([]model.StatsHourly, 0, 24)
-		for hour := 0; hour < 24; hour++ {
-			if hourlyAll[hour].Date == todayDate {
-				hourlyStats = append(hourlyStats, hourlyAll[hour])
-			}
-		}
-		if len(hourlyStats) > 0 {
+		// 写入所有 dirty hourly（不再只写当天）
+		if len(hourlySnaps) > 0 {
 			if result := tx.Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "date"}, {Name: "hour"}},
 				UpdateAll: true,
-			}).Create(&hourlyStats); result.Error != nil {
+			}).Create(&hourlySnaps); result.Error != nil {
 				return result.Error
 			}
 		}
@@ -252,79 +278,6 @@ func persistStatsSnapshots(
 	})
 }
 
-func statsSaveDBWithDailyOverride(ctx context.Context, dailyOverride model.StatsDaily) error {
-	statsTotalCacheLock.RLock()
-	totalSnap := statsTotalCache
-	statsTotalCacheLock.RUnlock()
-	if totalSnap.ID == 0 {
-		totalSnap.ID = 1
-	}
-
-	statsHourlyCacheLock.RLock()
-	hourlyAll := statsHourlyCache
-	statsHourlyCacheLock.RUnlock()
-
-	// 收集需要持久化的 key，但不立即清空 dirty set
-	statsChannelCacheNeedUpdateLock.Lock()
-	channelIDs := make([]int, 0, len(statsChannelCacheNeedUpdate))
-	for id := range statsChannelCacheNeedUpdate {
-		channelIDs = append(channelIDs, id)
-	}
-	statsChannelCacheNeedUpdateLock.Unlock()
-
-	statsModelCacheNeedUpdateLock.Lock()
-	modelNames := make([]string, 0, len(statsModelCacheNeedUpdate))
-	for name := range statsModelCacheNeedUpdate {
-		modelNames = append(modelNames, name)
-	}
-	statsModelCacheNeedUpdateLock.Unlock()
-
-	statsAPIKeyCacheNeedUpdateLock.Lock()
-	apiKeyIDs := make([]int, 0, len(statsAPIKeyCacheNeedUpdate))
-	for id := range statsAPIKeyCacheNeedUpdate {
-		apiKeyIDs = append(apiKeyIDs, id)
-	}
-	statsAPIKeyCacheNeedUpdateLock.Unlock()
-
-	statsAPIKeyDailyCacheNeedUpdateLock.Lock()
-	apiKeyDailyKeys := make([]apiKeyDailyKey, 0, len(statsAPIKeyDailyCacheNeedUpdate))
-	for k := range statsAPIKeyDailyCacheNeedUpdate {
-		apiKeyDailyKeys = append(apiKeyDailyKeys, k)
-	}
-	statsAPIKeyDailyCacheNeedUpdateLock.Unlock()
-
-	err := persistStatsSnapshots(ctx, totalSnap, dailyOverride, hourlyAll, channelIDs, modelNames, apiKeyIDs, apiKeyDailyKeys)
-
-	// 仅在持久化成功后清空 dirty set
-	if err == nil {
-		statsChannelCacheNeedUpdateLock.Lock()
-		for _, id := range channelIDs {
-			delete(statsChannelCacheNeedUpdate, id)
-		}
-		statsChannelCacheNeedUpdateLock.Unlock()
-
-		statsModelCacheNeedUpdateLock.Lock()
-		for _, name := range modelNames {
-			delete(statsModelCacheNeedUpdate, name)
-		}
-		statsModelCacheNeedUpdateLock.Unlock()
-
-		statsAPIKeyCacheNeedUpdateLock.Lock()
-		for _, id := range apiKeyIDs {
-			delete(statsAPIKeyCacheNeedUpdate, id)
-		}
-		statsAPIKeyCacheNeedUpdateLock.Unlock()
-
-		statsAPIKeyDailyCacheNeedUpdateLock.Lock()
-		for _, k := range apiKeyDailyKeys {
-			delete(statsAPIKeyDailyCacheNeedUpdate, k)
-		}
-		statsAPIKeyDailyCacheNeedUpdateLock.Unlock()
-	}
-
-	return err
-}
-
 func StatsDailyUpdate(ctx context.Context, metrics model.StatsMetrics) error {
 	today := time.Now().Format("20060102")
 
@@ -335,13 +288,13 @@ func StatsDailyUpdate(ctx context.Context, metrics model.StatsMetrics) error {
 		return nil
 	}
 
-	// 日期变更：将旧数据标记为 dirty，由定时任务刷盘，不阻塞当前请求
+	// 日期变更：保存旧日数据，重置当天缓存
 	prevDaily := statsDailyCache
 	statsDailyCache = model.StatsDaily{Date: today}
 	statsDailyCache.StatsMetrics.Add(metrics)
 	statsDailyCacheLock.Unlock()
 
-	// 异步刷盘旧日数据
+	// 异步刷盘旧日数据（包括旧日的 hourly 和 APIKeyDaily）
 	go func() {
 		bgCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
@@ -385,18 +338,21 @@ func StatsHourlyUpdate(metrics model.StatsMetrics) error {
 	now := time.Now()
 	nowHour := now.Hour()
 	todayDate := time.Now().Format("20060102")
+	key := hourlyKey{Date: todayDate, Hour: nowHour}
 
-	statsHourlyCacheLock.Lock()
-	defer statsHourlyCacheLock.Unlock()
-
-	if statsHourlyCache[nowHour].Date != todayDate {
-		statsHourlyCache[nowHour] = model.StatsHourly{
+	h, ok := statsHourlyCache.Get(key)
+	if !ok {
+		h = model.StatsHourly{
 			Hour: nowHour,
 			Date: todayDate,
 		}
 	}
+	h.StatsMetrics.Add(metrics)
+	statsHourlyCache.Set(key, h)
 
-	statsHourlyCache[nowHour].StatsMetrics.Add(metrics)
+	statsHourlyCacheNeedUpdateLock.Lock()
+	statsHourlyCacheNeedUpdate[key] = struct{}{}
+	statsHourlyCacheNeedUpdateLock.Unlock()
 	return nil
 }
 
@@ -464,7 +420,7 @@ func StatsAPIKeyDailyUpdate(apiKeyID uint, metrics model.StatsMetrics) {
 	statsAPIKeyDailyCacheNeedUpdateLock.Unlock()
 }
 
-// StatsAPIKeyDailyGet 返回指定 API Key 的每日统计（最近 N 天），合并内存缓存中当天未刷盘的数据
+// StatsAPIKeyDailyGet 返回指定 API Key 的每日统计（最近 N 天），合并内存缓存中未刷盘的数据
 func StatsAPIKeyDailyGet(ctx context.Context, apiKeyID uint, days int) ([]model.StatsAPIKeyDaily, error) {
 	var result []model.StatsAPIKeyDaily
 	err := db.GetDB().WithContext(ctx).
@@ -475,27 +431,31 @@ func StatsAPIKeyDailyGet(ctx context.Context, apiKeyID uint, days int) ([]model.
 		return nil, err
 	}
 
-	// 合并内存缓存中当天未刷盘的数据
-	today := time.Now().Format("20060102")
-	todayKey := apiKeyDailyKey{APIKeyID: apiKeyID, Date: today}
+	// 合并内存缓存中所有未刷盘的该 API Key 数据
 	statsAPIKeyDailyCacheLock.Lock()
-	if cached, ok := statsAPIKeyDailyCache.Get(todayKey); ok {
-		statsAPIKeyDailyCacheLock.Unlock()
-		// 查找 result 中是否已有今天的记录
+	allCached := statsAPIKeyDailyCache.GetAll()
+	statsAPIKeyDailyCacheLock.Unlock()
+
+	for k, v := range allCached {
+		if k.APIKeyID != apiKeyID {
+			continue
+		}
 		found := false
 		for i := range result {
-			if result[i].Date == today {
-				result[i] = cached
+			if result[i].Date == k.Date {
+				result[i] = v
 				found = true
 				break
 			}
 		}
 		if !found {
-			result = append(result, cached)
+			result = append(result, v)
 		}
-	} else {
-		statsAPIKeyDailyCacheLock.Unlock()
 	}
+
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Date < result[j].Date
+	})
 
 	return result, nil
 }
@@ -559,7 +519,7 @@ func StatsAPIKeyGet(id int) model.StatsAPIKey {
 		statsAPIKeyCacheNeedUpdateLock.Lock()
 		statsAPIKeyCacheNeedUpdate[id] = struct{}{}
 		statsAPIKeyCacheNeedUpdateLock.Unlock()
-		return tmp
+		return stats
 	}
 	return stats
 }
@@ -572,19 +532,19 @@ func StatsAPIKeyList() []model.StatsAPIKey {
 	return apiKeys
 }
 
+// StatsHourlyGet 返回当天 0..currentHour 的统计数据，
+// 从 hourly map cache 查询，不存在则返回零值。
 func StatsHourlyGet() []model.StatsHourly {
 	now := time.Now()
 	currentHour := now.Hour()
 	todayDate := time.Now().Format("20060102")
 
-	statsHourlyCacheLock.RLock()
-	defer statsHourlyCacheLock.RUnlock()
-
 	result := make([]model.StatsHourly, 0, currentHour+1)
 
 	for hour := 0; hour <= currentHour; hour++ {
-		if statsHourlyCache[hour].Date == todayDate {
-			result = append(result, statsHourlyCache[hour])
+		key := hourlyKey{Date: todayDate, Hour: hour}
+		if h, ok := statsHourlyCache.Get(key); ok {
+			result = append(result, h)
 		} else {
 			result = append(result, model.StatsHourly{
 				Hour: hour,
@@ -596,25 +556,142 @@ func StatsHourlyGet() []model.StatsHourly {
 	return result
 }
 
+// StatsGetDaily 返回所有历史 Daily 统计，并合并内存中当天未刷盘的数据。
 func StatsGetDaily(ctx context.Context) ([]model.StatsDaily, error) {
 	var statsDaily []model.StatsDaily
-	result := db.GetDB().WithContext(ctx).Find(&statsDaily)
+	result := db.GetDB().WithContext(ctx).Order("date ASC").Find(&statsDaily)
 	if result.Error != nil {
 		return nil, result.Error
 	}
+
+	// 合并内存缓存中当天未刷盘的数据
+	statsDailyCacheLock.RLock()
+	cachedDaily := statsDailyCache
+	statsDailyCacheLock.RUnlock()
+
+	if cachedDaily.Date != "" {
+		found := false
+		for i := range statsDaily {
+			if statsDaily[i].Date == cachedDaily.Date {
+				statsDaily[i] = cachedDaily
+				found = true
+				break
+			}
+		}
+		if !found {
+			statsDaily = append(statsDaily, cachedDaily)
+			sort.Slice(statsDaily, func(i, j int) bool {
+				return statsDaily[i].Date < statsDaily[j].Date
+			})
+		}
+	}
+
 	return statsDaily, nil
+}
+
+// statsSaveDBWithDailyOverride 用于跨天异步刷盘旧日数据。
+// 它将所有 dirty 维度一起写入，确保旧日的 hourly/APIKeyDaily 不遗漏。
+func statsSaveDBWithDailyOverride(ctx context.Context, dailyOverride model.StatsDaily) error {
+	statsTotalCacheLock.RLock()
+	totalSnap := statsTotalCache
+	statsTotalCacheLock.RUnlock()
+	if totalSnap.ID == 0 {
+		totalSnap.ID = 1
+	}
+
+	// 收集所有 dirty hourly
+	statsHourlyCacheNeedUpdateLock.Lock()
+	hourlyDirtyKeys := make([]hourlyKey, 0, len(statsHourlyCacheNeedUpdate))
+	for k := range statsHourlyCacheNeedUpdate {
+		hourlyDirtyKeys = append(hourlyDirtyKeys, k)
+	}
+	statsHourlyCacheNeedUpdateLock.Unlock()
+
+	hourlySnaps := make([]model.StatsHourly, 0, len(hourlyDirtyKeys))
+	for _, k := range hourlyDirtyKeys {
+		if h, ok := statsHourlyCache.Get(k); ok {
+			hourlySnaps = append(hourlySnaps, h)
+		}
+	}
+
+	// 收集需要持久化的 key
+	statsChannelCacheNeedUpdateLock.Lock()
+	channelIDs := make([]int, 0, len(statsChannelCacheNeedUpdate))
+	for id := range statsChannelCacheNeedUpdate {
+		channelIDs = append(channelIDs, id)
+	}
+	statsChannelCacheNeedUpdateLock.Unlock()
+
+	statsModelCacheNeedUpdateLock.Lock()
+	modelNames := make([]string, 0, len(statsModelCacheNeedUpdate))
+	for name := range statsModelCacheNeedUpdate {
+		modelNames = append(modelNames, name)
+	}
+	statsModelCacheNeedUpdateLock.Unlock()
+
+	statsAPIKeyCacheNeedUpdateLock.Lock()
+	apiKeyIDs := make([]int, 0, len(statsAPIKeyCacheNeedUpdate))
+	for id := range statsAPIKeyCacheNeedUpdate {
+		apiKeyIDs = append(apiKeyIDs, id)
+	}
+	statsAPIKeyCacheNeedUpdateLock.Unlock()
+
+	statsAPIKeyDailyCacheNeedUpdateLock.Lock()
+	apiKeyDailyKeys := make([]apiKeyDailyKey, 0, len(statsAPIKeyDailyCacheNeedUpdate))
+	for k := range statsAPIKeyDailyCacheNeedUpdate {
+		apiKeyDailyKeys = append(apiKeyDailyKeys, k)
+	}
+	statsAPIKeyDailyCacheNeedUpdateLock.Unlock()
+
+	err := persistStatsSnapshots(ctx, totalSnap, dailyOverride, hourlySnaps, channelIDs, modelNames, apiKeyIDs, apiKeyDailyKeys)
+
+	// 仅在持久化成功后清空 dirty set
+	if err == nil {
+		statsHourlyCacheNeedUpdateLock.Lock()
+		for _, k := range hourlyDirtyKeys {
+			delete(statsHourlyCacheNeedUpdate, k)
+		}
+		statsHourlyCacheNeedUpdateLock.Unlock()
+
+		statsChannelCacheNeedUpdateLock.Lock()
+		for _, id := range channelIDs {
+			delete(statsChannelCacheNeedUpdate, id)
+		}
+		statsChannelCacheNeedUpdateLock.Unlock()
+
+		statsModelCacheNeedUpdateLock.Lock()
+		for _, name := range modelNames {
+			delete(statsModelCacheNeedUpdate, name)
+		}
+		statsModelCacheNeedUpdateLock.Unlock()
+
+		statsAPIKeyCacheNeedUpdateLock.Lock()
+		for _, id := range apiKeyIDs {
+			delete(statsAPIKeyCacheNeedUpdate, id)
+		}
+		statsAPIKeyCacheNeedUpdateLock.Unlock()
+
+		statsAPIKeyDailyCacheNeedUpdateLock.Lock()
+		for _, k := range apiKeyDailyKeys {
+			delete(statsAPIKeyDailyCacheNeedUpdate, k)
+		}
+		statsAPIKeyDailyCacheNeedUpdateLock.Unlock()
+	}
+
+	return err
 }
 
 func statsRefreshCache(ctx context.Context) error {
 	dbConn := db.GetDB().WithContext(ctx)
 	today := time.Now().Format("20060102")
 
+	// Daily: 精确查当天，不再用 Last()
 	var loadedDaily model.StatsDaily
-	result := dbConn.Last(&loadedDaily)
+	result := dbConn.Where("date = ?", today).First(&loadedDaily)
 	if result.Error != nil && !errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		return fmt.Errorf("failed to get daily stats: %v", result.Error)
 	}
-	if result.RowsAffected == 0 || loadedDaily.Date != today {
+	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		loadedDaily = model.StatsDaily{Date: today}
 	}
 
@@ -635,8 +712,9 @@ func statsRefreshCache(ctx context.Context) error {
 		return fmt.Errorf("failed to get channels: %v", result.Error)
 	}
 
+	// Hourly: 加载最近 35 天的所有小时数据到内存缓存
 	var loadedHourly []model.StatsHourly
-	result = dbConn.Where("date = ?", today).Find(&loadedHourly)
+	result = dbConn.Where("date >= ?", time.Now().AddDate(0, 0, -35).Format("20060102")).Find(&loadedHourly)
 	if result.Error != nil {
 		return fmt.Errorf("failed to get hourly stats: %v", result.Error)
 	}
@@ -671,14 +749,15 @@ func statsRefreshCache(ctx context.Context) error {
 		statsAPIKeyCache.Set(v.APIKeyID, v)
 	}
 
-	statsHourlyCacheLock.Lock()
-	statsHourlyCache = [24]model.StatsHourly{}
+	// Hourly: 填充 map cache
+	statsHourlyCache.Clear()
+	statsHourlyCacheNeedUpdateLock.Lock()
+	statsHourlyCacheNeedUpdate = make(map[hourlyKey]struct{})
+	statsHourlyCacheNeedUpdateLock.Unlock()
 	for _, v := range loadedHourly {
-		if v.Hour >= 0 && v.Hour < 24 {
-			statsHourlyCache[v.Hour] = v
-		}
+		key := hourlyKey{Date: v.Date, Hour: v.Hour}
+		statsHourlyCache.Set(key, v)
 	}
-	statsHourlyCacheLock.Unlock()
 
 	var loadedModels []model.StatsModel
 	result = dbConn.Find(&loadedModels)
@@ -694,8 +773,9 @@ func statsRefreshCache(ctx context.Context) error {
 		statsModelCache.Set(v.Name, v)
 	}
 
+	// APIKeyDaily: 加载最近 35 天的数据
 	var loadedAPIKeyDailies []model.StatsAPIKeyDaily
-	result = dbConn.Where("date = ?", today).Find(&loadedAPIKeyDailies)
+	result = dbConn.Where("date >= ?", time.Now().AddDate(0, 0, -35).Format("20060102")).Find(&loadedAPIKeyDailies)
 	if result.Error != nil {
 		return fmt.Errorf("failed to get api key daily stats: %v", result.Error)
 	}
