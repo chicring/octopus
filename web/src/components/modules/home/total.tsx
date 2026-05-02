@@ -88,13 +88,13 @@ export function Total() {
             items: [
                 {
                     label: t('rpm'),
-                    value: ((statsRealtime?.rps ?? 0) * 60).toFixed(1),
+                    value: (statsRealtime?.rpm ?? 0).toString(),
                     unit: 'req/min',
-                    trend: (statsRealtime?.rps ?? 0) > 0 ? 'up' : (statsRealtime?.rps ?? 0) < 0 ? 'down' : 'neutral',
+                    trend: (statsRealtime?.rpm ?? 0) > 0 ? 'up' : (statsRealtime?.rpm ?? 0) < 0 ? 'down' : 'neutral',
                 },
                 {
                     label: t('tps'),
-                    value: (statsRealtime?.tps ?? 0).toString(),
+                    value: (statsRealtime?.tps ?? 0).toFixed(1),
                     unit: 'tok/s',
                     trend: (statsRealtime?.tps ?? 0) > 0 ? 'up' : (statsRealtime?.tps ?? 0) < 0 ? 'down' : 'neutral',
                 },

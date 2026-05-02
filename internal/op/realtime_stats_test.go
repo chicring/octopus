@@ -33,13 +33,13 @@ func TestRealtime_SameSecondAccumulate(t *testing.T) {
 	if got.TPM != 600 {
 		t.Errorf("TPM: got %d, want 600", got.TPM)
 	}
-	// RPS = RPM / 60 = 0 (integer division)
-	if got.RPS != 0 {
-		t.Errorf("RPS: got %d, want 0", got.RPS)
+	// RPS = RPM / 60 = 0.05
+	if got.RPS < 0.049 || got.RPS > 0.051 {
+		t.Errorf("RPS: got %f, want 0.05", got.RPS)
 	}
 	// TPS = TPM / 60 = 10
-	if got.TPS != 10 {
-		t.Errorf("TPS: got %d, want 10", got.TPS)
+	if got.TPS < 9.99 || got.TPS > 10.01 {
+		t.Errorf("TPS: got %f, want 10.00", got.TPS)
 	}
 }
 
@@ -53,11 +53,11 @@ func TestRealtime_EarlyFailureZeroOutputToken(t *testing.T) {
 	if got.RPM != 1 {
 		t.Errorf("RPM: got %d, want 1", got.RPM)
 	}
-	if got.RPS != 0 {
-		t.Errorf("RPS: got %d, want 0", got.RPS)
+	if got.RPS < 0.016 || got.RPS > 0.018 {
+		t.Errorf("RPS: got %f, want ~0.0167", got.RPS)
 	}
-	if got.TPS != 0 {
-		t.Errorf("TPS: got %d, want 0", got.TPS)
+	if got.TPS > 0.001 {
+		t.Errorf("TPS: got %f, want 0", got.TPS)
 	}
 }
 
@@ -93,13 +93,13 @@ func TestRealtime_CrossSecondOverwrite(t *testing.T) {
 	if got.TPM != 50 {
 		t.Errorf("TPM: got %d, want 50", got.TPM)
 	}
-	// RPS = RPM / 60 = 0
-	if got.RPS != 0 {
-		t.Errorf("RPS: got %d, want 0", got.RPS)
+	// RPS = RPM / 60 ≈ 0.0167
+	if got.RPS < 0.016 || got.RPS > 0.018 {
+		t.Errorf("RPS: got %f, want ~0.0167", got.RPS)
 	}
-	// TPS = TPM / 60 = 0
-	if got.TPS != 0 {
-		t.Errorf("TPS: got %d, want 0", got.TPS)
+	// TPS = TPM / 60 ≈ 0.833
+	if got.TPS < 0.83 || got.TPS > 0.84 {
+		t.Errorf("TPS: got %f, want ~0.833", got.TPS)
 	}
 }
 
@@ -171,13 +171,13 @@ func TestRealtime_MultipleSecondsWindow(t *testing.T) {
 	if got.TPM != 300 {
 		t.Errorf("TPM: got %d, want 300", got.TPM)
 	}
-	// RPS = RPM / 60 = 0 (integer division)
-	if got.RPS != 0 {
-		t.Errorf("RPS: got %d, want 0", got.RPS)
+	// RPS = RPM / 60 = 0.5
+	if got.RPS < 0.49 || got.RPS > 0.51 {
+		t.Errorf("RPS: got %f, want 0.5", got.RPS)
 	}
 	// TPS = TPM / 60 = 5
-	if got.TPS != 5 {
-		t.Errorf("TPS: got %d, want 5", got.TPS)
+	if got.TPS < 4.99 || got.TPS > 5.01 {
+		t.Errorf("TPS: got %f, want 5.00", got.TPS)
 	}
 }
 
@@ -210,12 +210,14 @@ func TestRealtime_ConcurrentRecord(t *testing.T) {
 		t.Errorf("TPM: got %d, want %d", got.TPM, totalExpected)
 	}
 	// RPS = RPM / 60
-	if got.RPS != totalExpected/60 {
-		t.Errorf("RPS: got %d, want %d", got.RPS, totalExpected/60)
+	wantRPS := float64(totalExpected) / 60.0
+	if got.RPS < wantRPS-0.01 || got.RPS > wantRPS+0.01 {
+		t.Errorf("RPS: got %f, want %f", got.RPS, wantRPS)
 	}
 	// TPS = TPM / 60
-	if got.TPS != totalExpected/60 {
-		t.Errorf("TPS: got %d, want %d", got.TPS, totalExpected/60)
+	wantTPS := float64(totalExpected) / 60.0
+	if got.TPS < wantTPS-0.01 || got.TPS > wantTPS+0.01 {
+		t.Errorf("TPS: got %f, want %f", got.TPS, wantTPS)
 	}
 }
 

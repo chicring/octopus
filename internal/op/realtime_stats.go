@@ -61,9 +61,9 @@ func StatsRealtimeGet() model.StatsRealtime {
 
 	return model.StatsRealtime{
 		WindowSizeSec: realtimeWindowSize,
-		RPS:           rpm / int64(realtimeWindowSize),
+		RPS:           float64(rpm) / float64(realtimeWindowSize),
 		RPM:           rpm,
-		TPS:           tpm / int64(realtimeWindowSize),
+		TPS:           float64(tpm) / float64(realtimeWindowSize),
 		TPM:           tpm,
 	}
 }
