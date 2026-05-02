@@ -87,9 +87,9 @@ export function Total() {
             accentBg: 'bg-chart-5/10',
             items: [
                 {
-                    label: t('rps'),
-                    value: (statsRealtime?.rps ?? 0).toString(),
-                    unit: 'req/s',
+                    label: t('rpm'),
+                    value: ((statsRealtime?.rps ?? 0) * 60).toFixed(1),
+                    unit: 'req/min',
                     trend: (statsRealtime?.rps ?? 0) > 0 ? 'up' : (statsRealtime?.rps ?? 0) < 0 ? 'down' : 'neutral',
                 },
                 {

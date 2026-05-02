@@ -114,7 +114,7 @@
       "outputTokens": "Output Tokens",
       "outputCost": "Output Cost",
       "realtimeStats": "Realtime",
-      "rps": "RPS",
+      "rpm": "RPM",
       "tps": "TPS"
     },
     "chart": {

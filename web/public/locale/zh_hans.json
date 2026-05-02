@@ -114,7 +114,7 @@
       "outputTokens": "输出 Tokens",
       "outputCost": "输出费用",
       "realtimeStats": "实时监控",
-      "rps": "RPS",
+      "rpm": "RPM",
       "tps": "TPS"
     },
     "chart": {

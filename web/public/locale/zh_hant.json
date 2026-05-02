@@ -114,7 +114,7 @@
       "outputTokens": "輸出 Tokens",
       "outputCost": "輸出費用",
       "realtimeStats": "即時監控",
-      "rps": "RPS",
+      "rpm": "RPM",
       "tps": "TPS"
     },
     "chart": {
