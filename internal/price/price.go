@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/bestruirui/octopus/internal/client"
+	"github.com/bestruirui/octopus/internal/db"
 	"github.com/bestruirui/octopus/internal/model"
 	"github.com/bestruirui/octopus/internal/op"
 	"github.com/bestruirui/octopus/internal/utils/log"
@@ -84,6 +85,10 @@ func UpdateLLMPrice(ctx context.Context) error {
 	}
 	llmPriceLock.Unlock()
 	lastUpdateTime = time.Now()
+
+	// 将内存中的价格（含 context）同步回 DB 中已有的模型
+	syncPriceToDB(ctx)
+
 	return nil
 }
 
@@ -104,4 +109,36 @@ func GetLLMPrice(modelName string) *model.LLMPrice {
 		return nil
 	}
 	return &price
+}
+
+// syncPriceToDB 将内存中的价格（含 context_length/max_output_tokens）同步回 DB 中已有的模型
+func syncPriceToDB(ctx context.Context) {
+	llmPriceLock.RLock()
+	defer llmPriceLock.RUnlock()
+
+	var dbModels []model.LLMInfo
+	if err := db.GetDB().WithContext(ctx).Find(&dbModels).Error; err != nil {
+		log.Warnf("failed to list models from DB for price sync: %v", err)
+		return
+	}
+
+	for i := range dbModels {
+		dbModel := &dbModels[i]
+		memPrice, ok := llmPrice[dbModel.Name]
+		if !ok {
+			continue
+		}
+		if dbModel.Input == memPrice.Input &&
+			dbModel.Output == memPrice.Output &&
+			dbModel.CacheRead == memPrice.CacheRead &&
+			dbModel.CacheWrite == memPrice.CacheWrite &&
+			dbModel.ContextLength == memPrice.ContextLength &&
+			dbModel.MaxOutputTokens == memPrice.MaxOutputTokens {
+			continue
+		}
+		dbModel.LLMPrice = memPrice
+		if err := op.LLMUpdate(*dbModel, ctx); err != nil {
+			log.Warnf("failed to sync price for model %s: %v", dbModel.Name, err)
+		}
+	}
 }
