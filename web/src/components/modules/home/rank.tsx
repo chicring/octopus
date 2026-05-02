@@ -8,6 +8,7 @@ import { useTranslations } from 'next-intl';
 import { TrendingUp } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContents, TabsContent } from '@/components/animate-ui/components/animate/tabs';
 import { useHomeViewStore, type RankSortMode, type RankDimension } from '@/components/modules/home/store';
+import { getModelIcon } from '@/lib/model-icons';
 
 type ChannelData = NonNullable<ReturnType<typeof useChannelList>['data']>[number];
 
@@ -171,6 +172,7 @@ export function Rank() {
                 {models.map((model, index) => {
                     const rank = index + 1;
                     const medal = getMedalEmoji(rank);
+                    const { Avatar: ModelAvatar, color: brandColor } = getModelIcon(model.name);
 
                     return (
                         <div
@@ -180,6 +182,8 @@ export function Rank() {
                             <div className="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-lg shrink-0">
                                 {medal || rank}
                             </div>
+
+                            <ModelAvatar size={24} className="shrink-0" style={{ color: brandColor }} />
 
                             <div className="flex-1 min-w-0">
                                 <p className="font-medium text-sm truncate">{model.name}</p>

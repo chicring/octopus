@@ -122,6 +122,7 @@
       "totalRequests": "请求次数",
       "totalCost": "消费金额",
       "totalTokens": "Tokens 消耗",
+      "totalTps": "平均 TPS",
       "timePeriod": "时间周期",
       "allKeys": "全部密钥",
       "selectedCount": "{count} 个密钥",

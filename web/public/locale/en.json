@@ -122,6 +122,7 @@
       "totalRequests": "Total Requests",
       "totalCost": "Total Cost",
       "totalTokens": "Total Tokens",
+      "totalTps": "Avg TPS",
       "timePeriod": "Time Period",
       "allKeys": "All Keys",
       "selectedCount": "{count} Keys",
