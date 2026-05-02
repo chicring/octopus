@@ -166,23 +166,25 @@ export function StatsChart() {
 
     const chartData = useMemo(() => {
         const dataKey = getChartDataKey(chartMetricType);
-        // 有密钥筛选 + 非"今天"视图：使用聚合后的 daily 数据
-        if (hasKeyFilter && period !== '1' && aggregatedKeyDaily) {
-            return aggregatedKeyDaily.slice(-days).map((stat) => ({
-                date: dayjs(stat.date).format('MM/DD'),
-                [dataKey]: getMetricValue(chartMetricType, stat),
-            }));
-        }
-        // "今天"视图
-        if (period === '1') {
-            // 有密钥筛选：使用聚合后的 hourly 数据
-            if (hasKeyFilter && aggregatedKeyHourly) {
-                return aggregatedKeyHourly.map((stat) => ({
-                    date: `${stat.hour}:00`,
-                    [dataKey]: getHourlyMetricValue(chartMetricType, stat),
+        // 有密钥筛选
+        if (hasKeyFilter) {
+            // 非"今天"视图：使用聚合后的 daily 数据
+            if (period !== '1') {
+                if (!aggregatedKeyDaily) return [];
+                return aggregatedKeyDaily.slice(-days).map((stat) => ({
+                    date: dayjs(stat.date).format('MM/DD'),
+                    [dataKey]: getMetricValue(chartMetricType, stat),
                 }));
             }
-            // 无密钥筛选：使用全局 hourly 数据
+            // "今天"视图：使用聚合后的 hourly 数据
+            if (!aggregatedKeyHourly) return [];
+            return aggregatedKeyHourly.map((stat) => ({
+                date: `${stat.hour}:00`,
+                [dataKey]: getHourlyMetricValue(chartMetricType, stat),
+            }));
+        }
+        // 无密钥筛选
+        if (period === '1') {
             if (!statsHourly) return [];
             return statsHourly.map((stat) => ({
                 date: `${stat.hour}:00`,
@@ -194,46 +196,46 @@ export function StatsChart() {
                             ? (stat.output_time.raw > 0 ? (stat.output_token.raw / stat.output_time.raw * 1000) : 0)
                             : (stat.input_token.raw + stat.output_token.raw),
             }));
-        } else {
-            // 无密钥筛选 + 非"今天"视图
-            return sortedDaily.slice(-days).map((stat) => ({
-                date: dayjs(stat.date).format('MM/DD'),
-                [dataKey]: chartMetricType === 'cost'
-                    ? stat.total_cost.raw
-                    : chartMetricType === 'count'
-                        ? (stat.request_success.raw + stat.request_failed.raw)
-                        : chartMetricType === 'tps'
-                            ? (stat.output_time.raw > 0 ? (stat.output_token.raw / stat.output_time.raw * 1000) : 0)
-                            : (stat.input_token.raw + stat.output_token.raw),
-            }));
         }
+        return sortedDaily.slice(-days).map((stat) => ({
+            date: dayjs(stat.date).format('MM/DD'),
+            [dataKey]: chartMetricType === 'cost'
+                ? stat.total_cost.raw
+                : chartMetricType === 'count'
+                    ? (stat.request_success.raw + stat.request_failed.raw)
+                    : chartMetricType === 'tps'
+                        ? (stat.output_time.raw > 0 ? (stat.output_token.raw / stat.output_time.raw * 1000) : 0)
+                        : (stat.input_token.raw + stat.output_token.raw),
+        }));
     }, [sortedDaily, statsHourly, period, chartMetricType, hasKeyFilter, aggregatedKeyDaily, aggregatedKeyHourly, days]);
 
     const totals = useMemo(() => {
-        // 有密钥筛选 + 非"今天"视图
-        if (hasKeyFilter && period !== '1' && aggregatedKeyDaily) {
-            const recentStats = aggregatedKeyDaily.slice(-days);
-            const requests = recentStats.reduce((acc, s) => acc + s.request_success + s.request_failed, 0);
-            const cost = recentStats.reduce((acc, s) => acc + s.input_cost + s.output_cost, 0);
-            const tokens = recentStats.reduce((acc, s) => acc + s.input_token + s.output_token, 0);
-            const totalOutputToken = recentStats.reduce((acc, s) => acc + s.output_token, 0);
-            const totalOutputTime = recentStats.reduce((acc, s) => acc + s.output_time, 0);
-            const tps = totalOutputTime > 0 ? (totalOutputToken / totalOutputTime * 1000) : 0;
-            return { requests, cost, tokens, tps };
-        }
-        // "今天"视图
-        if (period === '1') {
-            // 有密钥筛选
-            if (hasKeyFilter && aggregatedKeyHourly) {
-                const requests = aggregatedKeyHourly.reduce((acc, s) => acc + s.request_success + s.request_failed, 0);
-                const cost = aggregatedKeyHourly.reduce((acc, s) => acc + s.input_cost + s.output_cost, 0);
-                const tokens = aggregatedKeyHourly.reduce((acc, s) => acc + s.input_token + s.output_token, 0);
-                const totalOutputToken = aggregatedKeyHourly.reduce((acc, s) => acc + s.output_token, 0);
-                const totalOutputTime = aggregatedKeyHourly.reduce((acc, s) => acc + s.output_time, 0);
+        // 有密钥筛选
+        if (hasKeyFilter) {
+            // 非"今天"视图
+            if (period !== '1') {
+                if (!aggregatedKeyDaily) return { requests: 0, cost: 0, tokens: 0, tps: 0 };
+                const recentStats = aggregatedKeyDaily.slice(-days);
+                const requests = recentStats.reduce((acc, s) => acc + s.request_success + s.request_failed, 0);
+                const cost = recentStats.reduce((acc, s) => acc + s.input_cost + s.output_cost, 0);
+                const tokens = recentStats.reduce((acc, s) => acc + s.input_token + s.output_token, 0);
+                const totalOutputToken = recentStats.reduce((acc, s) => acc + s.output_token, 0);
+                const totalOutputTime = recentStats.reduce((acc, s) => acc + s.output_time, 0);
                 const tps = totalOutputTime > 0 ? (totalOutputToken / totalOutputTime * 1000) : 0;
                 return { requests, cost, tokens, tps };
             }
-            // 无密钥筛选
+            // "今天"视图
+            if (!aggregatedKeyHourly) return { requests: 0, cost: 0, tokens: 0, tps: 0 };
+            const requests = aggregatedKeyHourly.reduce((acc, s) => acc + s.request_success + s.request_failed, 0);
+            const cost = aggregatedKeyHourly.reduce((acc, s) => acc + s.input_cost + s.output_cost, 0);
+            const tokens = aggregatedKeyHourly.reduce((acc, s) => acc + s.input_token + s.output_token, 0);
+            const totalOutputToken = aggregatedKeyHourly.reduce((acc, s) => acc + s.output_token, 0);
+            const totalOutputTime = aggregatedKeyHourly.reduce((acc, s) => acc + s.output_time, 0);
+            const tps = totalOutputTime > 0 ? (totalOutputToken / totalOutputTime * 1000) : 0;
+            return { requests, cost, tokens, tps };
+        }
+        // 无密钥筛选
+        if (period === '1') {
             if (!statsHourly) return { requests: 0, cost: 0, tokens: 0, tps: 0 };
             const requests = statsHourly.reduce((acc, stat) => acc + stat.request_count.raw, 0);
             const cost = statsHourly.reduce((acc, stat) => acc + stat.total_cost.raw, 0);
@@ -242,17 +244,15 @@ export function StatsChart() {
             const totalOutputTime = statsHourly.reduce((acc, stat) => acc + stat.output_time.raw, 0);
             const tps = totalOutputTime > 0 ? (totalOutputToken / totalOutputTime * 1000) : 0;
             return { requests, cost, tokens, tps };
-        } else {
-            // 无密钥筛选 + 非"今天"视图
-            const recentStats = sortedDaily.slice(-days);
-            const requests = recentStats.reduce((acc, stat) => acc + stat.request_success.raw + stat.request_failed.raw, 0);
-            const cost = recentStats.reduce((acc, stat) => acc + stat.total_cost.raw, 0);
-            const tokens = recentStats.reduce((acc, stat) => acc + stat.input_token.raw + stat.output_token.raw, 0);
-            const totalOutputToken = recentStats.reduce((acc, stat) => acc + stat.output_token.raw, 0);
-            const totalOutputTime = recentStats.reduce((acc, stat) => acc + stat.output_time.raw, 0);
-            const tps = totalOutputTime > 0 ? (totalOutputToken / totalOutputTime * 1000) : 0;
-            return { requests, cost, tokens, tps };
         }
+        const recentStats = sortedDaily.slice(-days);
+        const requests = recentStats.reduce((acc, stat) => acc + stat.request_success.raw + stat.request_failed.raw, 0);
+        const cost = recentStats.reduce((acc, stat) => acc + stat.total_cost.raw, 0);
+        const tokens = recentStats.reduce((acc, stat) => acc + stat.input_token.raw + stat.output_token.raw, 0);
+        const totalOutputToken = recentStats.reduce((acc, stat) => acc + stat.output_token.raw, 0);
+        const totalOutputTime = recentStats.reduce((acc, stat) => acc + stat.output_time.raw, 0);
+        const tps = totalOutputTime > 0 ? (totalOutputToken / totalOutputTime * 1000) : 0;
+        return { requests, cost, tokens, tps };
     }, [sortedDaily, statsHourly, period, hasKeyFilter, aggregatedKeyDaily, aggregatedKeyHourly, days]);
 
     const chartConfig = useMemo(() => {
