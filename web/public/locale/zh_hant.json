@@ -426,6 +426,8 @@
       "output": "輸出價格",
       "cacheRead": "快取讀取",
       "cacheWrite": "快取寫入",
+      "contextLength": "上下文長度",
+      "maxOutputTokens": "最大輸出",
       "submit": "建立",
       "submitting": "建立中..."
     },
@@ -438,6 +440,7 @@
     "card": {
       "inputCache": "輸入/快取",
       "outputCache": "輸出/快取",
+      "contextOutput": "上下文/輸出",
       "edit": "編輯",
       "delete": "刪除"
     },
@@ -449,6 +452,8 @@
       "output": "輸出",
       "cacheRead": "快取讀取",
       "cacheWrite": "快取寫入",
+      "contextLength": "上下文長度",
+      "maxOutputTokens": "最大輸出",
       "save": "儲存"
     }
   },

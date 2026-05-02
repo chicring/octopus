@@ -24,6 +24,8 @@ export function CreateDialogContent() {
         output: '',
         cache_read: '',
         cache_write: '',
+        context_length: '',
+        max_output_tokens: '',
     });
 
     const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
@@ -36,9 +38,11 @@ export function CreateDialogContent() {
             output: parseFloat(formData.output) || 0,
             cache_read: parseFloat(formData.cache_read) || 0,
             cache_write: parseFloat(formData.cache_write) || 0,
+            context_length: parseInt(formData.context_length) || 0,
+            max_output_tokens: parseInt(formData.max_output_tokens) || 0,
         }, {
             onSuccess: () => {
-                setFormData({ name: '', input: '', output: '', cache_read: '', cache_write: '' });
+                setFormData({ name: '', input: '', output: '', cache_read: '', cache_write: '', context_length: '', max_output_tokens: '' });
                 setIsOpen(false);
             }
         });
@@ -113,6 +117,28 @@ export function CreateDialogContent() {
                                     step="any"
                                     value={formData.cache_write}
                                     onChange={(e) => setFormData({ ...formData, cache_write: e.target.value })}
+                                    className="rounded-xl"
+                                />
+                            </Field>
+                            <Field>
+                                <FieldLabel htmlFor="model-context-length">{t('contextLength')}</FieldLabel>
+                                <Input
+                                    id="model-context-length"
+                                    type="number"
+                                    step="1"
+                                    value={formData.context_length}
+                                    onChange={(e) => setFormData({ ...formData, context_length: e.target.value })}
+                                    className="rounded-xl"
+                                />
+                            </Field>
+                            <Field>
+                                <FieldLabel htmlFor="model-max-output-tokens">{t('maxOutputTokens')}</FieldLabel>
+                                <Input
+                                    id="model-max-output-tokens"
+                                    type="number"
+                                    step="1"
+                                    value={formData.max_output_tokens}
+                                    onChange={(e) => setFormData({ ...formData, max_output_tokens: e.target.value })}
                                     className="rounded-xl"
                                 />
                             </Field>

@@ -10,6 +10,8 @@ export interface LLMPrice {
     output: number;
     cache_read: number;
     cache_write: number;
+    context_length: number;
+    max_output_tokens: number;
 }
 
 /**

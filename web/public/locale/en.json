@@ -426,6 +426,8 @@
       "output": "Output Price",
       "cacheRead": "Cache Read",
       "cacheWrite": "Cache Write",
+      "contextLength": "Context Length",
+      "maxOutputTokens": "Max Output",
       "submit": "Create",
       "submitting": "Creating..."
     },
@@ -438,6 +440,7 @@
     "card": {
       "inputCache": "Input/Cache",
       "outputCache": "Output/Cache",
+      "contextOutput": "Ctx/Out",
       "edit": "Edit",
       "delete": "Delete"
     },
@@ -449,6 +452,8 @@
       "output": "Output",
       "cacheRead": "Cache Read",
       "cacheWrite": "Cache Write",
+      "contextLength": "Context Length",
+      "maxOutputTokens": "Max Output",
       "save": "Save"
     }
   },

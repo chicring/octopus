@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { Pencil, Trash2, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
+import { Pencil, Trash2, ArrowDownToLine, ArrowUpFromLine, FileText, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useTranslations } from 'next-intl';
 import { useUpdateModel, useDeleteModel, type LLMInfo } from '@/api/endpoints/model';
@@ -11,6 +11,13 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/animate-ui
 import { ModelDeleteOverlay, ModelEditOverlay } from './ItemOverlays';
 import { cn } from '@/lib/utils';
 import { createPortal } from 'react-dom';
+
+function formatTokenCount(n: number): string {
+    if (n <= 0) return '-';
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+    if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
+    return n.toString();
+}
 
 interface ModelItemProps {
     model: LLMInfo;
@@ -34,6 +41,8 @@ export const ModelItem = memo(function ModelItem({ model, layout = 'grid' }: Mod
         output: model.output.toString(),
         cache_read: model.cache_read.toString(),
         cache_write: model.cache_write.toString(),
+        context_length: model.context_length.toString(),
+        max_output_tokens: model.max_output_tokens.toString(),
     }));
 
     const updateModel = useUpdateModel();
@@ -64,6 +73,8 @@ export const ModelItem = memo(function ModelItem({ model, layout = 'grid' }: Mod
             output: model.output.toString(),
             cache_read: model.cache_read.toString(),
             cache_write: model.cache_write.toString(),
+            context_length: model.context_length.toString(),
+            max_output_tokens: model.max_output_tokens.toString(),
         });
         // Ensure first open already has anchor geometry so layout animation can run.
         updateOverlayRect();
@@ -81,6 +92,8 @@ export const ModelItem = memo(function ModelItem({ model, layout = 'grid' }: Mod
             output: parseFloat(editValues.output) || 0,
             cache_read: parseFloat(editValues.cache_read) || 0,
             cache_write: parseFloat(editValues.cache_write) || 0,
+            context_length: parseInt(editValues.context_length) || 0,
+            max_output_tokens: parseInt(editValues.max_output_tokens) || 0,
         }, {
             onSuccess: () => {
                 closeEdit();
@@ -174,6 +187,17 @@ export const ModelItem = memo(function ModelItem({ model, layout = 'grid' }: Mod
                             {t('card.outputCache')}
                             <span className="tabular-nums truncate">{model.output.toFixed(2)}/{model.cache_write.toFixed(2)}$</span>
                         </span>
+                        {(model.context_length > 0 || model.max_output_tokens > 0) && (
+                            <>
+                                <span className="text-muted-foreground/60">|</span>
+                                <span className="inline-flex items-center gap-1">
+                                    <FileText className="size-3.5 shrink-0" style={{ color: brandColor }} />
+                                    {model.context_length > 0 && <span className="tabular-nums">{formatTokenCount(model.context_length)}</span>}
+                                    {model.context_length > 0 && model.max_output_tokens > 0 && <ArrowRight className="size-3 shrink-0 text-muted-foreground/60" />}
+                                    {model.max_output_tokens > 0 && <span className="tabular-nums">{formatTokenCount(model.max_output_tokens)}</span>}
+                                </span>
+                            </>
+                        )}
                     </p>
                 ) : (
                     <>
@@ -188,6 +212,16 @@ export const ModelItem = memo(function ModelItem({ model, layout = 'grid' }: Mod
                             {t('card.outputCache')}
                             <span className="tabular-nums">{model.output.toFixed(2)}/{model.cache_write.toFixed(2)}$</span>
                         </p>
+
+                        {(model.context_length > 0 || model.max_output_tokens > 0) && (
+                            <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                                <FileText className="size-3.5" style={{ color: brandColor }} />
+                                {t('card.contextOutput')}
+                                {model.context_length > 0 && <span className="tabular-nums">{formatTokenCount(model.context_length)}</span>}
+                                {model.context_length > 0 && model.max_output_tokens > 0 && <ArrowRight className="size-3 text-muted-foreground/60" />}
+                                {model.max_output_tokens > 0 && <span className="tabular-nums">{formatTokenCount(model.max_output_tokens)}</span>}
+                            </p>
+                        )}
                     </>
                 )}
             </div>

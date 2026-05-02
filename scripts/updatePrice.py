@@ -136,14 +136,20 @@ def generate_claude_aliases(model_id: str) -> list[str]:
     return aliases
 
 
-def generate_entry(model_id: str, cost: dict) -> str:
+def generate_entry(model_id: str, cost: dict, limit: dict | None = None) -> str:
     """生成单个模型的 Go map entry"""
     input_price = format_price(cost.get("input"))
     output_price = format_price(cost.get("output"))
     cache_read = format_price(cost.get("cache_read"))
     cache_write = format_price(cost.get("cache_write"))
     
-    return f'\t"{model_id}": {{Input: {input_price}, Output: {output_price}, CacheRead: {cache_read}, CacheWrite: {cache_write}}},'
+    context_length = 0
+    max_output_tokens = 0
+    if limit:
+        context_length = limit.get("context", 0) or 0
+        max_output_tokens = limit.get("output", 0) or 0
+    
+    return f'\t"{model_id}": {{Input: {input_price}, Output: {output_price}, CacheRead: {cache_read}, CacheWrite: {cache_write}, ContextLength: {context_length}, MaxOutputTokens: {max_output_tokens}}},'
 
 
 def main():
@@ -164,12 +170,13 @@ def main():
         for model_data in models.values():
             model_id = model_data.get("id", "").lower()
             cost = model_data.get("cost", {})
+            limit = model_data.get("limit")
             
             if not model_id:
                 continue
             
             # 添加原始模型
-            entries.append(generate_entry(model_id, cost))
+            entries.append(generate_entry(model_id, cost, limit))
             provider_count += 1
             
             # 收集所有别名
@@ -184,7 +191,7 @@ def main():
             
             # 添加别名 (去重)
             for alias in set(aliases):
-                entries.append(generate_entry(alias.lower(), cost))
+                entries.append(generate_entry(alias.lower(), cost, limit))
                 provider_count += 1
             
         print(f"  {provider}: {provider_count} models")

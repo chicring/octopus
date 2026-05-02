@@ -66,13 +66,13 @@ export function ClientIconBadge({ clientName, className }: ClientIconBadgeProps)
     return (
         <Tooltip>
             <TooltipTrigger asChild>
-                <span className={`inline-flex shrink-0 rounded-full overflow-hidden ${className ?? 'size-4'}`}>
+                <span className={`inline-flex items-center justify-center shrink-0 rounded-full bg-white dark:bg-muted/80 ${className ?? 'size-4'}`}>
                     <Image
                         src={config.icon}
                         alt={clientName}
                         width={16}
                         height={16}
-                        className="size-full object-cover"
+                        className="size-[60%] object-contain"
                         unoptimized
                     />
                 </span>

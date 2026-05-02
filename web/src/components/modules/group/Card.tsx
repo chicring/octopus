@@ -247,7 +247,7 @@ export function GroupCard({ group }: { group: Group }) {
     return (
         <article className="flex flex-col rounded-3xl border border-border bg-card text-card-foreground p-4 custom-shadow">
             <header className="flex items-start justify-between mb-3 relative overflow-visible rounded-xl -mx-1 px-1 -my-1 py-1">
-                <div className="relative flex-1 mr-2 min-w-0 group/title">
+                <div className="flex items-center gap-2 flex-1 mr-2 min-w-0">
                     <Tooltip side="top" sideOffset={10} align="center">
                         <TooltipTrigger asChild>
                             <h3 className="text-lg font-bold truncate">{group.name}</h3>
@@ -255,7 +255,7 @@ export function GroupCard({ group }: { group: Group }) {
                         <TooltipContent key={group.name}>{group.name}</TooltipContent>
                     </Tooltip>
                     {group.reasoning_effort_override && (
-                        <Badge variant="secondary" className="shrink-0 text-xs px-1.5 py-0 ml-2 bg-purple-500/15 text-purple-600 dark:text-purple-400">
+                        <Badge variant="secondary" className="shrink-0 text-xs px-1.5 py-0 bg-purple-500/15 text-purple-600 dark:text-purple-400">
                             <Brain className="size-3 mr-1 opacity-80" />
                             {group.reasoning_effort_override}
                         </Badge>

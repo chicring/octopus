@@ -426,6 +426,8 @@
       "output": "输出价格",
       "cacheRead": "缓存读取",
       "cacheWrite": "缓存写入",
+      "contextLength": "上下文长度",
+      "maxOutputTokens": "最大输出",
       "submit": "创建",
       "submitting": "创建中..."
     },
@@ -438,6 +440,7 @@
     "card": {
       "inputCache": "输入/缓存",
       "outputCache": "输出/缓存",
+      "contextOutput": "上下文/输出",
       "edit": "编辑",
       "delete": "删除"
     },
@@ -449,6 +452,8 @@
       "output": "输出",
       "cacheRead": "缓存读取",
       "cacheWrite": "缓存写入",
+      "contextLength": "上下文长度",
+      "maxOutputTokens": "最大输出",
       "save": "保存"
     }
   },

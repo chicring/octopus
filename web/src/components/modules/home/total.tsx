@@ -47,8 +47,8 @@ export function Total() {
         {
             title: t('requestStats'),
             icon: Activity,
-            accent: 'text-blue-500',
-            accentBg: 'bg-blue-500/10',
+            accent: 'text-chart-2',
+            accentBg: 'bg-chart-2/10',
             items: [
                 {
                     label: t('requestCount'),
@@ -121,19 +121,19 @@ export function Total() {
                             <div className={`size-7 rounded-lg ${card.accentBg} flex items-center justify-center shrink-0`}>
                                 <card.icon className={`size-3.5 ${card.accent}`} />
                             </div>
-                            <h3 className="font-medium text-xs text-muted-foreground truncate">{card.title}</h3>
+                            <h3 className="font-medium text-sm text-muted-foreground truncate">{card.title}</h3>
                         </div>
 
                         <div className="space-y-2.5">
                             {card.items.map((item) => (
                                 <div key={item.label} className="flex items-center justify-between">
-                                    <span className="text-[11px] text-muted-foreground/70 truncate">{item.label}</span>
+                                    <span className="text-xs text-muted-foreground/70 truncate">{item.label}</span>
                                     <div className="flex items-baseline gap-0.5 shrink-0 tabular-nums">
-                                        <span className="font-semibold text-base leading-tight">
+                                        <span className="font-semibold text-lg leading-tight">
                                             <AnimatedNumber value={item.value} />
                                         </span>
                                         {item.unit && (
-                                            <span className="text-[11px] text-muted-foreground/60">{item.unit}</span>
+                                            <span className="text-xs text-muted-foreground/60">{item.unit}</span>
                                         )}
                                         {item.trend && <TrendIcon direction={item.trend} />}
                                     </div>

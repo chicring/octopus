@@ -57,8 +57,12 @@ func UpdateLLMPrice(ctx context.Context) error {
 	}
 	var rawPrice map[string]struct {
 		Models map[string]struct {
-			ID   string         `json:"id"`
-			Cost model.LLMPrice `json:"cost"`
+			ID    string         `json:"id"`
+			Cost  model.LLMPrice `json:"cost"`
+			Limit struct {
+				Context int `json:"context"`
+				Output  int `json:"output"`
+			} `json:"limit"`
 		} `json:"models"`
 	}
 	body, err := io.ReadAll(resp.Body)
@@ -70,9 +74,12 @@ func UpdateLLMPrice(ctx context.Context) error {
 	}
 	llmPriceLock.Lock()
 	for _, provider := range Provider {
-		for _, model := range rawPrice[provider].Models {
-			model.ID = strings.ToLower(model.ID)
-			llmPrice[model.ID] = model.Cost
+		for _, m := range rawPrice[provider].Models {
+			m.ID = strings.ToLower(m.ID)
+			price := m.Cost
+			price.ContextLength = m.Limit.Context
+			price.MaxOutputTokens = m.Limit.Output
+			llmPrice[m.ID] = price
 		}
 	}
 	llmPriceLock.Unlock()
