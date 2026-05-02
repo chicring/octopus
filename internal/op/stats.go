@@ -651,12 +651,29 @@ func StatsAPIKeyGet(id int) model.StatsAPIKey {
 	return stats
 }
 
+// StatsAPIKeyList 返回所有 API Key 的统计列表。
+// 先从数据库加载所有 API Key，再合并内存缓存中的统计数据。
 func StatsAPIKeyList() []model.StatsAPIKey {
-	apiKeys := make([]model.StatsAPIKey, 0, statsAPIKeyCache.Len())
+	// 从内存缓存获取已有统计
+	cachedMap := make(map[int]model.StatsAPIKey)
 	for _, v := range statsAPIKeyCache.GetAll() {
-		apiKeys = append(apiKeys, v)
+		cachedMap[v.APIKeyID] = v
 	}
-	return apiKeys
+
+	// 从数据库获取所有 API Key，确保没有遗漏
+	var allKeys []model.APIKey
+	db.GetDB().Find(&allKeys)
+
+	result := make([]model.StatsAPIKey, 0, len(allKeys))
+	for _, k := range allKeys {
+		if cached, ok := cachedMap[k.ID]; ok {
+			result = append(result, cached)
+		} else {
+			// 数据库中有但缓存中没有的 key，返回零值统计
+			result = append(result, model.StatsAPIKey{APIKeyID: k.ID})
+		}
+	}
+	return result
 }
 
 // StatsHourlyGet 返回当天 0..currentHour 的统计数据，
