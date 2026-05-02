@@ -63,8 +63,6 @@ function getHourlyMetricValue(type: ChartMetricType, raw: HourlyAgg) {
 
 export function StatsChart() {
     const PERIODS: readonly ChartPeriod[] = ['1', '7', '30'];
-    const { data: statsDaily } = useStatsDaily(period !== '1' ? parseInt(period) : 0);
-    const { data: statsHourly } = useStatsHourly(period === '1');
     const { data: apiKeys } = useAPIKeyList();
     const t = useTranslations('home.chart');
 
@@ -74,6 +72,9 @@ export function StatsChart() {
     const setChartPeriod = useHomeViewStore((state) => state.setChartPeriod);
     const selectedKeyIDs = useHomeViewStore((state) => state.chartSelectedKeyIDs);
     const setSelectedKeyIDs = useHomeViewStore((state) => state.setChartSelectedKeyIDs);
+
+    const { data: statsDaily } = useStatsDaily();
+    const { data: statsHourly } = useStatsHourly();
 
     const hasKeyFilter = selectedKeyIDs.length > 0;
     const days = Number(period);
