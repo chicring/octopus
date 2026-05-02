@@ -123,6 +123,9 @@
       "totalCost": "消费金额",
       "totalTokens": "Tokens 消耗",
       "timePeriod": "时间周期",
+      "allKeys": "全部密钥",
+      "selectedCount": "{count} 个密钥",
+      "clearFilter": "清除筛选",
       "metricType": {
         "cost": "金额",
         "count": "次数",

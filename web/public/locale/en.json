@@ -123,6 +123,9 @@
       "totalCost": "Total Cost",
       "totalTokens": "Total Tokens",
       "timePeriod": "Time Period",
+      "allKeys": "All Keys",
+      "selectedCount": "{count} Keys",
+      "clearFilter": "Clear Filter",
       "metricType": {
         "cost": "Cost",
         "count": "Count",
