@@ -35,10 +35,26 @@ func UpdateCore() error {
 		return err
 	}
 
+	// 先将旧二进制重命名，避免 Linux 上 "text file busy" 导致无法覆盖
+	oldPath := execPath + ".old"
+	if err := os.Rename(execPath, oldPath); err != nil {
+		log.Warnf("rename old binary failed: %v", err)
+		// 非致命错误，继续尝试直接覆盖
+	} else {
+		log.Infof("renamed old binary to %s", oldPath)
+	}
+
 	if err := unzip(data, filepath.Dir(execPath)); err != nil {
 		log.Warnf("unzip failed: %v", err)
+		// 解压失败时尝试恢复旧二进制
+		if _, statErr := os.Stat(oldPath); statErr == nil {
+			os.Rename(oldPath, execPath)
+		}
 		return err
 	}
+
+	// 清理旧二进制
+	os.Remove(oldPath)
 
 	log.Infof("update core success")
 	go restartExecutable(execPath)
