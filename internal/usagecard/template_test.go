@@ -6,8 +6,8 @@ import (
 
 func TestListTemplates(t *testing.T) {
 	templates := ListTemplates()
-	if len(templates) < 4 {
-		t.Errorf("expected at least 4 built-in templates, got %d", len(templates))
+	if len(templates) < 3 {
+		t.Errorf("expected at least 3 built-in templates, got %d", len(templates))
 	}
 }
 
@@ -96,57 +96,6 @@ func TestGenericTemplateHasFlexibleAuth(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("generic-json should support auth type %q", at)
-		}
-	}
-}
-
-func TestAnthropicTemplateHasApiKeyAuth(t *testing.T) {
-	tmpl, ok := GetTemplate("anthropic-rate-limit")
-	if !ok {
-		t.Fatal("anthropic-rate-limit template not found")
-	}
-
-	foundApiKey := false
-	for _, at := range tmpl.AuthTypes {
-		if at == "x-api-key" {
-			foundApiKey = true
-			break
-		}
-	}
-	if !foundApiKey {
-		t.Error("anthropic template should support x-api-key auth")
-	}
-
-	// Should have anthropic-version header
-	foundVersion := false
-	for _, h := range tmpl.RequiredHeaders {
-		if h.Key == "anthropic-version" {
-			foundVersion = true
-			break
-		}
-	}
-	if !foundVersion {
-		t.Error("anthropic template should require anthropic-version header")
-	}
-}
-
-func TestOpenAITemplateMetrics(t *testing.T) {
-	tmpl, ok := GetTemplate("openai-rate-limit")
-	if !ok {
-		t.Fatal("openai-rate-limit template not found")
-	}
-
-	if len(tmpl.Metrics) != 2 {
-		t.Errorf("openai template should have 2 metrics (requests + tokens), got %d", len(tmpl.Metrics))
-	}
-
-	// Both metrics should use header source
-	for _, m := range tmpl.Metrics {
-		if m.Limit == nil || m.Limit.Source != "header" {
-			t.Errorf("metric %s limit should be from header", m.ID)
-		}
-		if m.Remaining == nil || m.Remaining.Source != "header" {
-			t.Errorf("metric %s remaining should be from header", m.ID)
 		}
 	}
 }

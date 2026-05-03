@@ -15,19 +15,11 @@ export function formatMetricValue(value: number | null | undefined, unit: string
         return `${value.toFixed(1)}%`;
     }
 
-    if (Math.abs(value) >= 1_000_000) {
-        return `${(value / 1_000_000).toFixed(1)}M`;
-    }
-
-    if (Math.abs(value) >= 1_000) {
-        return `${(value / 1_000).toFixed(1)}K`;
-    }
-
     if (Number.isInteger(value)) {
-        return value.toString();
+        return value.toLocaleString();
     }
 
-    return value.toFixed(1);
+    return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
 export function formatResetTime(resetAt: string): string {

@@ -41,8 +41,6 @@ var builtinTemplates = map[string]UsageTemplate{}
 func init() {
 	register(genericJSONTemplate())
 	register(githubRateLimitTemplate())
-	register(openAIRateLimitTemplate())
-	register(anthropicRateLimitTemplate())
 	register(xfyunCodingPlanTemplate())
 }
 
@@ -243,21 +241,11 @@ func xfyunCodingPlanTemplate() UsageTemplate {
 	return UsageTemplate{
 		ID:              "xfyun-coding-plan",
 		Name:            "讯飞 Coding Plan",
-		Description:     "讯飞星火 Coding Plan 用量查询，展示套餐总量、5 小时限、周限额度",
+		Description:     "讯飞星火 Coding Plan 用量查询，展示 5 小时限、周限、套餐总量",
 		DefaultEndpoint: "https://maas.xfyun.cn/api/v1/gpt-finetune/coding-plan/list?page=1&size=6",
 		Method:          "GET",
 		AuthTypes:       []string{"cookie"},
 		Metrics: []UsageMetricTemplate{
-			{
-				ID:        "package",
-				Label:     "套餐总量",
-				Kind:      "quota",
-				Unit:      "requests",
-				Window:    "monthly",
-				Limit:     &model.FieldSpec{Source: "body", Path: "$.data.rows[0].codingPlanUsageDTO.packageLimit"},
-				Used:      &model.FieldSpec{Source: "body", Path: "$.data.rows[0].codingPlanUsageDTO.packageUsage"},
-				Remaining: &model.FieldSpec{Source: "body", Path: "$.data.rows[0].codingPlanUsageDTO.packageLeft"},
-			},
 			{
 				ID:        "rp5h",
 				Label:     "5 小时限",
@@ -276,7 +264,17 @@ func xfyunCodingPlanTemplate() UsageTemplate {
 				Limit:     &model.FieldSpec{Source: "body", Path: "$.data.rows[0].codingPlanUsageDTO.rpwLimit"},
 				Used:      &model.FieldSpec{Source: "body", Path: "$.data.rows[0].codingPlanUsageDTO.rpwUsage"},
 			},
+			{
+				ID:        "package",
+				Label:     "套餐总量",
+				Kind:      "quota",
+				Unit:      "requests",
+				Window:    "monthly",
+				Limit:     &model.FieldSpec{Source: "body", Path: "$.data.rows[0].codingPlanUsageDTO.packageLimit"},
+				Used:      &model.FieldSpec{Source: "body", Path: "$.data.rows[0].codingPlanUsageDTO.packageUsage"},
+				Remaining: &model.FieldSpec{Source: "body", Path: "$.data.rows[0].codingPlanUsageDTO.packageLeft"},
+			},
 		},
-		PrimaryMetricIDs: []string{"package", "rp5h", "rpw"},
+		PrimaryMetricIDs: []string{"rp5h", "rpw", "package"},
 	}
 }
