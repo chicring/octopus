@@ -295,8 +295,11 @@ func persistStatsSnapshots(
 			}
 			if len(apiKeyHourlies) > 0 {
 				if result := tx.Clauses(clause.OnConflict{
-					Columns:   []clause.Column{{Name: "api_key_id"}, {Name: "date"}, {Name: "hour"}},
-					UpdateAll: true,
+					Columns: []clause.Column{{Name: "api_key_id"}, {Name: "date"}, {Name: "hour"}},
+					DoUpdates: clause.AssignmentColumns([]string{
+						"input_token", "output_token", "input_cost", "output_cost",
+						"wait_time", "output_time", "request_success", "request_failed",
+					}),
 				}).Create(&apiKeyHourlies); result.Error != nil {
 					return result.Error
 				}
