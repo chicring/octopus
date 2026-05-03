@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-const dbDumpVersion = 1
+const dbDumpVersion = 2
 
 func DBExportAll(ctx context.Context, includeLogs, includeStats bool) (*model.DBDump, error) {
 	conn := db.GetDB().WithContext(ctx)
@@ -63,6 +63,12 @@ func DBExportAll(ctx context.Context, includeLogs, includeStats bool) (*model.DB
 		}
 		if err := conn.Find(&d.StatsAPIKey).Error; err != nil {
 			return nil, fmt.Errorf("export stats_api_key: %w", err)
+		}
+		if err := conn.Find(&d.StatsAPIKeyDaily).Error; err != nil {
+			return nil, fmt.Errorf("export stats_api_key_daily: %w", err)
+		}
+		if err := conn.Find(&d.StatsAPIKeyHourly).Error; err != nil {
+			return nil, fmt.Errorf("export stats_api_key_hourly: %w", err)
 		}
 	}
 
@@ -155,6 +161,16 @@ func DBImportIncremental(ctx context.Context, dump *model.DBDump) (*model.DBImpo
 				return fmt.Errorf("import stats_api_key: %w", err)
 			} else {
 				res.RowsAffected["stats_api_key"] = n
+			}
+			if n, err := createUpsertAll(tx, dump.StatsAPIKeyDaily, []clause.Column{{Name: "api_key_id"}, {Name: "date"}}); err != nil {
+				return fmt.Errorf("import stats_api_key_daily: %w", err)
+			} else {
+				res.RowsAffected["stats_api_key_daily"] = n
+			}
+			if n, err := createUpsertAll(tx, dump.StatsAPIKeyHourly, []clause.Column{{Name: "api_key_id"}, {Name: "date"}, {Name: "hour"}}); err != nil {
+				return fmt.Errorf("import stats_api_key_hourly: %w", err)
+			} else {
+				res.RowsAffected["stats_api_key_hourly"] = n
 			}
 		}
 
