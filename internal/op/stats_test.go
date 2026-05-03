@@ -1,6 +1,7 @@
 package op
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -258,6 +259,126 @@ func TestStatsDaily_RefreshCacheUsesWhereToday(t *testing.T) {
 }
 
 // ============================================================================
+// ============================================================================
+// 重启恢复：验证 StatsDaily/StatsTotal/StatsAPIKeyDaily/StatsAPIKeyHourly
+// 在更新后通过 StatsTodayGet / StatsAPIKeyDailyCache 能正确保留
+// ============================================================================
+
+func TestStatsDailyUpdate_AccumulatesOnSameDay(t *testing.T) {
+	today := timeNowDate()
+
+	// 模拟启动后加载当天空记录
+	statsDailyCacheLock.Lock()
+	statsDailyCache = model.StatsDaily{Date: today}
+	statsDailyCacheLock.Unlock()
+
+	// 模拟多个请求更新
+	m1 := model.StatsMetrics{RequestSuccess: 1, InputToken: 100, OutputToken: 50}
+	m2 := model.StatsMetrics{RequestSuccess: 1, InputToken: 200, OutputToken: 100}
+
+	if err := StatsDailyUpdate(context.Background(), m1); err != nil {
+		t.Fatalf("StatsDailyUpdate m1: %v", err)
+	}
+	if err := StatsDailyUpdate(context.Background(), m2); err != nil {
+		t.Fatalf("StatsDailyUpdate m2: %v", err)
+	}
+
+	// 验证累加结果
+	got := StatsTodayGet()
+	if got.Date != today {
+		t.Errorf("date: got %s, want %s", got.Date, today)
+	}
+	if got.RequestSuccess != 2 {
+		t.Errorf("RequestSuccess: got %d, want 2", got.RequestSuccess)
+	}
+	if got.InputToken != 300 {
+		t.Errorf("InputToken: got %d, want 300", got.InputToken)
+	}
+}
+
+func TestStatsTotalUpdate_Accumulates(t *testing.T) {
+	statsTotalCacheLock.Lock()
+	statsTotalCache = model.StatsTotal{ID: 1}
+	statsTotalCacheLock.Unlock()
+
+	m1 := model.StatsMetrics{RequestSuccess: 1, InputToken: 100}
+	m2 := model.StatsMetrics{RequestSuccess: 1, InputToken: 200}
+
+	if err := StatsTotalUpdate(m1); err != nil {
+		t.Fatalf("StatsTotalUpdate m1: %v", err)
+	}
+	if err := StatsTotalUpdate(m2); err != nil {
+		t.Fatalf("StatsTotalUpdate m2: %v", err)
+	}
+
+	got := StatsTotalGet()
+	if got.RequestSuccess != 2 {
+		t.Errorf("RequestSuccess: got %d, want 2", got.RequestSuccess)
+	}
+	if got.InputToken != 300 {
+		t.Errorf("InputToken: got %d, want 300", got.InputToken)
+	}
+}
+
+func TestStatsAPIKeyDailyUpdate_AccumulatesOnSameDay(t *testing.T) {
+	statsAPIKeyDailyCacheLock.Lock()
+	statsAPIKeyDailyCache.Clear()
+	statsAPIKeyDailyCacheLock.Unlock()
+
+	today := timeNowDate()
+
+	m1 := model.StatsMetrics{RequestSuccess: 1, InputToken: 100}
+	m2 := model.StatsMetrics{RequestSuccess: 1, InputToken: 200}
+
+	StatsAPIKeyDailyUpdate(1, m1)
+	StatsAPIKeyDailyUpdate(1, m2)
+
+	key := apiKeyDailyKey{APIKeyID: 1, Date: today}
+	statsAPIKeyDailyCacheLock.Lock()
+	got, ok := statsAPIKeyDailyCache.Get(key)
+	statsAPIKeyDailyCacheLock.Unlock()
+
+	if !ok {
+		t.Fatal("API key daily cache entry not found")
+	}
+	if got.RequestSuccess != 2 {
+		t.Errorf("RequestSuccess: got %d, want 2", got.RequestSuccess)
+	}
+	if got.InputToken != 300 {
+		t.Errorf("InputToken: got %d, want 300", got.InputToken)
+	}
+}
+
+func TestStatsAPIKeyHourlyUpdate_AccumulatesOnSameHour(t *testing.T) {
+	statsAPIKeyHourlyCacheLock.Lock()
+	statsAPIKeyHourlyCache.Clear()
+	statsAPIKeyHourlyCacheLock.Unlock()
+
+	today := timeNowDate()
+	hour := timeNowHour()
+
+	m1 := model.StatsMetrics{RequestSuccess: 1, InputToken: 100}
+	m2 := model.StatsMetrics{RequestSuccess: 1, InputToken: 200}
+
+	StatsAPIKeyHourlyUpdate(1, m1)
+	StatsAPIKeyHourlyUpdate(1, m2)
+
+	key := apiKeyHourlyKey{APIKeyID: 1, Date: today, Hour: hour}
+	statsAPIKeyHourlyCacheLock.Lock()
+	got, ok := statsAPIKeyHourlyCache.Get(key)
+	statsAPIKeyHourlyCacheLock.Unlock()
+
+	if !ok {
+		t.Fatal("API key hourly cache entry not found")
+	}
+	if got.RequestSuccess != 2 {
+		t.Errorf("RequestSuccess: got %d, want 2", got.RequestSuccess)
+	}
+	if got.InputToken != 300 {
+		t.Errorf("InputToken: got %d, want 300", got.InputToken)
+	}
+}
+
 // 辅助函数
 // ============================================================================
 

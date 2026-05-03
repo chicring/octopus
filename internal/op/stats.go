@@ -191,10 +191,18 @@ func persistStatsSnapshots(
 	apiKeyHourlyKeys []apiKeyHourlyKey,
 ) error {
 	return db.GetDB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if result := tx.Save(&totalSnap); result.Error != nil {
+		// Total: upsert，避免 Save() 的零值覆盖风险
+		if result := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "id"}},
+			UpdateAll: true,
+		}).Create(&totalSnap); result.Error != nil {
 			return result.Error
 		}
-		if result := tx.Save(&dailySnap); result.Error != nil {
+		// Daily: upsert，避免 Save() 的零值覆盖风险
+		if result := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "date"}},
+			UpdateAll: true,
+		}).Create(&dailySnap); result.Error != nil {
 			return result.Error
 		}
 
