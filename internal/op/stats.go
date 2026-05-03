@@ -88,8 +88,8 @@ func StatsSaveDBTask() {
 }
 
 // StatsSaveDB 将所有内存统计快照写入数据库。
-// 每个维度使用 dirty set 标记哪些条目需要刷盘，
-// 仅在事务成功后才清空对应的 dirty set。
+// StatsTotal/StatsDaily/StatsChannel/StatsModel/StatsAPIKey 无条件全量写入，
+// 确保重启后数据不丢失；Hourly/APIKeyDaily/APIKeyHourly 使用 dirty set 按需写入。
 func StatsSaveDB(ctx context.Context) error {
 	// 1. 采集快照（在锁内拷贝，锁外构造写入列表）
 	statsTotalCacheLock.RLock()
@@ -102,6 +102,25 @@ func StatsSaveDB(ctx context.Context) error {
 	statsDailyCacheLock.RLock()
 	dailySnap := statsDailyCache
 	statsDailyCacheLock.RUnlock()
+
+	// Channel/Model/APIKey: 无条件全量快照（累计总量，数据量小，防止丢失）
+	allChannels := statsChannelCache.GetAll()
+	channelSnaps := make([]model.StatsChannel, 0, len(allChannels))
+	for _, v := range allChannels {
+		channelSnaps = append(channelSnaps, v)
+	}
+
+	allModels := statsModelCache.GetAll()
+	modelSnaps := make([]model.StatsModel, 0, len(allModels))
+	for _, v := range allModels {
+		modelSnaps = append(modelSnaps, v)
+	}
+
+	allAPIKeys := statsAPIKeyCache.GetAll()
+	apiKeySnaps := make([]model.StatsAPIKey, 0, len(allAPIKeys))
+	for _, v := range allAPIKeys {
+		apiKeySnaps = append(apiKeySnaps, v)
+	}
 
 	// hourly: 收集所有 dirty key 对应的快照
 	statsHourlyCacheNeedUpdateLock.Lock()
@@ -118,27 +137,6 @@ func StatsSaveDB(ctx context.Context) error {
 		}
 	}
 
-	statsChannelCacheNeedUpdateLock.Lock()
-	channelIDs := make([]int, 0, len(statsChannelCacheNeedUpdate))
-	for id := range statsChannelCacheNeedUpdate {
-		channelIDs = append(channelIDs, id)
-	}
-	statsChannelCacheNeedUpdateLock.Unlock()
-
-	statsModelCacheNeedUpdateLock.Lock()
-	modelNames := make([]string, 0, len(statsModelCacheNeedUpdate))
-	for name := range statsModelCacheNeedUpdate {
-		modelNames = append(modelNames, name)
-	}
-	statsModelCacheNeedUpdateLock.Unlock()
-
-	statsAPIKeyCacheNeedUpdateLock.Lock()
-	apiKeyIDs := make([]int, 0, len(statsAPIKeyCacheNeedUpdate))
-	for id := range statsAPIKeyCacheNeedUpdate {
-		apiKeyIDs = append(apiKeyIDs, id)
-	}
-	statsAPIKeyCacheNeedUpdateLock.Unlock()
-
 	statsAPIKeyDailyCacheNeedUpdateLock.Lock()
 	apiKeyDailyKeys := make([]apiKeyDailyKey, 0, len(statsAPIKeyDailyCacheNeedUpdate))
 	for k := range statsAPIKeyDailyCacheNeedUpdate {
@@ -153,7 +151,7 @@ func StatsSaveDB(ctx context.Context) error {
 	}
 	statsAPIKeyHourlyCacheNeedUpdateLock.Unlock()
 
-	err := persistStatsSnapshots(ctx, totalSnap, dailySnap, hourlySnaps, channelIDs, modelNames, apiKeyIDs, apiKeyDailyKeys, apiKeyHourlyKeys)
+	err := persistStatsSnapshots(ctx, totalSnap, dailySnap, hourlySnaps, channelSnaps, modelSnaps, apiKeySnaps, apiKeyDailyKeys, apiKeyHourlyKeys)
 
 	// 仅在持久化成功后清空 dirty set
 	if err == nil {
@@ -162,24 +160,6 @@ func StatsSaveDB(ctx context.Context) error {
 			delete(statsHourlyCacheNeedUpdate, k)
 		}
 		statsHourlyCacheNeedUpdateLock.Unlock()
-
-		statsChannelCacheNeedUpdateLock.Lock()
-		for _, id := range channelIDs {
-			delete(statsChannelCacheNeedUpdate, id)
-		}
-		statsChannelCacheNeedUpdateLock.Unlock()
-
-		statsModelCacheNeedUpdateLock.Lock()
-		for _, name := range modelNames {
-			delete(statsModelCacheNeedUpdate, name)
-		}
-		statsModelCacheNeedUpdateLock.Unlock()
-
-		statsAPIKeyCacheNeedUpdateLock.Lock()
-		for _, id := range apiKeyIDs {
-			delete(statsAPIKeyCacheNeedUpdate, id)
-		}
-		statsAPIKeyCacheNeedUpdateLock.Unlock()
 
 		statsAPIKeyDailyCacheNeedUpdateLock.Lock()
 		for _, k := range apiKeyDailyKeys {
@@ -204,9 +184,9 @@ func persistStatsSnapshots(
 	totalSnap model.StatsTotal,
 	dailySnap model.StatsDaily,
 	hourlySnaps []model.StatsHourly,
-	channelIDs []int,
-	modelNames []string,
-	apiKeyIDs []int,
+	channelSnaps []model.StatsChannel,
+	modelSnaps []model.StatsModel,
+	apiKeySnaps []model.StatsAPIKey,
 	apiKeyDailyKeys []apiKeyDailyKey,
 	apiKeyHourlyKeys []apiKeyHourlyKey,
 ) error {
@@ -228,57 +208,33 @@ func persistStatsSnapshots(
 			}
 		}
 
-		// 批量收集 Channel 统计
-		if len(channelIDs) > 0 {
-			var channels []model.StatsChannel
-			for _, id := range channelIDs {
-				if ch, ok := statsChannelCache.Get(id); ok {
-					channels = append(channels, ch)
-				}
-			}
-			if len(channels) > 0 {
-				if result := tx.Clauses(clause.OnConflict{
-					Columns:   []clause.Column{{Name: "channel_id"}},
-					UpdateAll: true,
-				}).Create(&channels); result.Error != nil {
-					return result.Error
-				}
+		// Channel: 无条件全量 upsert（累计总量，防止丢失）
+		if len(channelSnaps) > 0 {
+			if result := tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "channel_id"}},
+				UpdateAll: true,
+			}).Create(&channelSnaps); result.Error != nil {
+				return result.Error
 			}
 		}
 
-		// 批量收集 Model 统计
-		if len(modelNames) > 0 {
-			var models []model.StatsModel
-			for _, name := range modelNames {
-				if m, ok := statsModelCache.Get(name); ok {
-					models = append(models, m)
-				}
-			}
-			if len(models) > 0 {
-				if result := tx.Clauses(clause.OnConflict{
-					Columns:   []clause.Column{{Name: "name"}},
-					UpdateAll: true,
-				}).Create(&models); result.Error != nil {
-					return result.Error
-				}
+		// Model: 无条件全量 upsert（累计总量，防止丢失）
+		if len(modelSnaps) > 0 {
+			if result := tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "name"}},
+				UpdateAll: true,
+			}).Create(&modelSnaps); result.Error != nil {
+				return result.Error
 			}
 		}
 
-		// 批量收集 APIKey 统计
-		if len(apiKeyIDs) > 0 {
-			var apiKeys []model.StatsAPIKey
-			for _, id := range apiKeyIDs {
-				if ak, ok := statsAPIKeyCache.Get(id); ok {
-					apiKeys = append(apiKeys, ak)
-				}
-			}
-			if len(apiKeys) > 0 {
-				if result := tx.Clauses(clause.OnConflict{
-					Columns:   []clause.Column{{Name: "api_key_id"}},
-					UpdateAll: true,
-				}).Create(&apiKeys); result.Error != nil {
-					return result.Error
-				}
+		// APIKey: 无条件全量 upsert（累计总量，防止丢失）
+		if len(apiKeySnaps) > 0 {
+			if result := tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "api_key_id"}},
+				UpdateAll: true,
+			}).Create(&apiKeySnaps); result.Error != nil {
+				return result.Error
 			}
 		}
 
@@ -733,8 +689,8 @@ func StatsGetDaily(ctx context.Context) ([]model.StatsDaily, error) {
 	return statsDaily, nil
 }
 
-// statsSaveDBWithDailyOverride 用于跨天异步刷盘旧日数据。
-// 它将所有 dirty 维度一起写入，确保旧日的 hourly/APIKeyDaily 不遗漏。
+// statsSaveDBWithDailyOverride 与 StatsSaveDB 相同，但用 dailyOverride 替代当前 daily 快照。
+// 用于跨天时异步保存前一天的 daily 数据。
 func statsSaveDBWithDailyOverride(ctx context.Context, dailyOverride model.StatsDaily) error {
 	statsTotalCacheLock.RLock()
 	totalSnap := statsTotalCache
@@ -743,7 +699,26 @@ func statsSaveDBWithDailyOverride(ctx context.Context, dailyOverride model.Stats
 		totalSnap.ID = 1
 	}
 
-	// 收集所有 dirty hourly
+	// Channel/Model/APIKey: 无条件全量快照
+	allChannels := statsChannelCache.GetAll()
+	channelSnaps := make([]model.StatsChannel, 0, len(allChannels))
+	for _, v := range allChannels {
+		channelSnaps = append(channelSnaps, v)
+	}
+
+	allModels := statsModelCache.GetAll()
+	modelSnaps := make([]model.StatsModel, 0, len(allModels))
+	for _, v := range allModels {
+		modelSnaps = append(modelSnaps, v)
+	}
+
+	allAPIKeys := statsAPIKeyCache.GetAll()
+	apiKeySnaps := make([]model.StatsAPIKey, 0, len(allAPIKeys))
+	for _, v := range allAPIKeys {
+		apiKeySnaps = append(apiKeySnaps, v)
+	}
+
+	// hourly: 收集所有 dirty key 对应的快照
 	statsHourlyCacheNeedUpdateLock.Lock()
 	hourlyDirtyKeys := make([]hourlyKey, 0, len(statsHourlyCacheNeedUpdate))
 	for k := range statsHourlyCacheNeedUpdate {
@@ -757,28 +732,6 @@ func statsSaveDBWithDailyOverride(ctx context.Context, dailyOverride model.Stats
 			hourlySnaps = append(hourlySnaps, h)
 		}
 	}
-
-	// 收集需要持久化的 key
-	statsChannelCacheNeedUpdateLock.Lock()
-	channelIDs := make([]int, 0, len(statsChannelCacheNeedUpdate))
-	for id := range statsChannelCacheNeedUpdate {
-		channelIDs = append(channelIDs, id)
-	}
-	statsChannelCacheNeedUpdateLock.Unlock()
-
-	statsModelCacheNeedUpdateLock.Lock()
-	modelNames := make([]string, 0, len(statsModelCacheNeedUpdate))
-	for name := range statsModelCacheNeedUpdate {
-		modelNames = append(modelNames, name)
-	}
-	statsModelCacheNeedUpdateLock.Unlock()
-
-	statsAPIKeyCacheNeedUpdateLock.Lock()
-	apiKeyIDs := make([]int, 0, len(statsAPIKeyCacheNeedUpdate))
-	for id := range statsAPIKeyCacheNeedUpdate {
-		apiKeyIDs = append(apiKeyIDs, id)
-	}
-	statsAPIKeyCacheNeedUpdateLock.Unlock()
 
 	statsAPIKeyDailyCacheNeedUpdateLock.Lock()
 	apiKeyDailyKeys := make([]apiKeyDailyKey, 0, len(statsAPIKeyDailyCacheNeedUpdate))
@@ -794,7 +747,7 @@ func statsSaveDBWithDailyOverride(ctx context.Context, dailyOverride model.Stats
 	}
 	statsAPIKeyHourlyCacheNeedUpdateLock.Unlock()
 
-	err := persistStatsSnapshots(ctx, totalSnap, dailyOverride, hourlySnaps, channelIDs, modelNames, apiKeyIDs, apiKeyDailyKeys, apiKeyHourlyKeys)
+	err := persistStatsSnapshots(ctx, totalSnap, dailyOverride, hourlySnaps, channelSnaps, modelSnaps, apiKeySnaps, apiKeyDailyKeys, apiKeyHourlyKeys)
 
 	// 仅在持久化成功后清空 dirty set
 	if err == nil {
@@ -803,24 +756,6 @@ func statsSaveDBWithDailyOverride(ctx context.Context, dailyOverride model.Stats
 			delete(statsHourlyCacheNeedUpdate, k)
 		}
 		statsHourlyCacheNeedUpdateLock.Unlock()
-
-		statsChannelCacheNeedUpdateLock.Lock()
-		for _, id := range channelIDs {
-			delete(statsChannelCacheNeedUpdate, id)
-		}
-		statsChannelCacheNeedUpdateLock.Unlock()
-
-		statsModelCacheNeedUpdateLock.Lock()
-		for _, name := range modelNames {
-			delete(statsModelCacheNeedUpdate, name)
-		}
-		statsModelCacheNeedUpdateLock.Unlock()
-
-		statsAPIKeyCacheNeedUpdateLock.Lock()
-		for _, id := range apiKeyIDs {
-			delete(statsAPIKeyCacheNeedUpdate, id)
-		}
-		statsAPIKeyCacheNeedUpdateLock.Unlock()
 
 		statsAPIKeyDailyCacheNeedUpdateLock.Lock()
 		for _, k := range apiKeyDailyKeys {

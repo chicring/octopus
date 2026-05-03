@@ -53,7 +53,7 @@ func Init() {
 		return
 	}
 	statsSaveInterval := time.Duration(statsSaveIntervalMinutes) * time.Minute
-	Register(TaskStatsSave, statsSaveInterval, false, op.StatsSaveDBTask)
+	Register(TaskStatsSave, statsSaveInterval, true, op.StatsSaveDBTask)
 	// 注册中继日志保存任务
 	Register(TaskRelayLogSave, 10*time.Minute, false, func() {
 		if err := op.RelayLogSaveDBTask(context.Background()); err != nil {
