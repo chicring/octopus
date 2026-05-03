@@ -18,11 +18,19 @@ func RequireJSON() gin.HandlerFunc {
 		}
 
 		contentType := c.GetHeader("Content-Type")
-		if !strings.Contains(contentType, "application/json") {
-			resp.Error(c, http.StatusUnsupportedMediaType, resp.ErrInvalidJSON)
-			c.Abort()
+		if strings.Contains(contentType, "application/json") {
+			c.Next()
 			return
 		}
+
+		// POST/PUT with empty body (content-length=0) is allowed
+		if c.Request.ContentLength == 0 {
+			c.Next()
+			return
+		}
+
+		resp.Error(c, http.StatusUnsupportedMediaType, resp.ErrInvalidJSON)
+		c.Abort()
 
 		c.Next()
 	}
