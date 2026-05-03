@@ -28,6 +28,8 @@ type DBDump struct {
 	StatsAPIKeyHourly []StatsAPIKeyHourly `json:"stats_api_key_hourly,omitempty"`
 
 	RelayLogs []RelayLog `json:"relay_logs,omitempty"`
+
+	UsageCards []UsageCard `json:"usage_cards,omitempty"`
 }
 
 type DBImportResult struct {

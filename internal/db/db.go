@@ -69,6 +69,7 @@ func InitDB(dbType, dsn string, debug bool) error {
 		&model.StatsAPIKey{},
 		&model.StatsAPIKeyDaily{},
 		&model.StatsAPIKeyHourly{},
+		&model.UsageCard{},
 		&model.RelayLog{},
 		&migrate.MigrationRecord{},
 		&auth.OAuthSession{},

@@ -84,6 +84,11 @@ Client ← Inbound Transformer ← InternalLLMResponse ← Outbound Transformer 
 - One topic per PR (single feature or single bug fix)
 - AI-assisted code is allowed but must be human-reviewed before submission
 
+## Coding Standards
+
+- 详细规则：`.factory/rules/file-reading.md`
+- 项目记忆：`.factory/memories.md`
+
 ## Notable Details
 
 - The outbound Anthropic adapter directory is named `authropic` (typo) — do not rename without updating all references

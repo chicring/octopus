@@ -78,6 +78,10 @@ func DBExportAll(ctx context.Context, includeLogs, includeStats bool) (*model.DB
 		}
 	}
 
+	if err := conn.Find(&d.UsageCards).Error; err != nil {
+		return nil, fmt.Errorf("export usage_cards: %w", err)
+	}
+
 	return d, nil
 }
 
@@ -180,6 +184,12 @@ func DBImportIncremental(ctx context.Context, dump *model.DBDump) (*model.DBImpo
 			} else {
 				res.RowsAffected["relay_logs"] = n
 			}
+		}
+
+		if n, err := createDoNothing(tx, dump.UsageCards); err != nil {
+			return fmt.Errorf("import usage_cards: %w", err)
+		} else {
+			res.RowsAffected["usage_cards"] = n
 		}
 
 		return nil
