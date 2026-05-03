@@ -191,26 +191,35 @@ func persistStatsSnapshots(
 	apiKeyHourlyKeys []apiKeyHourlyKey,
 ) error {
 	return db.GetDB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// Total: upsert，避免 Save() 的零值覆盖风险
+		// Total: upsert，使用 DoUpdates 明确指定更新列，避免零值覆盖
 		if result := tx.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "id"}},
-			UpdateAll: true,
+			Columns: []clause.Column{{Name: "id"}},
+			DoUpdates: clause.AssignmentColumns([]string{
+				"input_token", "output_token", "input_cost", "output_cost",
+				"wait_time", "output_time", "request_success", "request_failed",
+			}),
 		}).Create(&totalSnap); result.Error != nil {
 			return result.Error
 		}
-		// Daily: upsert，避免 Save() 的零值覆盖风险
+		// Daily: upsert，使用 DoUpdates 明确指定更新列，避免零值覆盖
 		if result := tx.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "date"}},
-			UpdateAll: true,
+			Columns: []clause.Column{{Name: "date"}},
+			DoUpdates: clause.AssignmentColumns([]string{
+				"input_token", "output_token", "input_cost", "output_cost",
+				"wait_time", "output_time", "request_success", "request_failed",
+			}),
 		}).Create(&dailySnap); result.Error != nil {
 			return result.Error
 		}
 
-		// 写入所有 dirty hourly（不再只写当天）
+		// 写入所有 dirty hourly
 		if len(hourlySnaps) > 0 {
 			if result := tx.Clauses(clause.OnConflict{
-				Columns:   []clause.Column{{Name: "date"}, {Name: "hour"}},
-				UpdateAll: true,
+				Columns: []clause.Column{{Name: "date"}, {Name: "hour"}},
+				DoUpdates: clause.AssignmentColumns([]string{
+					"input_token", "output_token", "input_cost", "output_cost",
+					"wait_time", "output_time", "request_success", "request_failed",
+				}),
 			}).Create(&hourlySnaps); result.Error != nil {
 				return result.Error
 			}
@@ -219,8 +228,11 @@ func persistStatsSnapshots(
 		// Channel: 无条件全量 upsert（累计总量，防止丢失）
 		if len(channelSnaps) > 0 {
 			if result := tx.Clauses(clause.OnConflict{
-				Columns:   []clause.Column{{Name: "channel_id"}},
-				UpdateAll: true,
+				Columns: []clause.Column{{Name: "channel_id"}},
+				DoUpdates: clause.AssignmentColumns([]string{
+					"input_token", "output_token", "input_cost", "output_cost",
+					"wait_time", "output_time", "request_success", "request_failed",
+				}),
 			}).Create(&channelSnaps); result.Error != nil {
 				return result.Error
 			}
@@ -229,8 +241,11 @@ func persistStatsSnapshots(
 		// Model: 无条件全量 upsert（累计总量，防止丢失）
 		if len(modelSnaps) > 0 {
 			if result := tx.Clauses(clause.OnConflict{
-				Columns:   []clause.Column{{Name: "name"}},
-				UpdateAll: true,
+				Columns: []clause.Column{{Name: "name"}},
+				DoUpdates: clause.AssignmentColumns([]string{
+					"input_token", "output_token", "input_cost", "output_cost",
+					"wait_time", "output_time", "request_success", "request_failed",
+				}),
 			}).Create(&modelSnaps); result.Error != nil {
 				return result.Error
 			}
@@ -239,8 +254,11 @@ func persistStatsSnapshots(
 		// APIKey: 无条件全量 upsert（累计总量，防止丢失）
 		if len(apiKeySnaps) > 0 {
 			if result := tx.Clauses(clause.OnConflict{
-				Columns:   []clause.Column{{Name: "api_key_id"}},
-				UpdateAll: true,
+				Columns: []clause.Column{{Name: "api_key_id"}},
+				DoUpdates: clause.AssignmentColumns([]string{
+					"input_token", "output_token", "input_cost", "output_cost",
+					"wait_time", "output_time", "request_success", "request_failed",
+				}),
 			}).Create(&apiKeySnaps); result.Error != nil {
 				return result.Error
 			}
@@ -256,8 +274,11 @@ func persistStatsSnapshots(
 			}
 			if len(apiKeyDailies) > 0 {
 				if result := tx.Clauses(clause.OnConflict{
-					Columns:   []clause.Column{{Name: "api_key_id"}, {Name: "date"}},
-					UpdateAll: true,
+					Columns: []clause.Column{{Name: "api_key_id"}, {Name: "date"}},
+					DoUpdates: clause.AssignmentColumns([]string{
+						"input_token", "output_token", "input_cost", "output_cost",
+						"wait_time", "output_time", "request_success", "request_failed",
+					}),
 				}).Create(&apiKeyDailies); result.Error != nil {
 					return result.Error
 				}
