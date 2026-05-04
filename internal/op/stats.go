@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/bestruirui/octopus/internal/db"
+	"github.com/bestruirui/octopus/internal/db/migrate"
 	"github.com/bestruirui/octopus/internal/model"
 	"github.com/bestruirui/octopus/internal/utils/cache"
 	"github.com/bestruirui/octopus/internal/utils/log"
@@ -71,9 +72,18 @@ var statsAPIKeyHourlyCacheLock sync.Mutex
 var statsAPIKeyHourlyCacheNeedUpdate = make(map[apiKeyHourlyKey]struct{})
 var statsAPIKeyHourlyCacheNeedUpdateLock sync.Mutex
 
+// statsEnsureOnce 确保 EnsureStatsCompositePK 在第一次 StatsSaveDBTask 时执行
+var statsEnsureOnce sync.Once
+
 func StatsSaveDBTask() {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
+
+	// 兜底：确保复合主键和 UNIQUE INDEX 存在（即使启动时的检查没生效）
+	statsEnsureOnce.Do(func() {
+		migrate.EnsureStatsCompositePK(db.GetDB())
+	})
+
 	log.Debugf("stats save db task started")
 	startTime := time.Now()
 	defer func() {
@@ -199,7 +209,7 @@ func persistStatsSnapshots(
 				"wait_time", "output_time", "request_success", "request_failed",
 			}),
 		}).Create(&totalSnap); result.Error != nil {
-			return result.Error
+			return fmt.Errorf("stats_total: %w", result.Error)
 		}
 		// Daily: upsert，使用 DoUpdates 明确指定更新列，避免零值覆盖
 		if result := tx.Clauses(clause.OnConflict{
@@ -209,7 +219,7 @@ func persistStatsSnapshots(
 				"wait_time", "output_time", "request_success", "request_failed",
 			}),
 		}).Create(&dailySnap); result.Error != nil {
-			return result.Error
+			return fmt.Errorf("stats_daily: %w", result.Error)
 		}
 
 		// 写入所有 dirty hourly
@@ -221,7 +231,7 @@ func persistStatsSnapshots(
 					"wait_time", "output_time", "request_success", "request_failed",
 				}),
 			}).Create(&hourlySnaps); result.Error != nil {
-				return result.Error
+				return fmt.Errorf("stats_hourlies: %w", result.Error)
 			}
 		}
 
@@ -234,7 +244,7 @@ func persistStatsSnapshots(
 					"wait_time", "output_time", "request_success", "request_failed",
 				}),
 			}).Create(&channelSnaps); result.Error != nil {
-				return result.Error
+				return fmt.Errorf("stats_channels: %w", result.Error)
 			}
 		}
 
@@ -247,7 +257,7 @@ func persistStatsSnapshots(
 					"wait_time", "output_time", "request_success", "request_failed",
 				}),
 			}).Create(&modelSnaps); result.Error != nil {
-				return result.Error
+				return fmt.Errorf("stats_models: %w", result.Error)
 			}
 		}
 
@@ -260,7 +270,7 @@ func persistStatsSnapshots(
 					"wait_time", "output_time", "request_success", "request_failed",
 				}),
 			}).Create(&apiKeySnaps); result.Error != nil {
-				return result.Error
+				return fmt.Errorf("stats_api_keys: %w", result.Error)
 			}
 		}
 
@@ -280,7 +290,7 @@ func persistStatsSnapshots(
 						"wait_time", "output_time", "request_success", "request_failed",
 					}),
 				}).Create(&apiKeyDailies); result.Error != nil {
-					return result.Error
+					return fmt.Errorf("stats_api_key_dailies: %w", result.Error)
 				}
 			}
 		}
@@ -301,7 +311,7 @@ func persistStatsSnapshots(
 						"wait_time", "output_time", "request_success", "request_failed",
 					}),
 				}).Create(&apiKeyHourlies); result.Error != nil {
-					return result.Error
+					return fmt.Errorf("stats_api_key_hourlies: %w", result.Error)
 				}
 			}
 		}

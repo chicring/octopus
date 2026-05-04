@@ -20,29 +20,41 @@ func init() {
 // 但由于迁移版本系统只运行一次，这里只修复一次。
 // 如果 AutoMigrate 再次破坏 PK，需要用 UNIQUE INDEX 作为兜底。
 func EnsureStatsCompositePK(db *gorm.DB) {
-	if db == nil || db.Dialector.Name() != "sqlite" {
+	if db == nil {
+		log.Errorf("EnsureStatsCompositePK: db is nil")
+		return
+	}
+	dialectName := db.Dialector.Name()
+	log.Infof("EnsureStatsCompositePK: dialect=%s", dialectName)
+	if dialectName != "sqlite" {
+		log.Infof("EnsureStatsCompositePK: skipping non-sqlite dialect")
 		return
 	}
 	for _, t := range statsTablesWithCompositePK {
 		if !db.Migrator().HasTable(t.name) {
+			log.Infof("EnsureStatsCompositePK: table %s does not exist, skip", t.name)
 			continue
 		}
 		ok, err := sqliteCheckCompositePK(db, t.name, t.pkColumns)
 		if err != nil {
-			log.Errorf("check PK for %s: %v", t.name, err)
+			log.Errorf("EnsureStatsCompositePK: check PK for %s: %v", t.name, err)
 			continue
 		}
 		if !ok {
-			log.Infof("fixing composite PK for table %s...", t.name)
+			log.Infof("EnsureStatsCompositePK: fixing composite PK for table %s...", t.name)
 			if err := sqliteRebuildTable(db, t.name, t.createSQL); err != nil {
-				log.Errorf("rebuild %s: %v", t.name, err)
+				log.Errorf("EnsureStatsCompositePK: rebuild %s failed: %v", t.name, err)
 			} else {
-				log.Infof("table %s composite PK fixed", t.name)
+				log.Infof("EnsureStatsCompositePK: table %s composite PK fixed", t.name)
 			}
+		} else {
+			log.Infof("EnsureStatsCompositePK: table %s PK is correct", t.name)
 		}
 		// 确保 UNIQUE INDEX 存在（兜底：即使 PK 被破坏，OnConflict 也能工作）
 		if err := ensureUniqueIndexForCompositePK(db, t.name, t.pkColumns); err != nil {
-			log.Errorf("ensure unique index for %s: %v", t.name, err)
+			log.Errorf("EnsureStatsCompositePK: ensure unique index for %s: %v", t.name, err)
+		} else {
+			log.Infof("EnsureStatsCompositePK: unique index for %s OK", t.name)
 		}
 	}
 }
