@@ -79,6 +79,8 @@ func InitDB(dbType, dsn string, debug bool) error {
 	if err := migrate.AfterAutoMigrate(db); err != nil {
 		return err
 	}
+	// 修复旧版 stats_models 表结构，再检查 stats 表主键/唯一索引。
+	migrate.EnsureStatsModelSchema(db)
 	// glebarez/sqlite 的 AutoMigrate 有 getAllColumns 正则 bug，每次启动都可能破坏复合主键
 	// 在 AutoMigrate 后再次检查并修复，同时确保 UNIQUE INDEX 存在作为兜底
 	migrate.EnsureStatsCompositePK(db)

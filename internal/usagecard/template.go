@@ -39,6 +39,8 @@ type UsageMetricTemplate struct {
 var builtinTemplates = map[string]UsageTemplate{}
 
 func init() {
+	register(genericJSONTemplate())
+	register(githubRateLimitTemplate())
 	register(xfyunCodingPlanTemplate())
 	register(codexUsageTemplate())
 }

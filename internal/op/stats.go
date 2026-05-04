@@ -79,11 +79,6 @@ func StatsSaveDBTask() {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	// 兜底：确保复合主键和 UNIQUE INDEX 存在（即使启动时的检查没生效）
-	statsEnsureOnce.Do(func() {
-		migrate.EnsureStatsCompositePK(db.GetDB())
-	})
-
 	log.Debugf("stats save db task started")
 	startTime := time.Now()
 	defer func() {
@@ -97,10 +92,18 @@ func StatsSaveDBTask() {
 	}
 }
 
+func ensureStatsPersistenceSchema() {
+	statsEnsureOnce.Do(func() {
+		migrate.EnsureStatsModelSchema(db.GetDB())
+		migrate.EnsureStatsCompositePK(db.GetDB())
+	})
+}
+
 // StatsSaveDB 将所有内存统计快照写入数据库。
 // StatsTotal/StatsDaily/StatsChannel/StatsModel/StatsAPIKey 无条件全量写入，
 // 确保重启后数据不丢失；Hourly/APIKeyDaily/APIKeyHourly 使用 dirty set 按需写入。
 func StatsSaveDB(ctx context.Context) error {
+	ensureStatsPersistenceSchema()
 	// 1. 采集快照（在锁内拷贝，锁外构造写入列表）
 	statsTotalCacheLock.RLock()
 	totalSnap := statsTotalCache
@@ -734,6 +737,8 @@ func StatsGetDaily(ctx context.Context) ([]model.StatsDaily, error) {
 // statsSaveDBWithDailyOverride 与 StatsSaveDB 相同，但用 dailyOverride 替代当前 daily 快照。
 // 用于跨天时异步保存前一天的 daily 数据。
 func statsSaveDBWithDailyOverride(ctx context.Context, dailyOverride model.StatsDaily) error {
+	ensureStatsPersistenceSchema()
+
 	statsTotalCacheLock.RLock()
 	totalSnap := statsTotalCache
 	statsTotalCacheLock.RUnlock()
