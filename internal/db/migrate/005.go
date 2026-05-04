@@ -3,11 +3,12 @@ package migrate
 import (
 	"fmt"
 
+	"github.com/bestruirui/octopus/internal/utils/log"
 	"gorm.io/gorm"
 )
 
 func init() {
-	RegisterAfterAutoMigration(Migration{
+	RegisterBeforeAutoMigration(Migration{
 		Version: 5,
 		Up:      fixStatsTablesCompositePK,
 	})
@@ -75,6 +76,7 @@ func fixStatsTablesCompositePK(db *gorm.DB) error {
 
 	for _, t := range tables {
 		if !db.Migrator().HasTable(t.name) {
+			log.Infof("migration 005: table %s does not exist, skip", t.name)
 			continue
 		}
 		ok, err := sqliteCheckCompositePK(db, t.name, t.pkColumns)
@@ -82,11 +84,14 @@ func fixStatsTablesCompositePK(db *gorm.DB) error {
 			return fmt.Errorf("check PK for %s: %w", t.name, err)
 		}
 		if ok {
+			log.Infof("migration 005: table %s PK is correct, skip", t.name)
 			continue
 		}
+		log.Infof("migration 005: table %s PK is incorrect, rebuilding...", t.name)
 		if err := sqliteRebuildTable(db, t.name, t.createSQL); err != nil {
 			return fmt.Errorf("rebuild %s: %w", t.name, err)
 		}
+		log.Infof("migration 005: table %s rebuilt successfully", t.name)
 	}
 
 	return nil
