@@ -14,9 +14,44 @@ env:
   DOCKER_IMAGE: chruxc/octopus
 
 jobs:
-  release:
-    name: release
+  # tag push 时：生成 changelog + 合并 dev → master
+  changelog:
+    name: changelog
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.ACTION_TOKEN }}
+
+      - name: Generate changelog
+        run: npx changelogithub
+        env:
+          GITHUB_TOKEN: ${{ secrets.ACTION_TOKEN }}
+
+      - name: Merge dev to master
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'github-actions@github.com'
+          if ! git show-ref --verify --quiet refs/heads/master; then
+            git checkout -b master
+          else
+            git checkout master
+          fi
+          git fetch origin dev
+          git merge origin/dev
+          git remote set-url origin https://x-access-token:${{ secrets.ACTION_TOKEN }}@github.com/${{ github.repository }}
+          git push origin master --force
+
+  # tag push 时：构建 + 发布 Release + Docker latest
+  # dev push 时：只构建 Docker dev 镜像
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    needs: [changelog]
+    if: always()  # dev push 时 changelog 被跳过，但 build 仍需运行
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -48,7 +83,6 @@ jobs:
       - name: Get version info
         id: tag
         run: |
-          # tag push 时直接用 GITHUB_REF_NAME；branch push 时用 git describe
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             LATEST_TAG="${GITHUB_REF_NAME}"
           else

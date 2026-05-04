@@ -81,43 +81,26 @@ bash scripts/build.sh release                 # All platforms + Docker images
 | push `dev` | `dev`, `<short_sha>` | **不创建** |
 | push tag `v*` | `latest`, `<tag>`, `<short_sha>` | **创建**（tag_name = tag 名） |
 
-**关键**：CI 由 **tag push** 触发完整发布（Release + Docker latest），push dev 只出 Docker dev 镜像。版本号直接取 `GITHUB_REF_NAME`（即 tag 名），不再依赖 `git describe`。
+**关键**：CI 由 **tag push** 触发完整发布，一条流水线内按顺序执行：changelog → 合并 dev→master → 构建 → 上传 Release → Docker latest。push dev 只出 Docker dev 镜像。版本号直接取 `GITHUB_REF_NAME`（即 tag 名）。
 
-### 发布步骤（严格按顺序执行）
+### 发布步骤（只需两步）
 
 ```bash
-# 1. 确认在 dev 分支，所有修改已提交
-git checkout dev
-git status
-
-# 2. 查看最新 tag，确定新版本号（当前最新 +1，绝不重复）
+# 1. 查看最新 tag，确定新版本号（当前最新 +1，绝不重复）
 git tag --sort=-v:refname | head -5
 
-# 3. 在 dev 上打 tag
-git tag v1.x.x
-
-# 4. 推送 dev（触发 Docker dev 镜像构建）
-git push origin dev
-
-# 5. 推送 tag（触发完整发布：Release 附件 + Docker latest）
-git push origin v1.x.x
-
-# 6. 继续在 dev 上开发
+# 2. 打 tag 并推送（CI 自动完成全部发布流程）
+git tag v1.x.x && git push origin v1.x.x
 ```
+
+CI 自动执行：生成 changelog → 合并 dev→master → 构建 8 平台产物 → 上传 GitHub Release → 推 Docker latest 镜像。
 
 ### 禁止事项
 
 - **禁止重复打已有 tag**：`git tag` 前必须 `git tag --sort=-v:refname | head -5` 确认版本号
 - **禁止 `gh release create`**：会跟 CI 冲突产生 Draft
 - **禁止 `git tag -d` + 重建同名 tag**：已推送的 tag 不可变，只能打新版本号
-- **禁止在 dev 上手动构建发布**：push dev 只出 Docker 镜像，不出 Release
-- **禁止 push master 触发发布**：CI 已改为 tag push 触发，master 分支不再用于发布
-
-### 常见问题
-
-- **Release 没有 Assets**：tag 必须在 dev 上打并 push，CI 在 tag push 时触发构建
-- **Release 版本号不对**：版本号直接取 tag 名，确保 tag 名正确即可
-- **Docker 镜像没有 latest tag**：只有 tag push 才会打 latest，dev push 只打 dev 标签
+- **禁止手动 push master**：CI changelog job 自动合并 dev→master，不需要手动操作
 
 ## Architecture Overview
 
