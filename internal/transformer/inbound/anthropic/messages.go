@@ -343,7 +343,15 @@ func (i *MessagesInbound) TransformRequest(ctx context.Context, body []byte) (*m
 				chatReq.ReasoningEffort = thinkingBudgetToReasoningEffort(*anthropicReq.Thinking.BudgetTokens)
 				chatReq.ReasoningBudget = anthropicReq.Thinking.BudgetTokens
 			} else {
-				log.Warnf("thinking type is 'enabled' but budget_tokens is nil, thinking will be ignored")
+				// budget_tokens is required by Anthropic API when type=enabled,
+				// but some clients omit it. Auto-fill with max_tokens * 80%,
+				// consistent with industry practice (new-api, litellm, etc.).
+				budget := anthropicReq.MaxTokens * 80 / 100
+				if budget < 1024 {
+					budget = 1024
+				}
+				chatReq.ReasoningEffort = thinkingBudgetToReasoningEffort(budget)
+				chatReq.ReasoningBudget = &budget
 			}
 		case ThinkingTypeAdaptive:
 			effort := EffortHigh
