@@ -343,15 +343,12 @@ func (i *MessagesInbound) TransformRequest(ctx context.Context, body []byte) (*m
 				chatReq.ReasoningEffort = thinkingBudgetToReasoningEffort(*anthropicReq.Thinking.BudgetTokens)
 				chatReq.ReasoningBudget = anthropicReq.Thinking.BudgetTokens
 			} else {
-				// budget_tokens is required by Anthropic API when type=enabled,
-				// but some clients omit it. Auto-fill with max_tokens * 80%,
-				// consistent with industry practice (new-api, litellm, etc.).
-				budget := anthropicReq.MaxTokens * 80 / 100
-				if budget < 1024 {
-					budget = 1024
-				}
-				chatReq.ReasoningEffort = thinkingBudgetToReasoningEffort(budget)
-				chatReq.ReasoningBudget = &budget
+				// budget_tokens is required when type=enabled, but some clients
+				// omit it. Since the client didn't specify a precise budget,
+				// downgrade to adaptive mode with effort=high — the model decides
+				// how much to think, and there's no risk of budget overflow.
+				chatReq.ReasoningEffort = EffortHigh
+				chatReq.AdaptiveThinking = true
 			}
 		case ThinkingTypeAdaptive:
 			effort := EffortHigh
