@@ -70,6 +70,7 @@ export interface ChannelFormProps {
     cancelText?: string;
     idPrefix?: string;
     channelId?: number;
+    hideSubmit?: boolean;
 }
 
 import {
@@ -90,6 +91,7 @@ export function ChannelForm({
     cancelText,
     idPrefix = 'channel',
     channelId,
+    hideSubmit,
 }: ChannelFormProps) {
     const t = useTranslations('channel.form');
     const { data: providers } = useProviderList();
@@ -1004,6 +1006,7 @@ export function ChannelForm({
                         {cancelText}
                     </Button>
                 )}
+                {!hideSubmit && (
                 <Button
                     type="submit"
                     disabled={isPending}
@@ -1011,6 +1014,7 @@ export function ChannelForm({
                 >
                     {isPending ? pendingText : submitText}
                 </Button>
+                )}
             </div>
         </form>
     );

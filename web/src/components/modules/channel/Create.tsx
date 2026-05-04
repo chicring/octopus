@@ -12,6 +12,7 @@ import { ChannelForm, type ChannelFormData } from './Form';
 export function CreateDialogContent() {
     const { setIsOpen } = useMorphingDialog();
     const createChannel = useCreateChannel();
+    const [createdChannelId, setCreatedChannelId] = useState<number | null>(null);
     const [formData, setFormData] = useState<ChannelFormData>({
         name: '',
         type: ChannelType.OpenAIChat,
@@ -65,25 +66,11 @@ export function CreateDialogContent() {
                 match_regex: formData.match_regex.trim(),
             },
             {
-                onSuccess: () => {
-                    setFormData({
-                        name: '',
-                        type: ChannelType.OpenAIChat,
-                        provider_id: '',
-                        base_urls: [{ url: '', delay: 0 }],
-                        custom_header: [],
-                        channel_proxy: '',
-                        param_override: '',
-                        keys: [{ enabled: true, channel_key: '', remark: '' }],
-                        model: '',
-                        custom_model: '',
-                        auto_sync: false,
-                        auto_group: AutoGroupType.None,
-                        enabled: true,
-                        proxy: false,
-                        match_regex: '',
-                    });
-                    setIsOpen(false);
+                onSuccess: (data) => {
+                    // 保存创建后的 channelId，让导入按钮可以显示，不关闭弹窗
+                    if (data?.id) {
+                        setCreatedChannelId(data.id);
+                    }
                 }
             });
     };
@@ -112,6 +99,8 @@ export function CreateDialogContent() {
                     submitText={t('submit')}
                     pendingText={t('submitting')}
                     idPrefix="new-channel"
+                    channelId={createdChannelId ?? undefined}
+                    hideSubmit={!!createdChannelId}
                 />
             </MorphingDialogDescription>
         </div>
