@@ -57,8 +57,24 @@ func EnsureStatsCompositePK(db *gorm.DB) {
 			log.Infof("EnsureStatsCompositePK: unique index for %s OK", t.name)
 		}
 	}
+
+	// 确保所有使用 OnConflict 的表都有 UNIQUE INDEX（包括单列 PK 表）
+	ensureAllStatsOnConflictIndexes(db)
 }
 
+// ensureAllStatsOnConflictIndexes 为所有使用 OnConflict 的 stats 表确保 UNIQUE INDEX 存在
+func ensureAllStatsOnConflictIndexes(db *gorm.DB) {
+	for _, t := range statsOnConflictIndexes {
+		if !db.Migrator().HasTable(t.table) {
+			continue
+		}
+		if err := ensureUniqueIndexForCompositePK(db, t.table, t.columns); err != nil {
+			log.Errorf("EnsureStatsCompositePK: ensure OnConflict index for %s: %v", t.table, err)
+		}
+	}
+}
+
+// statsTablesWithCompositePK 需要检查复合主键并修复的表
 var statsTablesWithCompositePK = []struct {
 	name      string
 	pkColumns []string
@@ -79,6 +95,22 @@ var statsTablesWithCompositePK = []struct {
 		pkColumns: []string{"api_key_id", "date", "hour"},
 		createSQL: `CREATE TABLE stats_api_key_hourlies (api_key_id INTEGER NOT NULL, date TEXT NOT NULL, hour INTEGER NOT NULL, input_token INTEGER, output_token INTEGER, input_cost REAL, output_cost REAL, wait_time INTEGER, output_time INTEGER, request_success INTEGER, request_failed INTEGER, PRIMARY KEY (api_key_id,date,hour))`,
 	},
+}
+
+// statsOnConflictIndexes 所有使用 OnConflict upsert 的表和对应的列
+// 确保 UNIQUE INDEX 存在，这样即使 PK 丢失，OnConflict 也能工作
+var statsOnConflictIndexes = []struct {
+	table   string
+	columns []string
+}{
+	{table: "stats_totals", columns: []string{"id"}},
+	{table: "stats_dailies", columns: []string{"date"}},
+	{table: "stats_hourlies", columns: []string{"date", "hour"}},
+	{table: "stats_channels", columns: []string{"channel_id"}},
+	{table: "stats_models", columns: []string{"name"}},
+	{table: "stats_api_keys", columns: []string{"api_key_id"}},
+	{table: "stats_api_key_dailies", columns: []string{"api_key_id", "date"}},
+	{table: "stats_api_key_hourlies", columns: []string{"api_key_id", "date", "hour"}},
 }
 
 func fixStatsTablesCompositePK(db *gorm.DB) error {
