@@ -365,19 +365,39 @@ export function ChannelForm({
     // 从 OAuth 凭证 JSON 中提取显示名（email > account_id）
     const getOAuthLabel = parseOAuthLabel;
 
-    // 合并渠道类型和提供商为一个选择器
-    // 选项值格式: "type:<ChannelType>" 或 "provider:<provider_id>"
-    const channelKindValue = formData.provider_id
-        ? `provider:${formData.provider_id}`
-        : `type:${formData.type}`;
+    // 合并渠道类型和提供商为一个选择器，统一使用 provider:<id> 格式
+    // 旧渠道可能只有 type 没有 provider_id，需要反查
+    const typeToProviderMap: Record<number, string> = {
+        [ChannelType.OpenAIChat]: 'openai-chat',
+        [ChannelType.OpenAIResponse]: 'openai-response',
+        [ChannelType.Anthropic]: 'anthropic',
+        [ChannelType.Gemini]: 'gemini',
+        [ChannelType.Volcengine]: 'volcengine',
+        [ChannelType.OpenAIEmbedding]: 'openai-embedding',
+    };
+    const resolvedProviderId = formData.provider_id || typeToProviderMap[formData.type] || '';
+    const channelKindValue = resolvedProviderId ? `provider:${resolvedProviderId}` : '';
 
     const handleChannelKindChange = (value: string) => {
         if (value.startsWith('provider:')) {
             const providerId = value.slice('provider:'.length);
             const provider = providers?.find((p) => p.id === providerId);
             const updates: Partial<ChannelFormData> = { provider_id: providerId };
+            // 根据 provider 的 legacy type 设置渠道类型
             if (provider?.id === 'codex') {
                 updates.type = ChannelType.OpenAIResponse;
+            } else if (provider?.supports_chat && !provider?.supports_embedding) {
+                // chat provider: 根据 id 映射到具体 type
+                const chatTypeMap: Record<string, ChannelType> = {
+                    'openai-chat': ChannelType.OpenAIChat,
+                    'openai-response': ChannelType.OpenAIResponse,
+                    'anthropic': ChannelType.Anthropic,
+                    'gemini': ChannelType.Gemini,
+                    'volcengine': ChannelType.Volcengine,
+                };
+                updates.type = chatTypeMap[provider.id] ?? ChannelType.OpenAIChat;
+            } else if (provider?.supports_embedding) {
+                updates.type = ChannelType.OpenAIEmbedding;
             }
             if (formData.base_urls?.[0]?.url.trim() === '') {
                 const schema = provider?.credential_schema;
@@ -387,9 +407,6 @@ export function ChannelForm({
                 }
             }
             onFormDataChange({ ...formData, ...updates });
-        } else {
-            const typeVal = Number(value.slice('type:'.length)) as ChannelType;
-            onFormDataChange({ ...formData, type: typeVal, provider_id: '' });
         }
     };
 
@@ -421,14 +438,8 @@ export function ChannelForm({
                         <SelectTrigger id={`${idPrefix}-kind`} className="rounded-xl w-full border border-border px-4 py-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                             <SelectValue />
                         </SelectTrigger>
-                        <SelectContent className='rounded-xl'>
-                            <SelectItem className='rounded-xl' value={`type:${ChannelType.OpenAIChat}`}>{t('typeOpenAIChat')}</SelectItem>
-                            <SelectItem className='rounded-xl' value={`type:${ChannelType.OpenAIResponse}`}>{t('typeOpenAIResponse')}</SelectItem>
-                            <SelectItem className='rounded-xl' value={`type:${ChannelType.Anthropic}`}>{t('typeAnthropic')}</SelectItem>
-                            <SelectItem className='rounded-xl' value={`type:${ChannelType.Gemini}`}>{t('typeGemini')}</SelectItem>
-                            <SelectItem className='rounded-xl' value={`type:${ChannelType.Volcengine}`}>{t('typeVolcengine')}</SelectItem>
-                            <SelectItem className='rounded-xl' value={`type:${ChannelType.OpenAIEmbedding}`}>{t('typeOpenAIEmbedding')}</SelectItem>
-                            {providers?.filter(p => p.auth_type !== 'manual').map((provider) => (
+                        <SelectContent className='rounded-xl max-h-80'>
+                            {providers?.map((provider) => (
                                 <SelectItem key={provider.id} className='rounded-xl' value={`provider:${provider.id}`}>
                                     {provider.display_name}
                                 </SelectItem>
