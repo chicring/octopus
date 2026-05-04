@@ -39,9 +39,8 @@ type UsageMetricTemplate struct {
 var builtinTemplates = map[string]UsageTemplate{}
 
 func init() {
-	register(genericJSONTemplate())
-	register(githubRateLimitTemplate())
 	register(xfyunCodingPlanTemplate())
+	register(codexUsageTemplate())
 }
 
 func register(t UsageTemplate) {
@@ -276,5 +275,52 @@ func xfyunCodingPlanTemplate() UsageTemplate {
 			},
 		},
 		PrimaryMetricIDs: []string{"rp5h", "rpw", "package"},
+	}
+}
+
+func codexUsageTemplate() UsageTemplate {
+	return UsageTemplate{
+		ID:              "codex-usage",
+		Name:            "Codex",
+		Description:     "ChatGPT Codex 用量查询，展示计划类型、5小时限、周限等窗口",
+		DefaultEndpoint: "https://chatgpt.com/backend-api/wham/usage",
+		Method:          "GET",
+		AuthTypes:       []string{"bearer"},
+		RequiredHeaders: []UsageHeaderTemplate{
+			{Key: "Accept", Value: "application/json"},
+			{Key: "Origin", Value: "https://chatgpt.com"},
+			{Key: "Referer", Value: "https://chatgpt.com/"},
+			{Key: "User-Agent", Value: "Mozilla/5.0"},
+		},
+		Metrics: []UsageMetricTemplate{
+			{
+				ID:     "plan",
+				Label:  "计划",
+				Kind:   "counter",
+				Unit:   "plan",
+				Used:   &model.FieldSpec{Source: "body", Path: "$.plan_type", Optional: true},
+			},
+			{
+				ID:       "primary_window",
+				Label:    "5 小时限",
+				Kind:     "rate_limit",
+				Unit:     "percent",
+				Window:   "5h",
+				Limit:    &model.FieldSpec{Source: "const", Path: "100"},
+				Used:     &model.FieldSpec{Source: "body", Path: "$.rate_limit.primary_window.used_percent", Optional: true},
+				ResetAt:  &model.FieldSpec{Source: "body", Path: "$.rate_limit.primary_window.reset_at", Transform: []string{"epoch_to_iso"}, Optional: true},
+			},
+			{
+				ID:       "secondary_window",
+				Label:    "周限",
+				Kind:     "rate_limit",
+				Unit:     "percent",
+				Window:   "weekly",
+				Limit:    &model.FieldSpec{Source: "const", Path: "100"},
+				Used:     &model.FieldSpec{Source: "body", Path: "$.rate_limit.secondary_window.used_percent", Optional: true},
+				ResetAt:  &model.FieldSpec{Source: "body", Path: "$.rate_limit.secondary_window.reset_at", Transform: []string{"epoch_to_iso"}, Optional: true},
+			},
+		},
+		PrimaryMetricIDs: []string{"plan", "primary_window", "secondary_window"},
 	}
 }

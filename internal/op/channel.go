@@ -288,6 +288,18 @@ func ChannelUpdate(req *model.ChannelUpdateRequest, ctx context.Context) (*model
 			tx.Rollback()
 			return nil, fmt.Errorf("failed to delete channel keys: %w", err)
 		}
+		// 联动删除 Codex 用量卡片（account 格式 codex:{channelID}:{keyID}）
+		for _, keyID := range req.KeysToDelete {
+			account := fmt.Sprintf("codex:%d:%d", req.ID, keyID)
+			if card, ok := UsageCardGetByAccount(account); ok {
+				if err := tx.Delete(&model.UsageCard{}, card.ID).Error; err != nil {
+					// 用量卡片删除失败不影响主流程，仅记录
+					log.Errorf("failed to delete usage card %d for key %d: %v", card.ID, keyID, err)
+				} else {
+					usageCardCache.Del(card.ID)
+				}
+			}
+		}
 	}
 
 	// 更新 keys（逐条，只更新提供的字段）
@@ -391,6 +403,20 @@ func ChannelDel(id int, ctx context.Context) error {
 	if err := tx.Where("channel_id = ?", id).Delete(&model.ChannelKey{}).Error; err != nil {
 		tx.Rollback()
 		return fmt.Errorf("failed to delete channel keys: %w", err)
+	}
+
+	// 联动删除该渠道所有 Codex 用量卡片（account 格式 codex:{channelID}:{keyID}）
+	for _, k := range ch.Keys {
+		if k.ID != 0 {
+			account := fmt.Sprintf("codex:%d:%d", id, k.ID)
+			if card, ok := UsageCardGetByAccount(account); ok {
+				if err := tx.Delete(&model.UsageCard{}, card.ID).Error; err != nil {
+					log.Errorf("failed to delete usage card %d for channel %d key %d: %v", card.ID, id, k.ID, err)
+				} else {
+					usageCardCache.Del(card.ID)
+				}
+			}
+		}
 	}
 
 	// 删除统计数据

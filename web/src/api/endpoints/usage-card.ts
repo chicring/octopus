@@ -199,3 +199,17 @@ export function useRefreshUsageCard() {
         },
     });
 }
+
+export function useImportCodexChannelUsageCard() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (data: { channel_id: number; key_id: number }) =>
+            apiClient.post<UsageCard>('/api/v1/usage-card/import/codex-channel', data),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['usage-card', 'list'] });
+        },
+        onError: (error) => {
+            logger.error('导入 Codex 用量卡片失败:', error);
+        },
+    });
+}

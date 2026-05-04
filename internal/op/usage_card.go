@@ -3,7 +3,11 @@ package op
 import (
 	"context"
 	"fmt"
+	"log"
+	"strings"
 	"time"
+
+	"github.com/samber/lo"
 
 	"github.com/bestruirui/octopus/internal/db"
 	"github.com/bestruirui/octopus/internal/model"
@@ -231,9 +235,16 @@ func UsageCardRefresh(id uint, ctx context.Context) (*model.UsageCard, error) {
 		card.LastError = ""
 	}
 
+	// 如果 token 被刷新，持久化新的加密凭证
+	selectFields := []string{"last_result", "last_error", "last_refresh_at"}
+	if result.RefreshedCred != "" {
+		card.EncryptedSecret = result.RefreshedCred
+		selectFields = append(selectFields, "encrypted_secret")
+	}
+
 	// 保存到数据库
 	if err := db.GetDB().WithContext(ctx).Model(&model.UsageCard{}).Where("id = ?", id).
-		Select("last_result", "last_error", "last_refresh_at").
+		Select(selectFields).
 		Updates(&card).Error; err != nil {
 		return nil, err
 	}
@@ -255,4 +266,65 @@ func UsageCardLoadCache(ctx context.Context) error {
 		usageCardCache.Set(card.ID, card)
 	}
 	return nil
+}
+
+// UsageCardGetByAccount 根据账户标识查找用量卡片（用于去重）
+func UsageCardGetByAccount(account string) (*model.UsageCard, bool) {
+	for _, card := range usageCardCache.GetAll() {
+		if card.Account == account {
+			card.HasSecret = card.EncryptedSecret != ""
+			card.EncryptedSecret = ""
+			return &card, true
+		}
+	}
+	return nil, false
+}
+
+// AutoCreateCodexUsageCard 为 Codex 渠道自动创建用量卡片
+// 如果渠道的 provider_id 为 "codex" 且有 key，则为每个 key 创建一张 Codex 用量卡片
+// 失败不影响渠道创建，仅记录 warning
+func AutoCreateCodexUsageCard(channel *model.Channel, ctx context.Context) {
+	if channel.ProviderID != "codex" || len(channel.Keys) == 0 {
+		return
+	}
+
+	for _, key := range channel.Keys {
+		if key.ChannelKey == "" {
+			continue
+		}
+
+		// 从 key.Remark 提取邮箱标识（格式 "[auth-file] email@..." 或 OAuth 流程的邮箱）
+		emailLabel := extractEmailFromRemark(key.Remark)
+		account := fmt.Sprintf("codex:%d:%d", channel.ID, key.ID)
+		if _, exists := UsageCardGetByAccount(account); exists {
+			continue
+		}
+
+		// 卡片名称包含邮箱标识
+		cardName := "Codex"
+		if emailLabel != "" {
+			cardName = fmt.Sprintf("Codex - %s", emailLabel)
+		}
+
+		// 构建 Codex 用量卡片（UsageCardCreate 会从模板填充 ExtraHeaders/Config）
+		req := &model.UsageCardCreateRequest{
+			Name:               cardName,
+			TemplateID:         "codex-usage",
+			Account:            account,
+			AuthType:           "bearer",
+			Secret:             key.ChannelKey,
+			Enabled:            lo.ToPtr(true),
+			RefreshIntervalSec: lo.ToPtr(300),
+		}
+
+		if _, err := UsageCardCreate(req, ctx); err != nil {
+			log.Printf("[codex] auto-create usage card failed for channel %d key %d: %v", channel.ID, key.ID, err)
+		}
+	}
+}
+
+// extractEmailFromRemark 从 key.Remark 中提取邮箱标识
+// remark 现在直接存邮箱，无需额外解析
+func extractEmailFromRemark(remark string) string {
+	return strings.TrimSpace(remark)
 }

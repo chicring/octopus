@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"net/url"
 
 	"github.com/bestruirui/octopus/internal/op"
 	"github.com/bestruirui/octopus/internal/provider"
@@ -32,6 +33,10 @@ func init() {
 		AddRoute(
 			router.NewRoute("/auth/poll", http.MethodPost).
 				Handle(pollAuth),
+		).
+		AddRoute(
+			router.NewRoute("/auth/submit-callback", http.MethodPost).
+				Handle(submitCallback),
 		)
 
 	router.NewGroupRouter("/api/v1/provider/auth").
@@ -243,4 +248,83 @@ func authCallback(c *gin.Context) {
 
 	c.Header("Content-Type", "text/html; charset=utf-8")
 	c.String(http.StatusOK, `<!DOCTYPE html><html><body><h2>Authorization successful!</h2><p>You can close this window.</p></body></html>`)
+}
+
+// submitCallbackRequest 手动回调提交请求
+type submitCallbackRequest struct {
+	SessionID   string `json:"session_id" binding:"required"`
+	CallbackURL string `json:"callback_url" binding:"required"`
+}
+
+// submitCallback 处理手动回调模式：用户从浏览器地址栏复制回调 URL，粘贴提交
+// 解析 URL 中的 code 和 state，验证 state 后换取 token
+func submitCallback(c *gin.Context) {
+	var req submitCallbackRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.Error(c, http.StatusBadRequest, resp.ErrInvalidJSON)
+		return
+	}
+
+	// 解析回调 URL，提取 code 和 state
+	parsedURL, err := url.Parse(req.CallbackURL)
+	if err != nil {
+		resp.Error(c, http.StatusBadRequest, "invalid callback URL")
+		return
+	}
+
+	code := parsedURL.Query().Get("code")
+	state := parsedURL.Query().Get("state")
+	if code == "" || state == "" {
+		resp.Error(c, http.StatusBadRequest, "callback URL missing code or state parameter")
+		return
+	}
+
+	// 加载 OAuth 会话
+	oauthSession, err := op.GetOAuthSession(c.Request.Context(), req.SessionID)
+	if err != nil {
+		resp.Error(c, http.StatusNotFound, "session not found")
+		return
+	}
+
+	// 验证 state 防止 CSRF
+	if oauthSession.State != state {
+		resp.Error(c, http.StatusBadRequest, "state mismatch")
+		return
+	}
+
+	// 获取 provider 和 auth flow
+	p := provider.Get(provider.ProviderID(oauthSession.ProviderID))
+	if p == nil {
+		resp.Error(c, http.StatusBadRequest, "unknown provider")
+		return
+	}
+
+	ap, ok := p.(provider.AuthProvider)
+	if !ok {
+		resp.Error(c, http.StatusBadRequest, "provider does not support auth flow")
+		return
+	}
+
+	// 解密会话数据
+	sessionData, err := auth.DecryptSessionData(oauthSession.SessionData)
+	if err != nil {
+		resp.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// 用 code 换取 token
+	result, err := ap.AuthFlow().Callback(c.Request.Context(), sessionData, code)
+	if err != nil {
+		op.FailOAuthSession(c.Request.Context(), req.SessionID)
+		resp.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// 完成会话
+	if err := op.CompleteOAuthSession(c.Request.Context(), req.SessionID, result); err != nil {
+		resp.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	resp.Success(c, result)
 }

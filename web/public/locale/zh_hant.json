@@ -236,7 +236,13 @@
         "weekly": "每週",
         "monthly": "每月",
         "custom": "自定義"
-      }
+      },
+      "importCodexChannel": "從 Codex 渠道匯入",
+      "importCodexHint": "選擇一個 Codex 渠道匯入用量卡片",
+      "noCodexChannels": "沒有可用的 Codex 渠道",
+      "importSuccess": "Codex 用量卡片匯入成功",
+      "importError": "Codex 用量卡片匯入失敗",
+      "codexSecretHint": "貼上完整的 Codex 憑證 JSON，或從 Codex 渠道匯入"
     }
   },
   "setting": {
@@ -753,7 +759,33 @@
       "testFailed": "失敗",
       "testRunning": "測試中...",
       "testResult": "測試結果",
-      "testNoModels": "請先新增模型"
+      "testNoModels": "請先新增模型",
+      "provider": "提供商",
+      "providerNone": "無",
+      "oauthCredential": "OAuth 憑證",
+      "oauthAuthorized": "已授權",
+      "oauthReset": "重設",
+      "addOAuth": "新增 OAuth 認證",
+      "importAuthFiles": "匯入 Auth 檔案",
+      "importAuthFilesHint": "支援 CPA/CLIProxyAPI Codex auth JSON 或 ZIP，可批量匯入",
+      "importAuthFilesFailed": "Auth 檔案匯入失敗",
+      "importPreview": "匯入預覽",
+      "importResult": "匯入結果",
+      "importConfirm": "確認匯入",
+      "importCancel": "取消",
+      "importSelectAll": "全選",
+      "importTooManyFiles": "檔案數量過多（{count}），單次最多 {max} 個",
+      "importDone": "完成",
+      "importColFile": "檔案",
+      "importColSource": "來源",
+      "importColAccount": "帳號",
+      "importColStatus": "狀態",
+      "importStatusReady": "可匯入",
+      "imported": "已匯入",
+      "updated": "已更新",
+      "failed": "失敗",
+      "skipped": "跳過",
+      "authFile": "Auth 檔案"
     }
   },
   "provider": {
@@ -766,6 +798,14 @@
       "openVerification": "打開驗證頁面",
       "authPolling": "等待授權中...",
       "authWebPolling": "等待新窗口中完成授權...",
+      "authWebManualStep1": "點擊下方按鈕打開授權頁面並完成登入。",
+      "authWebManualStep2": "登入後瀏覽器會跳轉到一個包含授權碼的 URL，請從網址列複製完整 URL 並貼到下方。",
+      "openAuthPage": "打開授權頁面",
+      "callbackUrlPlaceholder": "在此貼上回調 URL（如 http://localhost:1455/auth/callback?code=...&state=...）",
+      "callbackUrlRequired": "請貼上回調 URL",
+      "submitCallback": "提交",
+      "authSubmitting": "提交中...",
+      "cancel": "取消",
       "authSuccess": "授權成功",
       "authFailed": "授權失敗",
       "copied": "已複製！"

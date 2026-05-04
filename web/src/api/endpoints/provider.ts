@@ -1,5 +1,5 @@
 import { apiClient } from '@/api/client';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 
 // Provider 信息
 export interface ProviderInfo {
@@ -55,6 +55,7 @@ export interface AuthResult {
     expires_in?: number;
     refresh_token?: string;
     scope?: string;
+    extra?: Record<string, string>;
   };
 }
 
@@ -87,5 +88,12 @@ export function usePollAuth() {
   return useMutation({
     mutationFn: async (data: { session_id: string }) =>
       apiClient.post<AuthResult>('/api/v1/provider/auth/poll', data),
+  });
+}
+
+export function useSubmitCallback() {
+  return useMutation({
+    mutationFn: async (data: { session_id: string; callback_url: string }) =>
+      apiClient.post<NonNullable<AuthResult['result']>>('/api/v1/provider/auth/submit-callback', data),
   });
 }

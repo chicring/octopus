@@ -24,12 +24,13 @@ type AuthParams struct {
 
 // AuthSession 认证会话状态
 type AuthSession struct {
-	DeviceCode      string `json:"device_code,omitempty"`
-	UserCode        string `json:"user_code,omitempty"`
-	VerificationURI string `json:"verification_uri,omitempty"`
-	State           string `json:"state,omitempty"`
-	ExpiresAt       int64  `json:"expires_at,omitempty"`
-	Interval        int    `json:"interval,omitempty"`
+	DeviceCode      string            `json:"device_code,omitempty"`
+	UserCode        string            `json:"user_code,omitempty"`
+	VerificationURI string            `json:"verification_uri,omitempty"`
+	State           string            `json:"state,omitempty"`
+	ExpiresAt       int64             `json:"expires_at,omitempty"`
+	Interval        int               `json:"interval,omitempty"`
+	Extra           map[string]string `json:"extra,omitempty"`
 }
 
 // AuthResult 认证结果

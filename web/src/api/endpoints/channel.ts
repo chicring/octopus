@@ -85,6 +85,7 @@ type ChannelServer = Omit<Channel, 'base_urls' | 'custom_header' | 'keys'> & {
 export type CreateChannelRequest = {
     name: string;
     type: ChannelType;
+    provider_id?: string;
     enabled?: boolean;
     base_urls: BaseUrl[];
     keys: Array<Pick<ChannelKey, 'enabled' | 'channel_key' | 'remark'>>;
@@ -104,6 +105,7 @@ export type CreateChannelRequest = {
  */
 export type UpdateChannelRequest = {
     id: number;
+    provider_id?: string;
     name?: string;
     type?: ChannelType;
     enabled?: boolean;
@@ -413,6 +415,104 @@ export function useTestChannelModelsByKey() {
     return useMutation({
         mutationFn: async (data: { channel_id: number; key_id: number; models: string[] }) => {
             return apiClient.post<TestModelResult[]>('/api/v1/channel/test-models-by-key', data);
+        },
+    });
+}
+
+/**
+ * 获取 Codex 渠道列表（含 Key）用于用量卡片导入
+ */
+export function useCodexChannels() {
+    return useQuery({
+        queryKey: ['channels', 'codex-list'],
+        queryFn: async () => {
+            const channels = await apiClient.get<ChannelServer[]>('/api/v1/channel/list');
+            return channels
+                .filter(c => c.provider_id === 'codex' && c.keys && c.keys.length > 0)
+                .map(item => ({
+                    ...item,
+                    base_urls: item.base_urls ?? [],
+                    custom_header: item.custom_header ?? [],
+                    keys: item.keys ?? [],
+                })) as Channel[];
+        },
+    });
+}
+
+/**
+ * Codex auth 文件导入结果项
+ */
+export type CodexAuthImportResultItem = {
+    file: string;
+    source: string;
+    status: string;
+    email?: string;
+    account_id?: string;
+    error?: string;
+};
+
+/**
+ * Codex auth 文件导入批量结果
+ */
+export type CodexAuthImportBatchResult = {
+    imported: number;
+    updated: number;
+    failed: number;
+    skipped: number;
+    results: CodexAuthImportResultItem[];
+};
+
+/**
+ * Codex auth 文件导入 Hook（multipart/form-data）
+ */
+export function useCodexAuthImport() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: async ({ channelId, files }: { channelId: number; files: File[] }) => {
+            const formData = new FormData();
+            for (const file of files) {
+                formData.append('files', file);
+            }
+            // 使用 fetch 直接发送 FormData，不走 apiClient.post（它会 JSON.stringify）
+            const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '.';
+            const url = `${API_BASE_URL}/api/v1/channel/${channelId}/codex/auth-files/import`;
+
+            const headers = new Headers();
+            // 不设置 Content-Type，让浏览器自动设置 multipart boundary
+            // 添加 Authorization
+            if (typeof window !== 'undefined') {
+                const { useAuthStore } = await import('@/api/endpoints/user');
+                const token = useAuthStore.getState().token;
+                if (token) {
+                    headers.set('Authorization', `Bearer ${token}`);
+                }
+            }
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers,
+                body: formData,
+            });
+
+            if (!response.ok) {
+                const data = await response.json().catch(() => null);
+                throw new Error(
+                    (data && typeof data === 'object' && 'message' in data && typeof data.message === 'string')
+                        ? data.message
+                        : response.statusText
+                );
+            }
+
+            const data = await response.json();
+            // 标准 ApiResponse 格式
+            if (data && typeof data === 'object' && 'data' in data) {
+                return data.data as CodexAuthImportBatchResult;
+            }
+            return data as CodexAuthImportBatchResult;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['channels', 'list'] });
         },
     });
 }

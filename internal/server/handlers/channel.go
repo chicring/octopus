@@ -123,6 +123,7 @@ func createChannel(c *gin.Context) {
 		helper.LLMPriceAddToDB(modelArray, ctx)
 		helper.ChannelBaseUrlDelayUpdate(channel, ctx)
 		helper.ChannelAutoGroup(channel, ctx)
+		op.AutoCreateCodexUsageCard(channel, ctx)
 	}(&channel)
 	resp.Success(c, channel)
 }

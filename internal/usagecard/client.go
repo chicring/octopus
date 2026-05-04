@@ -20,12 +20,18 @@ const (
 
 // RefreshResult 刷新结果
 type RefreshResult struct {
-	Snapshot model.UsageSnapshot
-	Error    string
+	Snapshot       model.UsageSnapshot
+	Error          string
+	RefreshedCred  string // 如果 token 被刷新，这里存放新的加密凭证，需持久化到 DB
 }
 
 // Refresh 刷新单张卡片的用量数据
 func Refresh(ctx context.Context, card model.UsageCard) RefreshResult {
+	// Codex 用量卡片使用专用刷新逻辑
+	if card.TemplateID == "codex-usage" {
+		return RefreshCodex(ctx, card)
+	}
+
 	secret, err := decryptSecret(card.EncryptedSecret)
 	if err != nil {
 		return RefreshResult{Error: fmt.Sprintf("解密密钥失败: %v", err)}

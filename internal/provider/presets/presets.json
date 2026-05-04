@@ -70,5 +70,11 @@
     "provider_id": "openai-chat",
     "default_base_url": "https://api.mistral.ai/v1",
     "auth_type": "manual"
+  },
+  {
+    "name": "Codex",
+    "provider_id": "codex",
+    "default_base_url": "https://chatgpt.com/backend-api/codex",
+    "auth_type": "oauth_web"
   }
 ]

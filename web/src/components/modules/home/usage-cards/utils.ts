@@ -24,17 +24,10 @@ export function formatMetricValue(value: number | null | undefined, unit: string
 
 export function formatResetTime(resetAt: string): string {
     const date = dayjs(resetAt);
-    const now = dayjs();
+    if (!date.isValid()) return '-';
 
-    if (date.isBefore(now)) {
-        return date.format('MM-DD HH:mm');
-    }
-
-    const diffSec = date.diff(now, 'second');
-    if (diffSec < 60) return `${diffSec}s`;
-    if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m`;
-    if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h`;
-    return date.fromNow();
+    // 始终显示具体时间，如 "05-10 20:26"
+    return date.format('MM-DD HH:mm');
 }
 
 export function statusVariant(status: string): 'default' | 'secondary' | 'destructive' | 'outline' {

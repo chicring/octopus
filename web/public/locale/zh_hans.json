@@ -214,7 +214,7 @@
         "createSuccess": "用量卡片创建成功",
         "createError": "用量卡片创建失败",
         "updateSuccess": "用量卡片更新成功",
-        "updateError": "用量卡片更新成功",
+        "updateError": "用量卡片更新失败",
         "deleteSuccess": "用量卡片删除成功",
         "deleteError": "用量卡片删除失败",
         "refreshSuccess": "刷新成功",
@@ -236,7 +236,13 @@
         "weekly": "每周",
         "monthly": "每月",
         "custom": "自定义"
-      }
+      },
+      "importCodexChannel": "从 Codex 渠道导入",
+      "importCodexHint": "选择一个 Codex 渠道导入用量卡片",
+      "noCodexChannels": "没有可用的 Codex 渠道",
+      "importSuccess": "Codex 用量卡片导入成功",
+      "importError": "Codex 用量卡片导入失败",
+      "codexSecretHint": "粘贴完整的 Codex 凭证 JSON，或从 Codex 渠道导入"
     }
   },
   "setting": {
@@ -753,7 +759,33 @@
       "testFailed": "失败",
       "testRunning": "测试中...",
       "testResult": "测试结果",
-      "testNoModels": "请先添加模型"
+      "testNoModels": "请先添加模型",
+      "provider": "提供商",
+      "providerNone": "无",
+      "oauthCredential": "OAuth 凭证",
+      "oauthAuthorized": "已授权",
+      "oauthReset": "重置",
+      "addOAuth": "添加 OAuth 认证",
+      "importAuthFiles": "导入 Auth 文件",
+      "importAuthFilesHint": "支持 CPA/CLIProxyAPI Codex auth JSON 或 ZIP，可批量导入",
+      "importAuthFilesFailed": "Auth 文件导入失败",
+      "importPreview": "导入预览",
+      "importResult": "导入结果",
+      "importConfirm": "确认导入",
+      "importCancel": "取消",
+      "importSelectAll": "全选",
+      "importTooManyFiles": "文件数量过多（{count}），单次最多 {max} 个",
+      "importDone": "完成",
+      "importColFile": "文件",
+      "importColSource": "来源",
+      "importColAccount": "账号",
+      "importColStatus": "状态",
+      "importStatusReady": "可导入",
+      "imported": "已导入",
+      "updated": "已更新",
+      "failed": "失败",
+      "skipped": "跳过",
+      "authFile": "Auth 文件"
     }
   },
   "provider": {
@@ -766,6 +798,14 @@
       "openVerification": "打开验证页面",
       "authPolling": "等待授权中...",
       "authWebPolling": "等待新窗口中完成授权...",
+      "authWebManualStep1": "点击下方按钮打开授权页面并完成登录。",
+      "authWebManualStep2": "登录后浏览器会跳转到一个包含授权码的 URL，请从地址栏复制完整 URL 并粘贴到下方。",
+      "openAuthPage": "打开授权页面",
+      "callbackUrlPlaceholder": "在此粘贴回调 URL（如 http://localhost:1455/auth/callback?code=...&state=...）",
+      "callbackUrlRequired": "请粘贴回调 URL",
+      "submitCallback": "提交",
+      "authSubmitting": "提交中...",
+      "cancel": "取消",
       "authSuccess": "授权成功",
       "authFailed": "授权失败",
       "copied": "已复制！"

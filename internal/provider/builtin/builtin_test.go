@@ -68,8 +68,8 @@ func TestGetByLegacyType(t *testing.T) {
 
 func TestList(t *testing.T) {
 	providers := provider.List()
-	if len(providers) != 6 {
-		t.Errorf("List() returned %d providers, want 6", len(providers))
+	if len(providers) != 7 {
+		t.Errorf("List() returned %d providers, want 7", len(providers))
 	}
 }
 

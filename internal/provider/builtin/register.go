@@ -12,6 +12,7 @@ func init() {
 	provider.Register(&anthropicProvider{})
 	provider.Register(&geminiProvider{})
 	provider.Register(&volcengineProvider{})
+	provider.Register(&codexProvider{})
 }
 
 // manualAuth 共享实例

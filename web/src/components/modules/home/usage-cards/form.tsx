@@ -6,11 +6,12 @@ import {
     useUsageCardTemplates,
     useCreateUsageCard,
     useUpdateUsageCard,
+    useImportCodexChannelUsageCard,
     type UsageCard,
-    type UsageTemplate,
     type CreateUsageCardRequest,
     type UpdateUsageCardRequest,
 } from '@/api/endpoints/usage-card';
+import { useCodexChannels } from '@/api/endpoints/channel';
 import {
     Dialog,
     DialogContent,
@@ -30,7 +31,7 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { toast } from '@/components/common/Toast';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, ChevronDown, ChevronRight, Import } from 'lucide-react';
 
 export function UsageCardFormDialog({
     open,
@@ -45,6 +46,8 @@ export function UsageCardFormDialog({
     const { data: templates } = useUsageCardTemplates();
     const createCard = useCreateUsageCard();
     const updateCard = useUpdateUsageCard();
+    const importCodex = useImportCodexChannelUsageCard();
+    const { data: codexChannels } = useCodexChannels();
 
     const isEditing = card !== null;
 
@@ -58,6 +61,7 @@ export function UsageCardFormDialog({
     const [refreshInterval, setRefreshInterval] = useState(300);
     const [enabled, setEnabled] = useState(true);
     const [extraHeaders, setExtraHeaders] = useState<{ key: string; value: string }[]>([]);
+    const [showImport, setShowImport] = useState(false);
 
     const selectedTemplate = templates?.find(t => t.id === templateId);
 
@@ -91,10 +95,9 @@ export function UsageCardFormDialog({
 
     useEffect(() => {
         if (selectedTemplate && !isEditing) {
-            if (!endpoint) setEndpoint(selectedTemplate.default_endpoint);
-            if (authType === 'none' && selectedTemplate.auth_types.length > 0) {
-                setAuthType(selectedTemplate.auth_types[0]);
-            }
+            setEndpoint(selectedTemplate.default_endpoint);
+            setAuthType(selectedTemplate.auth_types.length > 0 ? selectedTemplate.auth_types[0] : 'none');
+            setExtraHeaders(selectedTemplate.required_headers?.map(h => ({ key: h.key, value: h.value })) ?? []);
         }
     }, [selectedTemplate, isEditing]);
 
@@ -143,7 +146,7 @@ export function UsageCardFormDialog({
                 onError: () => toast.error(t('toast.createError')),
             });
         }
-    }, [name, templateId, account, endpoint, authType, authHeader, secret, refreshInterval, enabled, isEditing, card, createCard, updateCard, t, onOpenChange]);
+    }, [name, templateId, account, endpoint, authType, authHeader, secret, extraHeaders, refreshInterval, enabled, isEditing, card, createCard, updateCard, t, onOpenChange]);
 
     const isPending = createCard.isPending || updateCard.isPending;
     const showSecret = authType !== 'none';
@@ -157,6 +160,66 @@ export function UsageCardFormDialog({
                 </DialogHeader>
 
                 <div className="space-y-4">
+                    {/* Import from Codex Channel (create only) */}
+                    {!isEditing && (
+                        <div className="space-y-2">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 gap-1.5 rounded-xl w-full"
+                                type="button"
+                                onClick={() => setShowImport(!showImport)}
+                            >
+                                {showImport ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+                                <Import className="size-3.5" />
+                                {t('importCodexChannel')}
+                            </Button>
+                            {showImport && (
+                                <div className="rounded-xl border border-border/60 p-3 space-y-2 max-h-48 overflow-y-auto">
+                                    {codexChannels && codexChannels.length > 0 ? (
+                                        codexChannels.map(channel => (
+                                            <div key={channel.id} className="space-y-1">
+                                                <div className="text-xs font-medium text-foreground">{channel.name}</div>
+                                                {channel.keys.map(key => (
+                                                    <div key={key.id} className="flex items-center justify-between pl-3">
+                                                        <span className="text-xs text-muted-foreground truncate">
+                                                            {key.remark || `Key #${key.id}`}
+                                                        </span>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-6 text-xs px-2"
+                                                            type="button"
+                                                            disabled={importCodex.isPending}
+                                                            onClick={() => {
+                                                                importCodex.mutate(
+                                                                    { channel_id: channel.id, key_id: key.id },
+                                                                    {
+                                                                        onSuccess: () => {
+                                                                            toast.success(t('importSuccess'));
+                                                                            onOpenChange(false);
+                                                                        },
+                                                                        onError: () => toast.error(t('importError')),
+                                                                    },
+                                                                );
+                                                            }}
+                                                        >
+                                                            {t('form.create')}
+                                                        </Button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="text-xs text-muted-foreground text-center py-2">
+                                            {t('noCodexChannels')}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {/* Template */}
                     <div className="space-y-1.5">
                         <Label className="text-xs">{t('form.template')}</Label>
@@ -165,15 +228,18 @@ export function UsageCardFormDialog({
                                 <SelectValue placeholder={t('form.selectTemplate')} />
                             </SelectTrigger>
                             <SelectContent className="rounded-xl">
-                                {templates?.map(t => (
-                                    <SelectItem key={t.id} value={t.id} className="rounded-xl">
-                                        {t.name}
+                                {templates?.map(tpl => (
+                                    <SelectItem key={tpl.id} value={tpl.id} className="rounded-xl">
+                                        {tpl.name}
                                     </SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
                         {selectedTemplate && (
                             <p className="text-[11px] text-muted-foreground">{selectedTemplate.description}</p>
+                        )}
+                        {templateId === 'codex-usage' && !isEditing && (
+                            <p className="text-[11px] text-amber-600 dark:text-amber-400">{t('codexSecretHint')}</p>
                         )}
                     </div>
 

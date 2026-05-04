@@ -1,4 +1,8 @@
-import { AutoGroupType, ChannelType, type Channel, useFetchModel, useTestChannelModelsByConfig, type TestModelResult } from '@/api/endpoints/channel';
+import { AutoGroupType, ChannelType, type Channel, useFetchModel, useTestChannelModelsByConfig, type TestModelResult, useChannelList } from '@/api/endpoints/channel';
+import { useProviderList, type ProviderInfo, type AuthResult } from '@/api/endpoints/provider';
+import { OAuthPanel } from './OAuthPanel';
+import { AuthFileImportPanel } from './AuthFileImportPanel';
+import { parseOAuthLabel } from './utils';
 import {
     Select,
     SelectContent,
@@ -40,6 +44,7 @@ export interface ChannelKeyFormItem {
 export interface ChannelFormData {
     name: string;
     type: ChannelType;
+    provider_id: string;
     base_urls: Channel['base_urls'];
     custom_header: Channel['custom_header'];
     channel_proxy: string;
@@ -64,6 +69,7 @@ export interface ChannelFormProps {
     onCancel?: () => void;
     cancelText?: string;
     idPrefix?: string;
+    channelId?: number;
 }
 
 import {
@@ -83,8 +89,17 @@ export function ChannelForm({
     onCancel,
     cancelText,
     idPrefix = 'channel',
+    channelId,
 }: ChannelFormProps) {
     const t = useTranslations('channel.form');
+    const { data: providers } = useProviderList();
+
+    // Derive the currently selected provider info
+    const selectedProvider = useMemo<ProviderInfo | undefined>(
+        () => providers?.find((p) => p.id === formData.provider_id),
+        [providers, formData.provider_id],
+    );
+    const isOAuthProvider = selectedProvider && selectedProvider.auth_type !== 'manual';
 
     // Ensure the form always shows at least 1 row for base_urls / keys / custom_header.
     // This avoids "empty list" UI and also keeps URL + APIKEY layout consistent.
@@ -102,12 +117,12 @@ export function ChannelForm({
         }
     }, [formData, onFormDataChange]);
 
-    const autoModels = formData.model
+    const autoModels = useMemo(() => formData.model
         ? formData.model.split(',').map((m) => m.trim()).filter(Boolean)
-        : [];
-    const customModels = formData.custom_model
+        : [], [formData.model]);
+    const customModels = useMemo(() => formData.custom_model
         ? formData.custom_model.split(',').map((m) => m.trim()).filter(Boolean)
-        : [];
+        : [], [formData.custom_model]);
     const [inputValue, setInputValue] = useState('');
     const inputRef = useRef<HTMLInputElement>(null);
 
@@ -318,6 +333,64 @@ export function ChannelForm({
         onFormDataChange({ ...formData, custom_header: curr.filter((_, i) => i !== idx) });
     };
 
+    const handleOAuthSuccess = (result: NonNullable<AuthResult['result']>) => {
+        let channelKey: string;
+        if (selectedProvider?.id === 'codex') {
+            // 构建 Codex 完整凭证 JSON，包含 refresh_token、account_id 等
+            const cred: Record<string, string> = {
+                access_token: result.access_token,
+                token_type: result.token_type || 'Bearer',
+            };
+            if (result.refresh_token) cred.refresh_token = result.refresh_token;
+            if (result.expires_in) {
+                cred.expires_at = new Date(Date.now() + result.expires_in * 1000).toISOString();
+            }
+            if (result.extra?.email) cred.email = result.extra.email;
+            if (result.extra?.account_id) cred.account_id = result.extra.account_id;
+            if (result.extra?.id_token) cred.id_token = result.extra.id_token;
+            channelKey = JSON.stringify(cred);
+        } else {
+            channelKey = result.access_token;
+        }
+        // 添加新 OAuth 凭证到 keys 列表（remark 存邮箱标识）
+        const oauthEmail = result.extra?.email || result.extra?.account_id || '';
+        onFormDataChange({
+            ...formData,
+            keys: [...formData.keys.filter(k => k.channel_key.trim()), { enabled: true, channel_key: channelKey, remark: oauthEmail }],
+        });
+    };
+
+    // 从 OAuth 凭证 JSON 中提取显示名（email > account_id）
+    const getOAuthLabel = parseOAuthLabel;
+
+    // 合并渠道类型和提供商为一个选择器
+    // 选项值格式: "type:<ChannelType>" 或 "provider:<provider_id>"
+    const channelKindValue = formData.provider_id
+        ? `provider:${formData.provider_id}`
+        : `type:${formData.type}`;
+
+    const handleChannelKindChange = (value: string) => {
+        if (value.startsWith('provider:')) {
+            const providerId = value.slice('provider:'.length);
+            const provider = providers?.find((p) => p.id === providerId);
+            const updates: Partial<ChannelFormData> = { provider_id: providerId };
+            if (provider?.id === 'codex') {
+                updates.type = ChannelType.OpenAIResponse;
+            }
+            if (formData.base_urls?.[0]?.url.trim() === '') {
+                const schema = provider?.credential_schema;
+                const defaultUrl = schema?.fields?.find((f) => f.key === 'base_url')?.default;
+                if (defaultUrl) {
+                    updates.base_urls = [{ url: defaultUrl, delay: 0 }];
+                }
+            }
+            onFormDataChange({ ...formData, ...updates });
+        } else {
+            const typeVal = Number(value.slice('type:'.length)) as ChannelType;
+            onFormDataChange({ ...formData, type: typeVal, provider_id: '' });
+        }
+    };
+
     return (
         <form onSubmit={onSubmit} className="space-y-4 px-1">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -336,23 +409,28 @@ export function ChannelForm({
                 </div>
 
                 <div className="space-y-2">
-                    <label htmlFor={`${idPrefix}-type`} className="text-sm font-medium text-card-foreground">
+                    <label htmlFor={`${idPrefix}-kind`} className="text-sm font-medium text-card-foreground">
                         {t('type')}
                     </label>
                     <Select
-                        value={String(formData.type)}
-                        onValueChange={(value) => onFormDataChange({ ...formData, type: Number(value) as ChannelType })}
+                        value={channelKindValue}
+                        onValueChange={handleChannelKindChange}
                     >
-                        <SelectTrigger id={`${idPrefix}-type`} className="rounded-xl w-full border border-border px-4 py-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                        <SelectTrigger id={`${idPrefix}-kind`} className="rounded-xl w-full border border-border px-4 py-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                             <SelectValue />
                         </SelectTrigger>
                         <SelectContent className='rounded-xl'>
-                            <SelectItem className='rounded-xl' value={String(ChannelType.OpenAIChat)}>{t('typeOpenAIChat')}</SelectItem>
-                            <SelectItem className='rounded-xl' value={String(ChannelType.OpenAIResponse)}>{t('typeOpenAIResponse')}</SelectItem>
-                            <SelectItem className='rounded-xl' value={String(ChannelType.Anthropic)}>{t('typeAnthropic')}</SelectItem>
-                            <SelectItem className='rounded-xl' value={String(ChannelType.Gemini)}>{t('typeGemini')}</SelectItem>
-                            <SelectItem className='rounded-xl' value={String(ChannelType.Volcengine)}>{t('typeVolcengine')}</SelectItem>
-                            <SelectItem className='rounded-xl' value={String(ChannelType.OpenAIEmbedding)}>{t('typeOpenAIEmbedding')}</SelectItem>
+                            <SelectItem className='rounded-xl' value={`type:${ChannelType.OpenAIChat}`}>{t('typeOpenAIChat')}</SelectItem>
+                            <SelectItem className='rounded-xl' value={`type:${ChannelType.OpenAIResponse}`}>{t('typeOpenAIResponse')}</SelectItem>
+                            <SelectItem className='rounded-xl' value={`type:${ChannelType.Anthropic}`}>{t('typeAnthropic')}</SelectItem>
+                            <SelectItem className='rounded-xl' value={`type:${ChannelType.Gemini}`}>{t('typeGemini')}</SelectItem>
+                            <SelectItem className='rounded-xl' value={`type:${ChannelType.Volcengine}`}>{t('typeVolcengine')}</SelectItem>
+                            <SelectItem className='rounded-xl' value={`type:${ChannelType.OpenAIEmbedding}`}>{t('typeOpenAIEmbedding')}</SelectItem>
+                            {providers?.filter(p => p.auth_type !== 'manual').map((provider) => (
+                                <SelectItem key={provider.id} className='rounded-xl' value={`provider:${provider.id}`}>
+                                    {provider.display_name}
+                                </SelectItem>
+                            ))}
                         </SelectContent>
                     </Select>
                 </div>
@@ -405,55 +483,140 @@ export function ChannelForm({
             <div className="space-y-2">
                 <div className="flex items-center justify-between">
                     <label className="text-sm font-medium text-card-foreground">
-                        {t('apiKey')} {formData.keys.length > 0 ? `(${formData.keys.length})` : ''}
+                        {isOAuthProvider ? t('oauthCredential') : t('apiKey')} {formData.keys.length > 0 ? `(${formData.keys.length})` : ''}
                     </label>
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleAddKey}
-                        className="h-6 px-2 text-xs text-muted-foreground/70 hover:text-muted-foreground hover:bg-transparent"
-                    >
-                        <Plus className="h-3 w-3 mr-1" />
-                        {t('add')}
-                    </Button>
+                    {!isOAuthProvider && (
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleAddKey}
+                            className="h-6 px-2 text-xs text-muted-foreground/70 hover:text-muted-foreground hover:bg-transparent"
+                        >
+                            <Plus className="h-3 w-3 mr-1" />
+                            {t('add')}
+                        </Button>
+                    )}
                 </div>
-                <div className="space-y-2">
-                    {(formData.keys ?? []).map((k, idx) => (
-                        <div key={k.id ?? `new-${idx}`} className="flex items-center gap-2">
-                            <Input
-                                type="text"
-                                value={k.channel_key}
-                                onChange={(e) => handleUpdateKey(idx, { channel_key: e.target.value })}
-                                placeholder={t('apiKey')}
-                                required={idx === 0}
-                                className="rounded-xl flex-1"
+                {isOAuthProvider ? (
+                    <div className="space-y-2">
+                        {formData.keys.filter(k => k.channel_key.trim()).map((key, idx) => {
+                            const label = getOAuthLabel(key.channel_key);
+                            // 解析凭证 JSON 提取 account_id 和 expires_at
+                            let accountId = '';
+                            let expiresAt = '';
+                            try {
+                                const parsed = JSON.parse(key.channel_key);
+                                if (parsed && typeof parsed === 'object') {
+                                    accountId = parsed.account_id || '';
+                                    if (parsed.expires_at) {
+                                        try {
+                                            const d = new Date(parsed.expires_at);
+                                            if (!isNaN(d.getTime())) {
+                                                expiresAt = d.toLocaleDateString();
+                                            }
+                                        } catch { /* ignore */ }
+                                    }
+                                }
+                            } catch { /* not JSON */ }
+                            const secondaryParts = [accountId, expiresAt].filter(Boolean);
+                            return (
+                                <div key={idx} className="flex items-center justify-between rounded-xl border border-border px-3 py-2">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0">Codex</Badge>
+                                        <div className="min-w-0">
+                                            <span className="text-sm text-muted-foreground truncate block">{key.remark || label || `${t('oauthAuthorized')} #${idx + 1}`}</span>
+                                            {secondaryParts.length > 0 && (
+                                                <span className="text-xs text-muted-foreground/60 truncate block">{secondaryParts.join(' · ')}</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive shrink-0"
+                                        onClick={() => {
+                                            const filled = formData.keys.filter(k => k.channel_key.trim());
+                                            filled.splice(idx, 1);
+                                            onFormDataChange({ ...formData, keys: filled.length ? filled : [{ enabled: true, channel_key: '', remark: '' }] });
+                                        }}
+                                    >
+                                        <X className="h-3.5 w-3.5" />
+                                    </Button>
+                                </div>
+                            );
+                        })}
+                        <OAuthPanel
+                            providerId={selectedProvider?.id || ''}
+                            authType={selectedProvider?.auth_type as 'oauth_device' | 'oauth_web'}
+                            onSuccess={handleOAuthSuccess}
+                        />
+                        {selectedProvider?.id === 'codex' && channelId && channelId > 0 && (
+                            <AuthFileImportPanel
+                                channelId={channelId}
+                                onImportComplete={async () => {
+                                    // 导入完成后从服务器重新获取渠道数据，更新表单中的 keys
+                                    try {
+                                        const { apiClient } = await import('@/api/client');
+                                        type ChannelKeyBrief = { id: number; channel_key: string; remark: string; enabled: boolean };
+                                        type ChannelBrief = { id: number; keys: ChannelKeyBrief[] };
+                                        const channels = await apiClient.get<ChannelBrief[]>('/api/v1/channel/list');
+                                        const updated = channels.find((c) => c.id === channelId);
+                                        if (updated && updated.keys) {
+                                            const newKeys = updated.keys.length > 0
+                                                ? updated.keys.map((k) => ({
+                                                    id: k.id,
+                                                    enabled: k.enabled,
+                                                    channel_key: k.channel_key,
+                                                    remark: k.remark ?? '',
+                                                }))
+                                                : [{ enabled: true, channel_key: '', remark: '' }];
+                                            onFormDataChange({ ...formData, keys: newKeys });
+                                        }
+                                    } catch { /* 静默失败，用户可手动刷新 */ }
+                                }}
                             />
-                            <Input
-                                type="text"
-                                value={k.remark ?? ''}
-                                onChange={(e) => handleUpdateKey(idx, { remark: e.target.value })}
-                                placeholder={t('remark')}
-                                className="rounded-xl w-32"
-                            />
-                            <Switch
-                                checked={k.enabled}
-                                onCheckedChange={(checked) => handleUpdateKey(idx, { enabled: checked })}
-                            />
-                            <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleRemoveKey(idx)}
-                                disabled={(formData.keys ?? []).length <= 1}
-                                className="h-8 w-8 p-0 rounded-xl text-muted-foreground hover:text-destructive hover:bg-transparent disabled:opacity-40"
-                                title="Remove"
-                            >
-                                <X className="h-4 w-4" />
-                            </Button>
-                        </div>
-                    ))}
-                </div>
+                        )}
+                    </div>
+                ) : (
+                    <div className="space-y-2">
+                        {(formData.keys ?? []).map((k, idx) => (
+                            <div key={k.id ?? `new-${idx}`} className="flex items-center gap-2">
+                                <Input
+                                    type="text"
+                                    value={k.channel_key}
+                                    onChange={(e) => handleUpdateKey(idx, { channel_key: e.target.value })}
+                                    placeholder={t('apiKey')}
+                                    required={idx === 0}
+                                    className="rounded-xl flex-1"
+                                />
+                                <Input
+                                    type="text"
+                                    value={k.remark ?? ''}
+                                    onChange={(e) => handleUpdateKey(idx, { remark: e.target.value })}
+                                    placeholder={t('remark')}
+                                    className="rounded-xl w-32"
+                                />
+                                <Switch
+                                    checked={k.enabled}
+                                    onCheckedChange={(checked) => handleUpdateKey(idx, { enabled: checked })}
+                                />
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleRemoveKey(idx)}
+                                    disabled={(formData.keys ?? []).length <= 1}
+                                    className="h-8 w-8 p-0 rounded-xl text-muted-foreground hover:text-destructive hover:bg-transparent disabled:opacity-40"
+                                    title="Remove"
+                                >
+                                    <X className="h-4 w-4" />
+                                </Button>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
 
             <div className="space-y-2">

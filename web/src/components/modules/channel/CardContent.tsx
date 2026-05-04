@@ -26,6 +26,7 @@ import { useTranslations } from 'next-intl';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { ChannelForm, type ChannelFormData } from './Form';
+import { parseOAuthLabel } from './utils';
 import { formatMoney, formatCount } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -45,6 +46,7 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
     const [formData, setFormData] = useState<ChannelFormData>({
         name: channel.name,
         type: channel.type,
+        provider_id: channel.provider_id ?? '',
         enabled: channel.enabled,
         base_urls: channel.base_urls?.length ? channel.base_urls : [{ url: '', delay: 0 }],
         custom_header: channel.custom_header ?? [],
@@ -73,6 +75,13 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
     });
 
     const currentView = isEditing ? 'editing' : 'viewing';
+
+    // Helper: try to parse a channel_key as JSON OAuth credential and extract a display string
+    const getDisplayKey = useCallback((key: string): string => {
+        return parseOAuthLabel(key) || key;
+    }, []);
+
+    const isOAuthChannel = channel.provider_id && channel.provider_id !== '';
 
     const getModels = useCallback(() =>
         [channel.model, channel.custom_model]
@@ -155,6 +164,7 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
         // only send changed fields to avoid accidental clears
         if (formData.name !== channel.name) req.name = formData.name;
         if (formData.type !== channel.type) req.type = formData.type;
+        if (formData.provider_id !== (channel.provider_id ?? '')) req.provider_id = formData.provider_id || undefined;
         if (formData.enabled !== channel.enabled) req.enabled = formData.enabled;
         if (!baseUrlsEqual(formData.base_urls, channel.base_urls)) {
             req.base_urls = (formData.base_urls ?? []).filter((u) => u.url.trim()).map((u) => ({
@@ -451,9 +461,12 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
                                                 <div className={cn("size-2 shrink-0 rounded-full", key.enabled ? "bg-emerald-500" : "bg-destructive")} />
 
                                                 <span className="font-mono text-sm truncate min-w-0 flex-1">
-                                                    {key.channel_key.length > 10
-                                                        ? `${key.channel_key.slice(0, 4)}...${key.channel_key.slice(-4)}`
-                                                        : key.channel_key}
+                                                    {(() => {
+                                                        const displayKey = isOAuthChannel ? getDisplayKey(key.channel_key) : key.channel_key;
+                                                        return displayKey.length > 10
+                                                            ? `${displayKey.slice(0, 4)}...${displayKey.slice(-4)}`
+                                                            : displayKey;
+                                                    })()}
                                                 </span>
 
                                                 {key.remark && (
@@ -605,6 +618,7 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
                                 onCancel={() => setIsEditing(false)}
                                 cancelText={t('actions.cancel')}
                                 idPrefix="channel"
+                                channelId={channel.id}
                             />
                         </TabsContent>
                     </TabsContents>

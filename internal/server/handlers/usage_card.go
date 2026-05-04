@@ -2,12 +2,16 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/samber/lo"
+
 	"github.com/bestruirui/octopus/internal/model"
 	"github.com/bestruirui/octopus/internal/op"
+	"github.com/bestruirui/octopus/internal/provider/auth"
 	"github.com/bestruirui/octopus/internal/server/middleware"
 	"github.com/bestruirui/octopus/internal/server/resp"
 	"github.com/bestruirui/octopus/internal/server/router"
@@ -42,6 +46,10 @@ func init() {
 		AddRoute(
 			router.NewRoute("/refresh/:id", http.MethodPost).
 				Handle(refreshUsageCard),
+		).
+		AddRoute(
+			router.NewRoute("/import/codex-channel", http.MethodPost).
+				Handle(importCodexChannelUsageCard),
 		)
 }
 
@@ -117,6 +125,91 @@ func refreshUsageCard(c *gin.Context) {
 	defer cancel()
 
 	card, err := op.UsageCardRefresh(uint(id), ctx)
+	if err != nil {
+		resp.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	resp.Success(c, card)
+}
+
+// importCodexChannelRequest 从 Codex 渠道导入用量卡片的请求
+type importCodexChannelRequest struct {
+	ChannelID int `json:"channel_id" binding:"required"`
+	KeyID     int `json:"key_id"`
+}
+
+// importCodexChannelUsageCard 从 Codex 渠道导入用量卡片
+// POST /api/v1/usage-card/import/codex-channel
+func importCodexChannelUsageCard(c *gin.Context) {
+	var req importCodexChannelRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.Error(c, http.StatusBadRequest, resp.ErrInvalidJSON)
+		return
+	}
+
+	// 获取渠道
+	channel, err := op.ChannelGet(req.ChannelID, c.Request.Context())
+	if err != nil {
+		resp.Error(c, http.StatusNotFound, "渠道不存在")
+		return
+	}
+
+	// 验证渠道类型
+	if channel.ProviderID != "codex" {
+		resp.Error(c, http.StatusBadRequest, "渠道不是 Codex 类型")
+		return
+	}
+
+	// 查找指定的 Key
+	var targetKey *model.ChannelKey
+	for i := range channel.Keys {
+		if req.KeyID == 0 || channel.Keys[i].ID == req.KeyID {
+			targetKey = &channel.Keys[i]
+			break
+		}
+	}
+	if targetKey == nil {
+		resp.Error(c, http.StatusNotFound, "未找到指定的 Key")
+		return
+	}
+
+	// 解析凭证以获取 email 用于命名
+	cred, credErr := auth.ParseCodexCredential(targetKey.ChannelKey)
+	displayName := channel.Name
+	if credErr == nil && cred.Email != "" {
+		displayName = cred.Email
+	}
+
+	// 去重检查：如果已存在相同 account 的卡片，直接返回
+	account := fmt.Sprintf("codex:%d:%d", req.ChannelID, targetKey.ID)
+	if existing, found := op.UsageCardGetByAccount(account); found {
+		resp.Success(c, existing)
+		return
+	}
+
+	// 获取模板
+	tmpl, ok := usagecard.GetTemplate("codex-usage")
+	if !ok {
+		resp.Error(c, http.StatusInternalServerError, "Codex 用量模板不存在")
+		return
+	}
+
+	// 创建用量卡片
+	createReq := &model.UsageCardCreateRequest{
+		Name:               fmt.Sprintf("Codex 用量 - %s", displayName),
+		TemplateID:         "codex-usage",
+		Account:            account,
+		Endpoint:           tmpl.DefaultEndpoint,
+		Method:             tmpl.Method,
+		AuthType:           "bearer",
+		Secret:             targetKey.ChannelKey,
+		ExtraHeaders:       usagecard.BuildExtraHeaders(tmpl),
+		Config:             usagecard.BuildCardConfig(tmpl),
+		RefreshIntervalSec: lo.ToPtr(300),
+		Enabled:            lo.ToPtr(true),
+	}
+
+	card, err := op.UsageCardCreate(createReq, c.Request.Context())
 	if err != nil {
 		resp.Error(c, http.StatusInternalServerError, err.Error())
 		return

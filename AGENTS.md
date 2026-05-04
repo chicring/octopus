@@ -1,98 +1,77 @@
-# AGENTS.md
+# Repository Guidelines
 
-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
+## Project Structure & Module Organization
 
-## Project Overview
+```
+octopus/
+├── main.go                    # Entry point
+├── internal/
+│   ├── relay/                 # Core relay: request parsing, balancing, SSE streaming
+│   │   └── balancer/          # Load balancing (round-robin/random/failover/weighted), circuit breaker, session affinity
+│   ├── transformer/           # Protocol translation (inbound/outbound adapter pattern)
+│   │   ├── inbound/           # Client formats → canonical InternalLLMRequest (openai, anthropic)
+│   │   ├── outbound/          # Canonical → upstream formats (openai, authropic, gemini, volcengine, codex)
+│   │   └── model/             # Shared canonical models
+│   ├── server/                # HTTP server (Gin), handlers, middleware, router
+│   ├── model/                 # GORM models
+│   ├── op/                    # CRUD operations on models
+│   ├── conf/                  # Viper config (data/config.json + OCTOPUS_ env overrides)
+│   ├── db/migrate/            # Versioned DB migrations with AutoMigrate hooks
+│   ├── task/                  # Background task scheduler (model sync, stats flush, log cleanup)
+│   ├── provider/              # Provider registration and auth
+│   ├── price/                 # Price presets (auto-generated Go from JSON)
+│   └── usagecard/             # Usage card generation
+├── web/                       # Frontend: Next.js 16 (static export), React 19, shadcn/ui, Tailwind v4, zustand
+│   └── src/                   # Path alias: @/* → ./src/*
+├── static/                    # Frontend build output (Go embed via //go:embed)
+├── scripts/build.sh           # Release build script (frontend → embed → Go binary)
+└── data/                      # Runtime data (config.json, SQLite DB)
+```
 
-Octopus is an LLM API aggregation and load balancing service. It accepts requests in OpenAI Chat/Responses/Embeddings, Anthropic Messages, and Gemini API formats, then routes them to upstream LLM providers with protocol conversion, load balancing (round-robin/random/failover/weighted), circuit breaking, and session affinity.
-
-- **Backend**: Go 1.24, Gin HTTP framework, GORM ORM (SQLite/MySQL/PostgreSQL)
-- **Frontend**: Next.js 16 (static export), React 19, shadcn/ui, Tailwind CSS v4, zustand
-- **License**: AGPL-3.0
-
-## Build & Development Commands
-
-### Backend
+## Build, Test, and Development Commands
 
 ```bash
-# Run in development
-go run main.go start
+# Backend
+go run main.go start                          # Run in dev mode
+OCTOPUS_DEBUG=true go run main.go start       # Debug mode (verbose Gin + GORM logging)
+CGO_ENABLED=0 go build -o octopus -ldflags="-s -w" -tags=jsoniter .  # Production build
+go test ./internal/transformer/model/...      # Run existing tests
+go test ./internal/relay/...                  # Relay tests (client_detect, inbound_reset, stats_count)
 
-# Debug mode (verbose Gin + GORM logging)
-OCTOPUS_DEBUG=true go run main.go start
+# Frontend
+cd web && pnpm install                        # Install dependencies
+cd web && pnpm run dev                        # Dev server (localhost:3000)
+cd web && NEXT_PUBLIC_API_BASE_URL="http://127.0.0.1:8080" pnpm run dev  # With backend
+cd web && pnpm run build                      # Static export → web/out/
+cd web && pnpm run lint                       # ESLint
 
-# Build binary (CGO-free, uses jsoniter for faster JSON)
-CGO_ENABLED=0 go build -o octopus -ldflags="-s -w" -tags=jsoniter .
-
-# Run the one existing test
-go test ./internal/transformer/model/...
+# Full Release
+bash scripts/build.sh build <os> <arch>       # Single platform (e.g. linux arm64)
+bash scripts/build.sh release                 # All platforms + Docker images
 ```
 
-### Frontend (web/)
+## Coding Style & Naming Conventions
 
-```bash
-cd web
-pnpm install
-pnpm run dev                                          # Dev server on localhost:3000
-NEXT_PUBLIC_API_BASE_URL="http://127.0.0.1:8080" pnpm run dev  # With backend
-pnpm run build                                        # Static export to web/out/
-pnpm run lint                                         # ESLint
-```
+- **Go**: Follow standard Go conventions. Use `jsoniter` build tag for JSON serialization. Comments primarily in Chinese (中文).
+- **Frontend**: TypeScript strict mode, React 19, shadcn/ui components, Tailwind CSS v4. Path alias `@/*` → `./src/*`.
+- **Adapters**: Registered in factory maps via `init()` functions, looked up by type string.
+- **Routes**: Declarative registration via `router.NewGroupRouter()` and `router.NewRoute()` in `init()` functions.
+- **Config**: Environment variable overrides use `OCTOPUS_` prefix. Build-time vars via ldflags: `conf.Version`, `conf.Commit`, `conf.BuildTime`.
+- **Important**: The outbound Anthropic adapter directory is `authropic` (typo) — do not rename without updating all references.
 
-### Full Release Build
+## Testing Guidelines
 
-```bash
-bash scripts/build.sh build <os> <arch>   # e.g. linux arm64
-bash scripts/build.sh release              # All platforms + Docker images
-```
+- Go tests use standard `testing` package. Run with `go test ./<path>/...`.
+- Key test files: `internal/relay/client_detect_test.go`, `internal/relay/inbound_reset_test.go`, `internal/relay/stats_count_test.go`, `internal/transformer/model/`.
+- Frontend: ESLint via `pnpm run lint`. No unit test framework currently configured.
 
-The build script: builds frontend → copies `web/out/` to `static/out/` (Go embed) → updates price presets → compiles Go binary with version ldflags.
+## Commit & Pull Request Guidelines
 
-## Architecture
+- **One topic per PR** — single feature or single bug fix only. Split multiple topics into separate PRs.
+- **Commit messages**: Use conventional prefixes — `fix:`, `feat:`, `chore:` followed by a concise description (often in Chinese).
+- **AI-assisted code**: Allowed but must be human-reviewed before submission.
+- **Pre-submission checklist**: PR contains only one change topic; AI-generated content has been reviewed.
 
-### Request Flow
+## Architecture Overview
 
-```
-Client → Gin Router → Relay Handler → Inbound Transformer → Balancer → Outbound Transformer → Upstream Provider
-                                                                                                    ↓
-Client ← Inbound Transformer ← InternalLLMResponse ← Outbound Transformer ← HTTP Response ←────────┘
-```
-
-### Key Packages
-
-- **`internal/relay/`** — Core relay logic: request parsing, balancing, forwarding, SSE streaming
-- **`internal/transformer/`** — Protocol translation layer with inbound/outbound adapter pattern
-  - `inbound/` — Client-facing formats → canonical `InternalLLMRequest` (openai, anthropic adapters)
-  - `outbound/` — Canonical format → upstream provider formats (openai, authropic, gemini, volcengine)
-  - Adapters are registered in factory maps via `init()` and looked up by type string
-- **`internal/relay/balancer/`** — Load balancing strategies, circuit breaker (exponential backoff), session affinity (sticky routing per API key)
-- **`internal/server/router/`** — Declarative route registration via `init()` functions using `router.NewGroupRouter()` and `router.NewRoute()`
-- **`internal/task/`** — Generic background task scheduler for periodic jobs (model sync, stats flush, log cleanup, price updates)
-- **`internal/model/`** + **`internal/op/`** — GORM models and CRUD operations
-- **`internal/conf/`** — Viper-based config from `data/config.json` with `OCTOPUS_` env var overrides
-- **`internal/db/migrate/`** — Versioned migration system with before/after AutoMigrate hooks
-- **`static/`** — Frontend build output embedded into Go binary via `//go:embed`
-
-### Configuration
-
-- Config file: `data/config.json` (auto-generated on first run)
-- Environment variable overrides use `OCTOPUS_` prefix (e.g., `OCTOPUS_SERVER_PORT`, `OCTOPUS_DATABASE_TYPE`)
-- Build-time variables injected via ldflags: `conf.Version`, `conf.Commit`, `conf.BuildTime`
-
-## Contribution Rules
-
-- One topic per PR (single feature or single bug fix)
-- AI-assisted code is allowed but must be human-reviewed before submission
-
-## Coding Standards
-
-- 详细规则：`.factory/rules/file-reading.md`
-- 项目记忆：`.factory/memories.md`
-
-## Notable Details
-
-- The outbound Anthropic adapter directory is named `authropic` (typo) — do not rename without updating all references
-- Frontend uses `output: "export"` (pure static HTML, no SSR) with `reactCompiler: true`
-- Frontend path alias: `@/*` → `./src/*`
-- Builds use `CGO_ENABLED=0` and `-tags=jsoniter` for pure-Go builds with faster JSON serialization
-- Comments and documentation are primarily in Chinese (中文)
+Request flow: `Client → Gin Router → Relay Handler → Inbound Transformer → Balancer → Outbound Transformer → Upstream Provider` (response follows the reverse path). The transformer layer uses an adapter pattern with inbound (client format → canonical) and outbound (canonical → provider format) converters. The balancer supports round-robin, random, failover, and weighted strategies with circuit breaking and session affinity.
