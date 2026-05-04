@@ -18,6 +18,10 @@ import (
 	"github.com/bestruirui/octopus/internal/provider"
 )
 
+// GetProxyHTTPClient 获取代理 HTTP 客户端的函数变量，由 handler init() 赋值
+// 避免 provider/auth → client → op 循环依赖
+var GetProxyHTTPClient func(useProxy bool) (*http.Client, error)
+
 // Codex OAuth 常量
 const (
 	CodexAuthURL        = "https://auth.openai.com/oauth/authorize"
@@ -136,7 +140,11 @@ func (f *CodexOAuthFlow) Callback(ctx context.Context, session *provider.AuthSes
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp, err := http.DefaultClient.Do(req)
+	oauthHTTPClient, _ := GetProxyHTTPClient(true)
+	if oauthHTTPClient == nil {
+		oauthHTTPClient = http.DefaultClient
+	}
+	resp, err := oauthHTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -197,7 +205,11 @@ func (f *CodexOAuthFlow) RefreshToken(ctx context.Context, refreshToken string) 
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp, err := http.DefaultClient.Do(req)
+	oauthHTTPClient, _ := GetProxyHTTPClient(true)
+	if oauthHTTPClient == nil {
+		oauthHTTPClient = http.DefaultClient
+	}
+	resp, err := oauthHTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
