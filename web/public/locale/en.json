@@ -769,6 +769,7 @@
       "importAuthFiles": "Import Auth Files",
       "importAuthFilesHint": "Support CPA/CLIProxyAPI Codex auth JSON or ZIP, batch import",
       "importAuthFilesFailed": "Auth file import failed",
+      "importSaveFirst": "Please save the channel first before importing auth files",
       "importPreview": "Import Preview",
       "importResult": "Import Result",
       "importConfirm": "Confirm Import",

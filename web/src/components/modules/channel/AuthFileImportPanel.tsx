@@ -12,7 +12,7 @@ import { Upload, Loader2, CheckCircle2, XCircle, AlertTriangle, FileJson, FileAr
 const MAX_FILES = 200; // 单次导入最大文件数
 
 interface AuthFileImportPanelProps {
-  channelId: number;
+  channelId?: number;
   onImportComplete: () => void;
 }
 
@@ -169,6 +169,12 @@ export function AuthFileImportPanel({ channelId, onImportComplete }: AuthFileImp
   }, [t]);
 
   const handleImport = useCallback(async () => {
+    if (!channelId || channelId <= 0) {
+      toast.error(t('importAuthFilesFailed'), {
+        description: t('importSaveFirst'),
+      });
+      return;
+    }
     const files = previewItems
       .filter((_, idx) => selectedIndices.has(idx))
       .map(item => item.file);
@@ -236,7 +242,11 @@ export function AuthFileImportPanel({ channelId, onImportComplete }: AuthFileImp
           <Upload className="h-3 w-3 mr-1" />
           {t('importAuthFiles')}
         </Button>
-        <p className="text-xs text-muted-foreground mt-1">{t('importAuthFilesHint')}</p>
+        {!channelId || channelId <= 0 ? (
+          <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">{t('importSaveFirst')}</p>
+        ) : (
+          <p className="text-xs text-muted-foreground mt-1">{t('importAuthFilesHint')}</p>
+        )}
       </>
     );
   }

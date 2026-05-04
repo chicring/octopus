@@ -769,6 +769,7 @@
       "importAuthFiles": "导入 Auth 文件",
       "importAuthFilesHint": "支持 CPA/CLIProxyAPI Codex auth JSON 或 ZIP，可批量导入",
       "importAuthFilesFailed": "Auth 文件导入失败",
+      "importSaveFirst": "请先保存渠道后再导入 Auth 文件",
       "importPreview": "导入预览",
       "importResult": "导入结果",
       "importConfirm": "确认导入",

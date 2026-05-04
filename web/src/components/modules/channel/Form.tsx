@@ -554,7 +554,7 @@ export function ChannelForm({
                             authType={selectedProvider?.auth_type as 'oauth_device' | 'oauth_web'}
                             onSuccess={handleOAuthSuccess}
                         />
-                        {selectedProvider?.id === 'codex' && channelId && channelId > 0 && (
+                        {selectedProvider?.id === 'codex' && (
                             <AuthFileImportPanel
                                 channelId={channelId}
                                 onImportComplete={async () => {
