@@ -72,6 +72,24 @@ bash scripts/build.sh release                 # All platforms + Docker images
 - **AI-assisted code**: Allowed but must be human-reviewed before submission.
 - **Pre-submission checklist**: PR contains only one change topic; AI-generated content has been reviewed.
 
+## Release & Tag 发布流程
+
+CI 流水线（`.github/workflows/release.yaml`）会自动构建和发布，**不需要手动构建**。
+
+### 正确步骤
+
+1. 在 `dev` 分支上开发、测试、提交
+2. 合并 `dev` → `master`（`git checkout master && git merge dev` 或通过 PR）
+3. 在 `master` 上打 tag：`git tag v1.x.x && git push origin v1.x.x`
+4. CI 自动构建 → 上传 GitHub Release 附件 + 推 Docker 镜像
+
+### 注意事项
+
+- **不要在 `dev` 上手动 `gh release create`**，会跟 CI 流水线冲突产生 Draft
+- **打 tag 前先确认最新版本号**：`git tag --sort=-v:refname | head -5`
+- push 到 `dev` 只触发 Docker 镜像构建（tag: `dev`, `short_sha`），不上传 Release 附件
+- push 到 `master` + tag 才触发完整发布（Release 附件 + Docker）
+
 ## Architecture Overview
 
 Request flow: `Client → Gin Router → Relay Handler → Inbound Transformer → Balancer → Outbound Transformer → Upstream Provider` (response follows the reverse path). The transformer layer uses an adapter pattern with inbound (client format → canonical) and outbound (canonical → provider format) converters. The balancer supports round-robin, random, failover, and weighted strategies with circuit breaking and session affinity.
