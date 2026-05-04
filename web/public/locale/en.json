@@ -204,6 +204,7 @@
         "headerKeyPlaceholder": "Header name",
         "headerValuePlaceholder": "Header value",
         "enabled": "Enabled",
+        "useProxy": "Use Proxy",
         "cancel": "Cancel",
         "create": "Create",
         "save": "Save",

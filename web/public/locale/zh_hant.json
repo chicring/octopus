@@ -204,6 +204,7 @@
         "headerKeyPlaceholder": "Header 名稱",
         "headerValuePlaceholder": "Header 值",
         "enabled": "是否啟用",
+        "useProxy": "使用代理",
         "cancel": "取消",
         "create": "創建",
         "save": "保存",

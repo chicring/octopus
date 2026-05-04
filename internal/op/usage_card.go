@@ -68,6 +68,11 @@ func UsageCardCreate(req *model.UsageCardCreateRequest, ctx context.Context) (*m
 		card.Enabled = true
 	}
 
+	// 代理
+	if req.UseProxy != nil {
+		card.UseProxy = *req.UseProxy
+	}
+
 	// 刷新间隔
 	if req.RefreshIntervalSec != nil {
 		card.RefreshIntervalSec = *req.RefreshIntervalSec
@@ -165,6 +170,10 @@ func UsageCardUpdate(req *model.UsageCardUpdateRequest, ctx context.Context) (*m
 	if req.Enabled != nil {
 		selectFields = append(selectFields, "enabled")
 		updates.Enabled = *req.Enabled
+	}
+	if req.UseProxy != nil {
+		selectFields = append(selectFields, "use_proxy")
+		updates.UseProxy = *req.UseProxy
 	}
 	if req.RefreshIntervalSec != nil {
 		selectFields = append(selectFields, "refresh_interval_sec")

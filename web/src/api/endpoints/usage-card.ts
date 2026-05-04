@@ -64,6 +64,7 @@ export type UsageCard = {
     extra_headers: UsageHeader[];
     config: UsageCardConfig;
     enabled: boolean;
+    use_proxy: boolean;
     refresh_interval_sec: number;
     last_result: UsageSnapshot;
     last_error: string;
@@ -106,6 +107,7 @@ export type CreateUsageCardRequest = {
     extra_headers?: UsageHeader[];
     config?: UsageCardConfig;
     enabled?: boolean;
+    use_proxy?: boolean;
     refresh_interval_sec?: number;
 };
 
@@ -122,6 +124,7 @@ export type UpdateUsageCardRequest = {
     extra_headers?: UsageHeader[];
     config?: UsageCardConfig;
     enabled?: boolean;
+    use_proxy?: boolean;
     refresh_interval_sec?: number;
 };
 

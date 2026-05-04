@@ -17,6 +17,7 @@ type UsageCard struct {
 	ExtraHeaders       []UsageHeader   `json:"extra_headers" gorm:"serializer:json"`
 	Config             UsageCardConfig `json:"config" gorm:"serializer:json"`
 	Enabled            bool            `json:"enabled" gorm:"default:true"`
+	UseProxy           bool            `json:"use_proxy" gorm:"default:false"`
 	RefreshIntervalSec int             `json:"refresh_interval_sec" gorm:"default:300"`
 	LastResult         UsageSnapshot   `json:"last_result" gorm:"serializer:json"`
 	LastError          string          `json:"last_error"`
@@ -38,15 +39,15 @@ type UsageCardConfig struct {
 
 // UsageMetricConfig 单个指标的提取配置
 type UsageMetricConfig struct {
-	ID       string     `json:"id"`
-	Label    string     `json:"label"`
-	Kind     string     `json:"kind"`   // quota/counter/rate_limit/billing
-	Unit     string     `json:"unit"`   // requests/times/tokens/credits/usd/percent
-	Window   string     `json:"window"` // 5h/weekly/monthly/hourly/minute/custom
-	Limit    *FieldSpec `json:"limit,omitempty"`
-	Used     *FieldSpec `json:"used,omitempty"`
+	ID        string     `json:"id"`
+	Label     string     `json:"label"`
+	Kind      string     `json:"kind"`   // quota/counter/rate_limit/billing
+	Unit      string     `json:"unit"`   // requests/times/tokens/credits/usd/percent
+	Window    string     `json:"window"` // 5h/weekly/monthly/hourly/minute/custom
+	Limit     *FieldSpec `json:"limit,omitempty"`
+	Used      *FieldSpec `json:"used,omitempty"`
 	Remaining *FieldSpec `json:"remaining,omitempty"`
-	ResetAt  *FieldSpec `json:"reset_at,omitempty"`
+	ResetAt   *FieldSpec `json:"reset_at,omitempty"`
 }
 
 // FieldSpec 字段提取规格
@@ -91,6 +92,7 @@ type UsageCardCreateRequest struct {
 	ExtraHeaders       []UsageHeader      `json:"extra_headers"`
 	Config             UsageCardConfig    `json:"config"`
 	Enabled            *bool              `json:"enabled"`
+	UseProxy           *bool              `json:"use_proxy"`
 	RefreshIntervalSec *int               `json:"refresh_interval_sec"`
 }
 
@@ -108,5 +110,6 @@ type UsageCardUpdateRequest struct {
 	ExtraHeaders       *[]UsageHeader     `json:"extra_headers,omitempty"`
 	Config             *UsageCardConfig   `json:"config,omitempty"`
 	Enabled            *bool              `json:"enabled,omitempty"`
+	UseProxy           *bool              `json:"use_proxy,omitempty"`
 	RefreshIntervalSec *int               `json:"refresh_interval_sec,omitempty"`
 }

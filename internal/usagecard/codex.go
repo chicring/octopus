@@ -57,8 +57,20 @@ func RefreshCodex(ctx context.Context, card model.UsageCard) RefreshResult {
 		}
 	}
 
-	client := codexHTTPClient()
-	statusCode, body, err := codexHTTPRequest(ctx, client, "GET", "https://chatgpt.com/backend-api/wham/usage", cred)
+	var httpClient *http.Client
+	if card.UseProxy {
+		if GetProxyHTTPClient == nil {
+			return RefreshResult{Error: "代理客户端未初始化"}
+		}
+		proxyClient, err := GetProxyHTTPClient(true)
+		if err != nil {
+			return RefreshResult{Error: fmt.Sprintf("获取代理客户端失败: %v", err)}
+		}
+		httpClient = proxyClient
+	} else {
+		httpClient = codexHTTPClient()
+	}
+	statusCode, body, err := codexHTTPRequest(ctx, httpClient, "GET", "https://chatgpt.com/backend-api/wham/usage", cred)
 	if err != nil {
 		return RefreshResult{Error: fmt.Sprintf("请求失败: %v", err)}
 	}

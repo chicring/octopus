@@ -60,6 +60,7 @@ export function UsageCardFormDialog({
     const [secret, setSecret] = useState('');
     const [refreshInterval, setRefreshInterval] = useState(300);
     const [enabled, setEnabled] = useState(true);
+    const [useProxy, setUseProxy] = useState(false);
     const [extraHeaders, setExtraHeaders] = useState<{ key: string; value: string }[]>([]);
     const [showImport, setShowImport] = useState(false);
 
@@ -77,6 +78,7 @@ export function UsageCardFormDialog({
                 setSecret('');
                 setRefreshInterval(card.refresh_interval_sec);
                 setEnabled(card.enabled);
+                setUseProxy(card.use_proxy ?? false);
                 setExtraHeaders(card.extra_headers ?? []);
             } else {
                 setName('');
@@ -88,6 +90,7 @@ export function UsageCardFormDialog({
                 setSecret('');
                 setRefreshInterval(300);
                 setEnabled(true);
+                setUseProxy(false);
                 setExtraHeaders([]);
             }
         }
@@ -117,6 +120,7 @@ export function UsageCardFormDialog({
                 extra_headers: extraHeaders.filter(h => h.key.trim()),
                 refresh_interval_sec: refreshInterval,
                 enabled,
+                use_proxy: useProxy,
             };
             updateCard.mutate(req, {
                 onSuccess: () => {
@@ -137,6 +141,7 @@ export function UsageCardFormDialog({
                 extra_headers: extraHeaders.filter(h => h.key.trim()),
                 refresh_interval_sec: refreshInterval,
                 enabled,
+                use_proxy: useProxy,
             };
             createCard.mutate(req, {
                 onSuccess: () => {
@@ -394,6 +399,12 @@ export function UsageCardFormDialog({
                     <div className="flex items-center gap-2">
                         <Switch checked={enabled} onCheckedChange={setEnabled} />
                         <Label className="text-xs">{t('form.enabled')}</Label>
+                    </div>
+
+                    {/* Use Proxy */}
+                    <div className="flex items-center gap-2">
+                        <Switch checked={useProxy} onCheckedChange={setUseProxy} />
+                        <Label className="text-xs">{t('form.useProxy')}</Label>
                     </div>
                 </div>
 

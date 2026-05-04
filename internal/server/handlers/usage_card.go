@@ -9,6 +9,7 @@ import (
 
 	"github.com/samber/lo"
 
+	"github.com/bestruirui/octopus/internal/client"
 	"github.com/bestruirui/octopus/internal/model"
 	"github.com/bestruirui/octopus/internal/op"
 	"github.com/bestruirui/octopus/internal/provider/auth"
@@ -20,6 +21,8 @@ import (
 )
 
 func init() {
+	usagecard.GetProxyHTTPClient = client.GetHTTPClientSystemProxy
+
 	router.NewGroupRouter("/api/v1/usage-card").
 		Use(middleware.Auth()).
 		Use(middleware.RequireJSON()).
@@ -207,6 +210,7 @@ func importCodexChannelUsageCard(c *gin.Context) {
 		Config:             usagecard.BuildCardConfig(tmpl),
 		RefreshIntervalSec: lo.ToPtr(300),
 		Enabled:            lo.ToPtr(true),
+		UseProxy:           lo.ToPtr(false),
 	}
 
 	card, err := op.UsageCardCreate(createReq, c.Request.Context())

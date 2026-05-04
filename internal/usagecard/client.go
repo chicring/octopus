@@ -13,6 +13,10 @@ import (
 	"github.com/bestruirui/octopus/internal/provider/auth"
 )
 
+// GetProxyHTTPClient 获取代理 HTTP 客户端的函数变量，由外部初始化时设置
+// 避免内部包循环依赖
+var GetProxyHTTPClient func(useProxy bool) (*http.Client, error)
+
 const (
 	maxResponseBodySize = 1 << 20 // 1 MiB
 	requestTimeout      = 10 * time.Second
@@ -64,42 +68,21 @@ func Refresh(ctx context.Context, card model.UsageCard) RefreshResult {
 	}
 
 	// 发送请求
-	dialer := &net.Dialer{}
-	client := &http.Client{
-		Timeout: requestTimeout,
-		Transport: &http.Transport{
-			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				host, _, err := net.SplitHostPort(addr)
-				if err != nil {
-					return nil, fmt.Errorf("无效地址: %v", err)
-				}
-				ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
-				if err != nil {
-					return nil, fmt.Errorf("DNS 解析失败: %v", err)
-				}
-				for _, ip := range ips {
-					if isBlockedIP(ip.IP) {
-						return nil, fmt.Errorf("目标地址解析到内网/保留 IP: %s", ip.IP)
-					}
-				}
-				return dialer.DialContext(ctx, network, addr)
-			},
-			TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
-		},
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= 5 {
-				return fmt.Errorf("重定向次数过多")
-			}
-			// 检查重定向目标
-			host := req.URL.Hostname()
-			if isBlockedHostname(host) {
-				return fmt.Errorf("重定向到禁止的地址: %s", host)
-			}
-			return nil
-		},
+	var httpClient *http.Client
+	if card.UseProxy {
+		if GetProxyHTTPClient == nil {
+			return RefreshResult{Error: "代理客户端未初始化"}
+		}
+		proxyClient, err := GetProxyHTTPClient(true)
+		if err != nil {
+			return RefreshResult{Error: fmt.Sprintf("获取代理客户端失败: %v", err)}
+		}
+		httpClient = proxyClient
+	} else {
+		httpClient = newSafeHTTPClient()
 	}
 
-	resp, err := client.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return RefreshResult{Error: fmt.Sprintf("请求失败: %v", err)}
 	}
@@ -137,6 +120,41 @@ func Refresh(ctx context.Context, card model.UsageCard) RefreshResult {
 	}
 
 	return RefreshResult{Snapshot: model.UsageSnapshot{Metrics: result.Metrics}}
+}
+
+func newSafeHTTPClient() *http.Client {
+	dialer := &net.Dialer{}
+	return &http.Client{
+		Timeout: requestTimeout,
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				host, _, err := net.SplitHostPort(addr)
+				if err != nil {
+					return nil, fmt.Errorf("invalid address: %v", err)
+				}
+				ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+				if err != nil {
+					return nil, fmt.Errorf("DNS resolution failed: %v", err)
+				}
+				for _, ip := range ips {
+					if isBlockedIP(ip.IP) {
+						return nil, fmt.Errorf("target resolved to private/reserved IP: %s", ip.IP)
+					}
+				}
+				return dialer.DialContext(ctx, network, addr)
+			},
+			TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
+		},
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 5 {
+				return fmt.Errorf("too many redirects")
+			}
+			if isBlockedHostname(req.URL.Hostname()) {
+				return fmt.Errorf("redirect to blocked host: %s", req.URL.Hostname())
+			}
+			return nil
+		},
+	}
 }
 
 // setAuth 设置请求认证
