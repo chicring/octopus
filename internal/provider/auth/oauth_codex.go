@@ -140,7 +140,10 @@ func (f *CodexOAuthFlow) Callback(ctx context.Context, session *provider.AuthSes
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	oauthHTTPClient, _ := GetProxyHTTPClient(true)
+	var oauthHTTPClient *http.Client
+	if GetProxyHTTPClient != nil {
+		oauthHTTPClient, _ = GetProxyHTTPClient(true)
+	}
 	if oauthHTTPClient == nil {
 		oauthHTTPClient = http.DefaultClient
 	}
@@ -205,7 +208,10 @@ func (f *CodexOAuthFlow) RefreshToken(ctx context.Context, refreshToken string) 
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	oauthHTTPClient, _ := GetProxyHTTPClient(true)
+	var oauthHTTPClient *http.Client
+	if GetProxyHTTPClient != nil {
+		oauthHTTPClient, _ = GetProxyHTTPClient(true)
+	}
 	if oauthHTTPClient == nil {
 		oauthHTTPClient = http.DefaultClient
 	}

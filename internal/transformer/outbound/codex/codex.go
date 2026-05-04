@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -31,34 +30,10 @@ func (o *CodexOutbound) TransformRequest(ctx context.Context, request *model.Int
 		return nil, fmt.Errorf("request is nil")
 	}
 
-	// 解析 Codex 凭证
+	// 解析 Codex 凭证（token 刷新由 relay/op 层负责，这里只解析和设置 header）
 	cred, err := auth.ParseCodexCredential(key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse codex credential: %w", err)
-	}
-
-	// 检查 token 是否即将过期
-	if cred.IsExpired() {
-		if cred.RefreshToken != "" {
-			// 尝试刷新 token
-			flow := &auth.CodexOAuthFlow{
-				ClientID: auth.CodexClientID,
-				TokenURL: auth.CodexTokenURL,
-			}
-			result, refreshErr := flow.RefreshToken(ctx, cred.RefreshToken)
-			if refreshErr != nil {
-				log.Printf("[codex] token refresh failed: %v, proceeding with existing token", refreshErr)
-			} else {
-				// 更新凭证
-				newCred := auth.BuildCodexCredentialFromAuthResult(result)
-				cred = newCred
-				// 注意：这里无法直接更新数据库中的 key，
-				// 实际的 key 更新需要由上层 relay 或后台任务处理
-				log.Printf("[codex] token refreshed successfully, new expires_at: %s", cred.ExpiresAt)
-			}
-		} else {
-			log.Printf("[codex] access token expired and no refresh token available")
-		}
 	}
 
 	// 复用 OpenAI Responses API 的请求转换逻辑

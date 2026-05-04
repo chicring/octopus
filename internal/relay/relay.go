@@ -141,6 +141,17 @@ func Handler(inboundType inbound.InboundType, c *gin.Context) {
 			continue
 		}
 
+		// Codex auth 凭证：请求前检查过期并刷新
+		if op.IsCodexAuthKey(usedKey.ChannelKey) {
+			newKeyStr, ready, ensureErr := op.EnsureCodexKeyReady(c.Request.Context(), &usedKey)
+			if !ready {
+				iter.Skip(channel.ID, usedKey.ID, channel.Name, fmt.Sprintf("codex auth not ready: %v", ensureErr))
+				lastErr = ensureErr
+				continue
+			}
+			usedKey.ChannelKey = newKeyStr
+		}
+
 		// 出站适配器 — 优先 provider_id，回退 legacy type
 		pid := provider.ResolveProviderIDFromType(channel.Type)
 		if channel.ProviderID != "" {
@@ -270,6 +281,56 @@ func (ra *relayAttempt) attempt() attemptResult {
 	}
 
 	// ====== 失败 ======
+
+	// Codex auth 401：刷新 token 后重试一次
+	if statusCode == 401 && op.IsCodexAuthKey(ra.usedKey.ChannelKey) && !ra.c.Writer.Written() {
+		log.Infof("[codex-auth] key %d: received 401, attempting forced refresh and retry", ra.usedKey.ID)
+		newKeyStr, refreshErr := op.RefreshCodexKey(ra.c.Request.Context(), &ra.usedKey, true)
+		if refreshErr == nil {
+			// 刷新成功，用新 key 重试一次
+			ra.usedKey.ChannelKey = newKeyStr
+			retryStatusCode, retryErr := ra.forward()
+			ra.usedKey.StatusCode = retryStatusCode
+			ra.usedKey.LastUseTimeStamp = time.Now().Unix()
+
+			if retryErr == nil {
+				// 重试成功
+				ok, emptyReason := ra.collectResponse()
+				if ok {
+					ra.usedKey.TotalCost += ra.metrics.Stats.InputCost + ra.metrics.Stats.OutputCost
+					ra.usedKey.TotalRequests++
+					ra.usedKey.TotalInputToken += ra.metrics.Stats.InputToken
+					ra.usedKey.TotalOutputToken += ra.metrics.Stats.OutputToken
+					op.ChannelKeyUpdate(ra.usedKey)
+					span.End(dbmodel.AttemptSuccess, retryStatusCode, "")
+					balancer.RecordSuccess(ra.channel.ID, ra.usedKey.ID, ra.internalRequest.Model)
+					balancer.SetSticky(ra.apiKeyID, ra.requestModel, ra.channel.ID, ra.usedKey.ID, ra.internalRequest.Model)
+					return attemptResult{Success: true}
+				}
+				// 重试成功但响应为空
+				emptyRespErr := fmt.Errorf("channel %s returned empty response after 401 retry (status %d): %s", ra.channel.Name, retryStatusCode, emptyReason)
+				ra.usedKey.TotalRequests++
+				op.ChannelKeyUpdate(ra.usedKey)
+				span.End(dbmodel.AttemptFailed, retryStatusCode, emptyRespErr.Error())
+				op.StatsChannelUpdate(ra.channel.ID, dbmodel.StatsMetrics{RequestFailed: 1})
+				balancer.RecordFailure(ra.channel.ID, ra.usedKey.ID, ra.internalRequest.Model)
+				return attemptResult{Success: false, Written: ra.c.Writer.Written(), Err: emptyRespErr}
+			}
+			// 重试仍失败，自动关闭 key
+			log.Warnf("[codex-auth] key %d: 401 retry still failed (status %d), disabling key", ra.usedKey.ID, retryStatusCode)
+			op.DisableCodexKey(ra.c.Request.Context(), &ra.usedKey, 401)
+			ra.usedKey.TotalRequests++
+			op.ChannelKeyUpdate(ra.usedKey)
+			span.End(dbmodel.AttemptFailed, retryStatusCode, retryErr.Error())
+			op.StatsChannelUpdate(ra.channel.ID, dbmodel.StatsMetrics{RequestFailed: 1})
+			balancer.RecordFailure(ra.channel.ID, ra.usedKey.ID, ra.internalRequest.Model)
+			return attemptResult{Success: false, Written: ra.c.Writer.Written(), Err: fmt.Errorf("channel %s: 401 retry failed: %v", ra.channel.Name, retryErr)}
+		}
+		// 刷新失败，自动关闭 key
+		log.Warnf("[codex-auth] key %d: 401 refresh failed: %v, disabling key", ra.usedKey.ID, refreshErr)
+		op.DisableCodexKey(ra.c.Request.Context(), &ra.usedKey, 401)
+	}
+
 	ra.usedKey.TotalRequests++
 	op.ChannelKeyUpdate(ra.usedKey)
 	span.End(dbmodel.AttemptFailed, statusCode, fwdErr.Error())
@@ -349,9 +410,9 @@ func (ra *relayAttempt) forward() (int, error) {
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		body, err := io.ReadAll(response.Body)
 		if err != nil {
-			return 0, fmt.Errorf("failed to read response body: %w", err)
+			return response.StatusCode, fmt.Errorf("upstream error: %d: failed to read body: %w", response.StatusCode, err)
 		}
-		return 0, fmt.Errorf("upstream error: %d: %s", response.StatusCode, string(body))
+		return response.StatusCode, fmt.Errorf("upstream error: %d: %s", response.StatusCode, string(body))
 	}
 
 	// 处理响应
