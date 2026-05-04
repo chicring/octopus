@@ -47,7 +47,13 @@ jobs:
       - name: Get version info
         id: tag
         run: |
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo 'dev')
+          # 优先取当前 commit 上直接指向的 tag，避免 git describe 返回祖先 tag
+          CURRENT_TAGS=$(git tag --points-at HEAD 2>/dev/null | sort -V | tail -1)
+          if [ -n "$CURRENT_TAGS" ]; then
+            LATEST_TAG="$CURRENT_TAGS"
+          else
+            LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo 'dev')
+          fi
           SHORT_SHA=$(git rev-parse --short HEAD)
           echo "tag_name=$LATEST_TAG" >> $GITHUB_OUTPUT
           echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
