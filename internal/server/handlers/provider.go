@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/bestruirui/octopus/internal/client"
 	"github.com/bestruirui/octopus/internal/op"
 	"github.com/bestruirui/octopus/internal/provider"
 	"github.com/bestruirui/octopus/internal/provider/auth"
@@ -15,6 +16,9 @@ import (
 )
 
 func init() {
+	// 初始化代理 HTTP 客户端函数变量，避免循环依赖
+	auth.GetProxyHTTPClient = client.GetHTTPClientSystemProxy
+
 	router.NewGroupRouter("/api/v1/provider").
 		Use(middleware.Auth()).
 		Use(middleware.RequireJSON()).
@@ -45,10 +49,14 @@ func init() {
 				Handle(authCallback),
 		)
 	// 兼容 Codex CLI 标准 redirect_uri: http://localhost:1455/auth/callback
+	// Codex 的 redirect_uri 不带 provider_id，默认为 codex
 	router.NewGroupRouter("/auth").
 		AddRoute(
-			router.NewRoute("/callback/:provider_id", http.MethodGet).
-				Handle(authCallback),
+			router.NewRoute("/callback", http.MethodGet).
+				Handle(func(c *gin.Context) {
+					c.Params = append(c.Params, gin.Param{Key: "provider_id", Value: "codex"})
+					authCallback(c)
+				}),
 		)
 }
 

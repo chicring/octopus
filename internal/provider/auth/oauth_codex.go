@@ -245,11 +245,17 @@ func (f *CodexOAuthFlow) RefreshToken(ctx context.Context, refreshToken string) 
 		extra["expires_at"] = time.Now().Add(time.Duration(tokResp.ExpiresIn) * time.Second).Format(time.RFC3339)
 	}
 
+	// RFC 6749: 如果响应未返回新的 refresh_token，保留旧的
+	newRefreshToken := tokResp.RefreshToken
+	if newRefreshToken == "" {
+		newRefreshToken = refreshToken
+	}
+
 	return &provider.AuthResult{
 		AccessToken:  tokResp.AccessToken,
 		TokenType:    tokResp.TokenType,
 		ExpiresIn:    tokResp.ExpiresIn,
-		RefreshToken: tokResp.RefreshToken,
+		RefreshToken: newRefreshToken,
 		Scope:        tokResp.Scope,
 		Extra:        extra,
 	}, nil
