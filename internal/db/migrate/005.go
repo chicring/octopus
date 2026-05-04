@@ -155,7 +155,7 @@ func fixStatsTablesCompositePK(db *gorm.DB) error {
 }
 
 // ensureUniqueIndexForCompositePK 确保 UNIQUE INDEX 存在
-// 即使 glebarez/sqlite AutoMigrate 破坏了复合主键，UNIQUE INDEX 仍然能让 OnConflict 工作
+// 如果创建失败（因为数据重复），先去重再重试
 func ensureUniqueIndexForCompositePK(db *gorm.DB, table string, columns []string) error {
 	indexName := "idx_" + table + "_pk"
 
@@ -175,7 +175,55 @@ func ensureUniqueIndexForCompositePK(db *gorm.DB, table string, columns []string
 	}
 
 	log.Infof("creating unique index %s on %s(%s)", indexName, table, colList)
+	err := db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS "+indexName+" ON "+table+" ("+colList+")").Error
+	if err == nil {
+		log.Infof("unique index %s created successfully", indexName)
+		return nil
+	}
+
+	// 创建失败，可能是因为数据重复。去重后重试。
+	log.Infof("unique index %s creation failed (likely duplicate data): %v, deduplicating...", indexName, err)
+	if dedupErr := sqliteDeduplicateTable(db, table, columns); dedupErr != nil {
+		return fmt.Errorf("deduplicate %s failed: %w (original index error: %v)", table, dedupErr, err)
+	}
+
+	log.Infof("deduplication done, retrying unique index %s on %s(%s)", indexName, table, colList)
 	return db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS "+indexName+" ON "+table+" ("+colList+")").Error
+}
+
+// sqliteDeduplicateTable 去重：保留每组重复数据中 rowid 最小的那条，删除其余
+func sqliteDeduplicateTable(db *gorm.DB, table string, keyColumns []string) error {
+	colList := ""
+	for i, c := range keyColumns {
+		if i > 0 {
+			colList += ", "
+		}
+		colList += c
+	}
+
+	// 获取所有列名
+	var allCols []string
+	rows, err := db.Raw("SELECT name FROM pragma_table_info(?)", table).Rows()
+	if err != nil {
+		return fmt.Errorf("get columns: %w", err)
+	}
+	for rows.Next() {
+		var col string
+		rows.Scan(&col)
+		allCols = append(allCols, col)
+	}
+	rows.Close()
+
+	// 检查是否有 rowid（SQLite 所有表都有隐式 rowid，除非是 WITHOUT ROWID 表）
+	// 用子查询删除重复行：保留 rowid 最小的，删除其余
+	result := db.Exec(
+		"DELETE FROM "+table+" WHERE rowid NOT IN ("+
+			"SELECT MIN(rowid) FROM "+table+" GROUP BY "+colList+")")
+	if result.Error != nil {
+		return fmt.Errorf("deduplicate: %w", result.Error)
+	}
+	log.Infof("deduplicated %s: deleted %d duplicate rows", table, result.RowsAffected)
+	return nil
 }
 
 // sqliteCheckCompositePK 检查 SQLite 表的主键列是否匹配期望的列

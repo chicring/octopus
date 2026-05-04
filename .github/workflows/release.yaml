@@ -44,9 +44,6 @@ jobs:
           cache: 'pnpm'
           cache-dependency-path: web/pnpm-lock.yaml
 
-      - name: Build
-        run: bash scripts/build.sh release
-
       - name: Get version info
         id: tag
         run: |
@@ -54,6 +51,10 @@ jobs:
           SHORT_SHA=$(git rev-parse --short HEAD)
           echo "tag_name=$LATEST_TAG" >> $GITHUB_OUTPUT
           echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+          echo "OCTOPUS_VERSION=$LATEST_TAG" >> $GITHUB_ENV
+
+      - name: Build
+        run: bash scripts/build.sh release
 
       - name: Upload Release
         if: github.ref == 'refs/heads/master'
