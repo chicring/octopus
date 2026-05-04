@@ -784,8 +784,7 @@
       "imported": "已导入",
       "updated": "已更新",
       "failed": "失败",
-      "skipped": "跳过",
-      "authFile": "Auth 文件"
+      "skipped": "跳过"
     }
   },
   "provider": {
