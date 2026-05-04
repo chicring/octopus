@@ -44,6 +44,12 @@ func init() {
 			router.NewRoute("/callback/:provider_id", http.MethodGet).
 				Handle(authCallback),
 		)
+	// 兼容 Codex CLI 标准 redirect_uri: http://localhost:1455/auth/callback
+	router.NewGroupRouter("/auth").
+		AddRoute(
+			router.NewRoute("/callback/:provider_id", http.MethodGet).
+				Handle(authCallback),
+		)
 }
 
 type providerInfo struct {
@@ -313,7 +319,12 @@ func submitCallback(c *gin.Context) {
 	}
 
 	// 用 code 换取 token
-	result, err := ap.AuthFlow().Callback(c.Request.Context(), sessionData, code)
+	authFlow := ap.AuthFlow()
+	if authFlow == nil {
+		resp.Error(c, http.StatusBadRequest, "provider auth flow is nil")
+		return
+	}
+	result, err := authFlow.Callback(c.Request.Context(), sessionData, code)
 	if err != nil {
 		op.FailOAuthSession(c.Request.Context(), req.SessionID)
 		resp.Error(c, http.StatusInternalServerError, err.Error())
