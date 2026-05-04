@@ -3,8 +3,9 @@ name: release
 on:
   push:
     branches:
-      - master
       - dev
+    tags:
+      - 'v*'
 
 permissions:
   contents: write
@@ -47,12 +48,16 @@ jobs:
       - name: Get version info
         id: tag
         run: |
-          # 优先取当前 commit 上直接指向的 tag，避免 git describe 返回祖先 tag
-          CURRENT_TAGS=$(git tag --points-at HEAD 2>/dev/null | sort -V | tail -1)
-          if [ -n "$CURRENT_TAGS" ]; then
-            LATEST_TAG="$CURRENT_TAGS"
+          # tag push 时直接用 GITHUB_REF_NAME；branch push 时用 git describe
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            LATEST_TAG="${GITHUB_REF_NAME}"
           else
-            LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo 'dev')
+            CURRENT_TAGS=$(git tag --points-at HEAD 2>/dev/null | sort -V | tail -1)
+            if [ -n "$CURRENT_TAGS" ]; then
+              LATEST_TAG="$CURRENT_TAGS"
+            else
+              LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo 'dev')
+            fi
           fi
           SHORT_SHA=$(git rev-parse --short HEAD)
           echo "tag_name=$LATEST_TAG" >> $GITHUB_OUTPUT
@@ -63,7 +68,7 @@ jobs:
         run: bash scripts/build.sh release
 
       - name: Upload Release
-        if: github.ref == 'refs/heads/master'
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: build/archives/*
@@ -76,8 +81,8 @@ jobs:
         with:
           images: ${{ env.DOCKER_IMAGE }}
           tags: |
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
-            type=raw,value=${{ steps.tag.outputs.tag_name }},enable=${{ github.ref == 'refs/heads/master' }}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
+            type=raw,value=${{ steps.tag.outputs.tag_name }},enable=${{ startsWith(github.ref, 'refs/tags/') }}
             type=raw,value=${{ steps.tag.outputs.short_sha }}
             type=raw,value=dev,enable=${{ github.ref == 'refs/heads/dev' }}
 
@@ -87,8 +92,8 @@ jobs:
         with:
           images: ${{ env.DOCKER_IMAGE }}
           tags: |
-            type=raw,value=latest-alpine,enable=${{ github.ref == 'refs/heads/master' }}
-            type=raw,value=${{ steps.tag.outputs.tag_name }}-alpine,enable=${{ github.ref == 'refs/heads/master' }}
+            type=raw,value=latest-alpine,enable=${{ startsWith(github.ref, 'refs/tags/') }}
+            type=raw,value=${{ steps.tag.outputs.tag_name }}-alpine,enable=${{ startsWith(github.ref, 'refs/tags/') }}
             type=raw,value=${{ steps.tag.outputs.short_sha }}-alpine
             type=raw,value=dev-alpine,enable=${{ github.ref == 'refs/heads/dev' }}
 
