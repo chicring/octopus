@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"github.com/bestruirui/octopus/internal/utils/log"
 )
 
 func InitCache() error {
@@ -36,6 +38,8 @@ func InitCache() error {
 func SaveCache() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
+	log.Infof("SaveCache: starting save (daily_success=%d, daily_date=%s)",
+		statsDailyCache.RequestSuccess, statsDailyCache.Date)
 	var errs []error
 	if err := StatsSaveDB(ctx); err != nil {
 		errs = append(errs, err)
@@ -47,7 +51,9 @@ func SaveCache() error {
 		errs = append(errs, err)
 	}
 	if len(errs) > 0 {
+		log.Errorf("SaveCache: finished with errors: %v", errs)
 		return fmt.Errorf("save cache errors: %v", errs)
 	}
+	log.Infof("SaveCache: finished successfully")
 	return nil
 }

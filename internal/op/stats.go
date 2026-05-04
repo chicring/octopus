@@ -818,6 +818,8 @@ func statsRefreshCache(ctx context.Context) error {
 	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		loadedDaily = model.StatsDaily{Date: today}
 	}
+	log.Infof("stats refresh cache: today=%s, daily_found=%v, daily_success=%d, daily_input_token=%d",
+		today, result.RowsAffected > 0, loadedDaily.RequestSuccess, loadedDaily.InputToken)
 
 	var loadedTotal model.StatsTotal
 	result = dbConn.First(&loadedTotal)
