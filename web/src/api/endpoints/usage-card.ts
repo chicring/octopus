@@ -216,3 +216,31 @@ export function useImportCodexChannelUsageCard() {
         },
     });
 }
+
+export function useBatchDeleteUsageCard() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (ids: number[]) =>
+            apiClient.post<null>('/api/v1/usage-card/batch-delete', { ids }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['usage-card', 'list'] });
+        },
+        onError: (error) => {
+            logger.error('批量删除用量卡片失败:', error);
+        },
+    });
+}
+
+export function useBatchImportCodexChannel() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (items: { channel_id: number; key_id: number }[]) =>
+            apiClient.post<unknown>('/api/v1/usage-card/batch-import/codex-channel', { items }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['usage-card', 'list'] });
+        },
+        onError: (error) => {
+            logger.error('批量导入 Codex 用量卡片失败:', error);
+        },
+    });
+}

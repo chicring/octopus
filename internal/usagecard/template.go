@@ -40,7 +40,6 @@ var builtinTemplates = map[string]UsageTemplate{}
 
 func init() {
 	register(genericJSONTemplate())
-	register(githubRateLimitTemplate())
 	register(xfyunCodingPlanTemplate())
 	register(codexUsageTemplate())
 }
@@ -241,7 +240,7 @@ func anthropicRateLimitTemplate() UsageTemplate {
 func xfyunCodingPlanTemplate() UsageTemplate {
 	return UsageTemplate{
 		ID:              "xfyun-coding-plan",
-		Name:            "讯飞 Coding Plan",
+		Name:            "讯飞",
 		Description:     "讯飞星火 Coding Plan 用量查询，展示 5 小时限、周限、套餐总量",
 		DefaultEndpoint: "https://maas.xfyun.cn/api/v1/gpt-finetune/coding-plan/list?page=1&size=6",
 		Method:          "GET",

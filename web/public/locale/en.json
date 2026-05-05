@@ -219,7 +219,12 @@
         "deleteSuccess": "Usage card deleted",
         "deleteError": "Failed to delete usage card",
         "refreshSuccess": "Refreshed successfully",
-        "refreshError": "Refresh failed"
+        "refreshError": "Refresh failed",
+        "batchDeleteSuccess": "Deleted {count} usage cards",
+        "batchDeleteError": "Batch delete failed",
+        "batchImportSuccess": "Imported {count} Codex usage cards",
+        "batchImportError": "Batch import failed",
+        "batchRefreshSuccess": "Batch refresh completed"
       },
       "metric": {
         "used": "Used",
@@ -243,7 +248,19 @@
       "noCodexChannels": "No Codex channels available",
       "importSuccess": "Codex usage card imported successfully",
       "importError": "Failed to import Codex usage card",
-      "codexSecretHint": "Paste the full Codex credential JSON, or import from a Codex channel"
+      "codexSecretHint": "Paste the full Codex credential JSON, or import from a Codex channel",
+      "exitEdit": "Exit Edit",
+      "batchRefresh": "Batch Refresh",
+      "batchRefreshProgress": "Refreshing {current}/{total}",
+      "batchImport": "Batch Import",
+      "batchDelete": "Batch Delete",
+      "batchDeleteTitle": "Batch Delete Usage Cards",
+      "batchImportTitle": "Batch Import Codex Usage Cards",
+      "selectedCount": "{count} selected",
+      "deleteSelected": "Delete Selected",
+      "importSelected": "Import Selected",
+      "cancel": "Cancel",
+      "enterEdit": "Enter Edit Mode"
     }
   },
   "setting": {

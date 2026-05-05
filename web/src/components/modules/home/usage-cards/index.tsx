@@ -1,15 +1,34 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react';
-import { useUsageCardList, useUsageCardTemplates, useDeleteUsageCard, useRefreshUsageCard, type UsageCard, type UsageMetric } from '@/api/endpoints/usage-card';
+import { Pencil, Plus, RefreshCw, Trash2, Import, X } from 'lucide-react';
+import { useUsageCardList, useUsageCardTemplates, useDeleteUsageCard, useRefreshUsageCard, useBatchDeleteUsageCard, useBatchImportCodexChannel, type UsageCard, type UsageMetric } from '@/api/endpoints/usage-card';
+import { useCodexChannels } from '@/api/endpoints/channel';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogFooter,
+} from '@/components/ui/dialog';
 import { toast } from '@/components/common/Toast';
 import { UsageCardFormDialog } from './form';
 import { formatMetricValue, formatResetTime, statusVariant } from './utils';
+
+const BATCH_SIZE = 5;
+const BATCH_DELAY_MS = 500;
 
 export function UsageCards() {
     const t = useTranslations('home.usageCard');
@@ -17,13 +36,22 @@ export function UsageCards() {
     const { data: templates } = useUsageCardTemplates();
     const deleteCard = useDeleteUsageCard();
     const refreshCard = useRefreshUsageCard();
+    const batchDeleteMutation = useBatchDeleteUsageCard();
+    const batchImportMutation = useBatchImportCodexChannel();
+    const { data: codexChannels } = useCodexChannels();
 
     const [editing, setEditing] = useState(false);
     const [formOpen, setFormOpen] = useState(false);
     const [editingCard, setEditingCard] = useState<UsageCard | null>(null);
     const [refreshingCardId, setRefreshingCardId] = useState<number | null>(null);
+    const [batchRefreshing, setBatchRefreshing] = useState(false);
+    const [batchRefreshProgress, setBatchRefreshProgress] = useState({ current: 0, total: 0 });
+    const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
+    const [batchImportOpen, setBatchImportOpen] = useState(false);
+    const [selectedDeleteIds, setSelectedDeleteIds] = useState<Set<number>>(new Set());
+    const [selectedImportItems, setSelectedImportItems] = useState<Set<string>>(new Set());
+    const batchRefreshAbortRef = useRef(false);
 
-    // 从 API 模板数据构建 id→name 映射，避免硬编码
     const templateLabels = useMemo(() => {
         const map: Record<string, string> = {};
         if (templates) {
@@ -52,31 +80,182 @@ export function UsageCards() {
         });
     }, [refreshCard, t]);
 
+    const handleBatchRefresh = useCallback(async () => {
+        if (enabledCards.length === 0) return;
+        setBatchRefreshing(true);
+        batchRefreshAbortRef.current = false;
+        const total = enabledCards.length;
+        setBatchRefreshProgress({ current: 0, total });
+
+        for (let i = 0; i < total; i += BATCH_SIZE) {
+            if (batchRefreshAbortRef.current) break;
+            const batch = enabledCards.slice(i, i + BATCH_SIZE);
+            await Promise.allSettled(
+                batch.map(card => refreshCard.mutateAsync(card.id).catch(() => {}))
+            );
+            setBatchRefreshProgress({ current: Math.min(i + BATCH_SIZE, total), total });
+            if (i + BATCH_SIZE < total && !batchRefreshAbortRef.current) {
+                await new Promise(r => setTimeout(r, BATCH_DELAY_MS));
+            }
+        }
+        setBatchRefreshing(false);
+        if (!batchRefreshAbortRef.current) {
+            toast.success(t('toast.batchRefreshSuccess'));
+        }
+    }, [enabledCards, refreshCard, t]);
+
+    const handleAbortBatchRefresh = useCallback(() => {
+        batchRefreshAbortRef.current = true;
+        setBatchRefreshing(false);
+    }, []);
+
+    const handleBatchDelete = useCallback(() => {
+        if (selectedDeleteIds.size === 0) return;
+        batchDeleteMutation.mutate(Array.from(selectedDeleteIds), {
+            onSuccess: () => {
+                toast.success(t('toast.batchDeleteSuccess', { count: selectedDeleteIds.size }));
+                setSelectedDeleteIds(new Set());
+                setBatchDeleteOpen(false);
+            },
+            onError: () => toast.error(t('toast.batchDeleteError')),
+        });
+    }, [batchDeleteMutation, selectedDeleteIds, t]);
+
+    const handleBatchImport = useCallback(() => {
+        if (selectedImportItems.size === 0) return;
+        const items = Array.from(selectedImportItems).map(key => {
+            const [channelId, keyId] = key.split(':').map(Number);
+            return { channel_id: channelId, key_id: keyId };
+        });
+        batchImportMutation.mutate(items, {
+            onSuccess: () => {
+                toast.success(t('toast.batchImportSuccess', { count: items.length }));
+                setSelectedImportItems(new Set());
+                setBatchImportOpen(false);
+            },
+            onError: () => toast.error(t('toast.batchImportError')),
+        });
+    }, [batchImportMutation, selectedImportItems, t]);
+
+    const toggleDeleteId = useCallback((id: number) => {
+        setSelectedDeleteIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    }, []);
+
+    const toggleImportItem = useCallback((key: string) => {
+        setSelectedImportItems(prev => {
+            const next = new Set(prev);
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
+            return next;
+        });
+    }, []);
+
+    const toggleAllDelete = useCallback(() => {
+        if (selectedDeleteIds.size === enabledCards.length) {
+            setSelectedDeleteIds(new Set());
+        } else {
+            setSelectedDeleteIds(new Set(enabledCards.map(c => c.id)));
+        }
+    }, [selectedDeleteIds, enabledCards]);
+
+    const toggleAllImport = useCallback(() => {
+        const allKeys: string[] = [];
+        if (codexChannels) {
+            for (const ch of codexChannels) {
+                for (const key of ch.keys) {
+                    allKeys.push(`${ch.id}:${key.id}`);
+                }
+            }
+        }
+        if (selectedImportItems.size === allKeys.length && allKeys.length > 0) {
+            setSelectedImportItems(new Set());
+        } else {
+            setSelectedImportItems(new Set(allKeys));
+        }
+    }, [selectedImportItems, codexChannels]);
+
+    const openBatchDeleteDialog = useCallback(() => {
+        setSelectedDeleteIds(new Set());
+        setBatchDeleteOpen(true);
+    }, []);
+
     return (
         <div className="space-y-4">
             <div className="flex items-center justify-between">
                 <h2 className="text-lg font-bold">{t('title')}</h2>
                 <div className="flex items-center gap-2">
-                    {editing && (
+                    {!batchRefreshing && (
                         <Button
                             variant="outline"
                             size="sm"
                             className="h-8 gap-1 rounded-xl"
-                            onClick={() => { setEditingCard(null); setFormOpen(true); }}
+                            onClick={handleBatchRefresh}
+                            disabled={enabledCards.length === 0}
                         >
-                            <Plus className="size-3.5" />
-                            {t('add')}
+                            <RefreshCw className="size-3.5" />
+                            {t('batchRefresh')}
                         </Button>
                     )}
-                    <Button
-                        variant={editing ? 'default' : 'outline'}
-                        size="sm"
-                        className="h-8 gap-1 rounded-xl"
-                        onClick={() => setEditing(!editing)}
-                    >
-                        <Pencil className="size-3.5" />
-                        {t('edit')}
-                    </Button>
+                    {batchRefreshing && (
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">
+                                {t('batchRefreshProgress', { current: batchRefreshProgress.current, total: batchRefreshProgress.total })}
+                            </span>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 gap-1 rounded-xl text-destructive"
+                                onClick={handleAbortBatchRefresh}
+                            >
+                                <X className="size-3.5" />
+                                {t('cancel')}
+                            </Button>
+                        </div>
+                    )}
+                    {editing ? (
+                        <Button
+                            variant="default"
+                            size="sm"
+                            className="h-8 gap-1 rounded-xl"
+                            onClick={() => setEditing(false)}
+                        >
+                            <X className="size-3.5" />
+                            {t('exitEdit')}
+                        </Button>
+                    ) : (
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline" size="sm" className="h-8 gap-1 rounded-xl">
+                                    <Pencil className="size-3.5" />
+                                    {t('edit')}
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="rounded-xl">
+                                <DropdownMenuItem onClick={() => { setEditingCard(null); setFormOpen(true); }}>
+                                    <Plus className="size-3.5" />
+                                    {t('add')}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setBatchImportOpen(true)}>
+                                    <Import className="size-3.5" />
+                                    {t('batchImport')}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={openBatchDeleteDialog}>
+                                    <Trash2 className="size-3.5" />
+                                    {t('batchDelete')}
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => setEditing(true)}>
+                                    <Pencil className="size-3.5" />
+                                    {t('enterEdit')}
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    )}
                 </div>
             </div>
 
@@ -120,6 +299,115 @@ export function UsageCards() {
                 onOpenChange={setFormOpen}
                 card={editingCard}
             />
+
+            {/* 批量删除弹窗 */}
+            <Dialog open={batchDeleteOpen} onOpenChange={setBatchDeleteOpen}>
+                <DialogContent className="max-w-md rounded-2xl">
+                    <DialogHeader>
+                        <DialogTitle>{t('batchDeleteTitle')}</DialogTitle>
+                    </DialogHeader>
+                    <div className="flex items-center gap-2 mb-2">
+                        <Checkbox
+                            checked={selectedDeleteIds.size === enabledCards.length && enabledCards.length > 0}
+                            onCheckedChange={toggleAllDelete}
+                        />
+                        <span className="text-xs text-muted-foreground">
+                            {t('selectedCount', { count: selectedDeleteIds.size })}
+                        </span>
+                    </div>
+                    <div className="space-y-1 max-h-64 overflow-y-auto">
+                        {enabledCards.map(card => (
+                            <label key={card.id} className="flex items-center gap-2 cursor-pointer rounded-lg p-1.5 hover:bg-muted/50">
+                                <Checkbox
+                                    checked={selectedDeleteIds.has(card.id)}
+                                    onCheckedChange={() => toggleDeleteId(card.id)}
+                                />
+                                <span className="text-sm truncate">{card.name}</span>
+                            </label>
+                        ))}
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" className="rounded-xl" onClick={() => setBatchDeleteOpen(false)}>
+                            {t('cancel')}
+                        </Button>
+                        <Button
+                            variant="destructive"
+                            className="rounded-xl"
+                            disabled={selectedDeleteIds.size === 0}
+                            onClick={handleBatchDelete}
+                        >
+                            {t('deleteSelected')} ({selectedDeleteIds.size})
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* 批量导入 Codex 弹窗 */}
+            <Dialog open={batchImportOpen} onOpenChange={setBatchImportOpen}>
+                <DialogContent className="max-w-md rounded-2xl">
+                    <DialogHeader>
+                        <DialogTitle>{t('batchImportTitle')}</DialogTitle>
+                    </DialogHeader>
+                    {codexChannels && codexChannels.length > 0 && (
+                        <div className="flex items-center gap-2 mb-2">
+                            <Checkbox
+                                checked={(() => {
+                                    const allKeys: string[] = [];
+                                    for (const ch of codexChannels) {
+                                        for (const key of ch.keys) {
+                                            allKeys.push(`${ch.id}:${key.id}`);
+                                        }
+                                    }
+                                    return allKeys.length > 0 && selectedImportItems.size === allKeys.length;
+                                })()}
+                                onCheckedChange={toggleAllImport}
+                            />
+                            <span className="text-xs text-muted-foreground">
+                                {t('selectedCount', { count: selectedImportItems.size })}
+                            </span>
+                        </div>
+                    )}
+                    <div className="space-y-3 max-h-64 overflow-y-auto">
+                        {codexChannels && codexChannels.length > 0 ? (
+                            codexChannels.map(channel => (
+                                <div key={channel.id} className="space-y-1">
+                                    <div className="text-xs font-medium text-foreground">{channel.name}</div>
+                                    {channel.keys.map(key => {
+                                        const itemKey = `${channel.id}:${key.id}`;
+                                        return (
+                                            <label key={key.id} className="flex items-center gap-2 cursor-pointer rounded-lg pl-3 p-1.5 hover:bg-muted/50">
+                                                <Checkbox
+                                                    checked={selectedImportItems.has(itemKey)}
+                                                    onCheckedChange={() => toggleImportItem(itemKey)}
+                                                />
+                                                <span className="text-xs text-muted-foreground truncate">
+                                                    {key.remark || `Key #${key.id}`}
+                                                </span>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            ))
+                        ) : (
+                            <div className="text-xs text-muted-foreground text-center py-4">
+                                {t('noCodexChannels')}
+                            </div>
+                        )}
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" className="rounded-xl" onClick={() => setBatchImportOpen(false)}>
+                            {t('cancel')}
+                        </Button>
+                        <Button
+                            className="rounded-xl"
+                            disabled={selectedImportItems.size === 0}
+                            onClick={handleBatchImport}
+                        >
+                            {t('importSelected')} ({selectedImportItems.size})
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
@@ -145,7 +433,6 @@ function UsageCardItem({
     const metrics = card.last_result?.metrics ?? [];
     const hasError = !!card.last_error;
 
-    // 统一标题：template badge + 名称（去掉模板前缀）
     const badge = templateLabels[card.template_id];
     const displayTitle = badge ? card.name.replace(/^.+?\s*[-–—]\s*/, '') : card.name;
 
@@ -220,7 +507,6 @@ function UsageCardItem({
 function MetricBar({ metric }: { metric: UsageMetric }) {
     const t = useTranslations('home.usageCard');
 
-    // plan 类型：标签行，只显示标签和值
     if (metric.unit === 'plan') {
         const planText = metric.message || metric.used?.toString() || 'Free';
         return (
@@ -231,7 +517,6 @@ function MetricBar({ metric }: { metric: UsageMetric }) {
         );
     }
 
-    // 统一进度条：percent 类型和其他类型共用
     const pct = metric.percent ?? (metric.limit && metric.used ? Math.min((metric.used / metric.limit) * 100, 100) : (metric.used ?? 0));
     const isExhausted = metric.status === 'exhausted';
     const isWarning = metric.status === 'warning';

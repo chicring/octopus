@@ -47,12 +47,20 @@ func init() {
 				Handle(deleteUsageCard),
 		).
 		AddRoute(
+			router.NewRoute("/batch-delete", http.MethodPost).
+				Handle(batchDeleteUsageCards),
+		).
+		AddRoute(
 			router.NewRoute("/refresh/:id", http.MethodPost).
 				Handle(refreshUsageCard),
 		).
 		AddRoute(
 			router.NewRoute("/import/codex-channel", http.MethodPost).
 				Handle(importCodexChannelUsageCard),
+		).
+		AddRoute(
+			router.NewRoute("/batch-import/codex-channel", http.MethodPost).
+				Handle(batchImportCodexChannelUsageCards),
 		)
 }
 
@@ -219,4 +227,125 @@ func importCodexChannelUsageCard(c *gin.Context) {
 		return
 	}
 	resp.Success(c, card)
+}
+
+// batchDeleteRequest 批量删除用量卡片请求
+type batchDeleteRequest struct {
+	IDs []uint `json:"ids" binding:"required"`
+}
+
+// batchDeleteUsageCards 批量删除用量卡片
+// POST /api/v1/usage-card/batch-delete
+func batchDeleteUsageCards(c *gin.Context) {
+	var req batchDeleteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.Error(c, http.StatusBadRequest, resp.ErrInvalidJSON)
+		return
+	}
+	if len(req.IDs) == 0 {
+		resp.Error(c, http.StatusBadRequest, "ids 不能为空")
+		return
+	}
+	if err := op.UsageCardBatchDelete(req.IDs, c.Request.Context()); err != nil {
+		resp.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	resp.Success(c, nil)
+}
+
+// batchImportCodexRequest 批量导入 Codex 渠道用量卡片请求
+type batchImportCodexRequest struct {
+	Items []importCodexChannelRequest `json:"items" binding:"required"`
+}
+
+// batchImportCodexChannelUsageCards 批量从 Codex 渠道导入用量卡片
+// POST /api/v1/usage-card/batch-import/codex-channel
+func batchImportCodexChannelUsageCards(c *gin.Context) {
+	var req batchImportCodexRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.Error(c, http.StatusBadRequest, resp.ErrInvalidJSON)
+		return
+	}
+	if len(req.Items) == 0 {
+		resp.Error(c, http.StatusBadRequest, "items 不能为空")
+		return
+	}
+
+	type importResult struct {
+		ChannelID int    `json:"channel_id"`
+		KeyID     int    `json:"key_id"`
+		CardID    uint   `json:"card_id,omitempty"`
+		Skipped   bool   `json:"skipped,omitempty"`
+		Error     string `json:"error,omitempty"`
+	}
+
+	results := make([]importResult, 0, len(req.Items))
+
+	for _, item := range req.Items {
+		// 获取渠道
+		channel, err := op.ChannelGet(item.ChannelID, c.Request.Context())
+		if err != nil {
+			results = append(results, importResult{ChannelID: item.ChannelID, KeyID: item.KeyID, Error: "渠道不存在"})
+			continue
+		}
+
+		if channel.ProviderID != "codex" {
+			results = append(results, importResult{ChannelID: item.ChannelID, KeyID: item.KeyID, Error: "渠道不是 Codex 类型"})
+			continue
+		}
+
+		var targetKey *model.ChannelKey
+		for i := range channel.Keys {
+			if item.KeyID == 0 || channel.Keys[i].ID == item.KeyID {
+				targetKey = &channel.Keys[i]
+				break
+			}
+		}
+		if targetKey == nil {
+			results = append(results, importResult{ChannelID: item.ChannelID, KeyID: item.KeyID, Error: "未找到指定的 Key"})
+			continue
+		}
+
+		cred, credErr := auth.ParseCodexCredential(targetKey.ChannelKey)
+		displayName := channel.Name
+		if credErr == nil && cred.Email != "" {
+			displayName = cred.Email
+		}
+
+		account := fmt.Sprintf("codex:%d:%d", item.ChannelID, targetKey.ID)
+		if existing, found := op.UsageCardGetByAccount(account); found {
+			results = append(results, importResult{ChannelID: item.ChannelID, KeyID: item.KeyID, CardID: existing.ID, Skipped: true})
+			continue
+		}
+
+		tmpl, ok := usagecard.GetTemplate("codex-usage")
+		if !ok {
+			results = append(results, importResult{ChannelID: item.ChannelID, KeyID: item.KeyID, Error: "Codex 用量模板不存在"})
+			continue
+		}
+
+		createReq := &model.UsageCardCreateRequest{
+			Name:               fmt.Sprintf("Codex - %s", displayName),
+			TemplateID:         "codex-usage",
+			Account:            account,
+			Endpoint:           tmpl.DefaultEndpoint,
+			Method:             tmpl.Method,
+			AuthType:           "bearer",
+			Secret:             targetKey.ChannelKey,
+			ExtraHeaders:       usagecard.BuildExtraHeaders(tmpl),
+			Config:             usagecard.BuildCardConfig(tmpl),
+			RefreshIntervalSec: lo.ToPtr(300),
+			Enabled:            lo.ToPtr(true),
+			UseProxy:           lo.ToPtr(false),
+		}
+
+		card, err := op.UsageCardCreate(createReq, c.Request.Context())
+		if err != nil {
+			results = append(results, importResult{ChannelID: item.ChannelID, KeyID: item.KeyID, Error: err.Error()})
+			continue
+		}
+		results = append(results, importResult{ChannelID: item.ChannelID, KeyID: item.KeyID, CardID: card.ID})
+	}
+
+	resp.Success(c, results)
 }

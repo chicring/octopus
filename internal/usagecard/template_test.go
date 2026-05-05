@@ -6,22 +6,22 @@ import (
 
 func TestListTemplates(t *testing.T) {
 	templates := ListTemplates()
-	if len(templates) < 3 {
-		t.Errorf("expected at least 3 built-in templates, got %d", len(templates))
+	if len(templates) < 2 {
+		t.Errorf("expected at least 2 built-in templates, got %d", len(templates))
 	}
 }
 
 func TestGetTemplate(t *testing.T) {
 	t.Run("existing template", func(t *testing.T) {
-		tmpl, ok := GetTemplate("github-rate-limit")
+		tmpl, ok := GetTemplate("codex-usage")
 		if !ok {
-			t.Error("github-rate-limit template should exist")
+			t.Error("codex-usage template should exist")
 		}
 		if tmpl.Name == "" {
 			t.Error("template name should not be empty")
 		}
 		if tmpl.DefaultEndpoint == "" {
-			t.Error("github template should have default endpoint")
+			t.Error("codex template should have default endpoint")
 		}
 	})
 
@@ -31,12 +31,19 @@ func TestGetTemplate(t *testing.T) {
 			t.Error("nonexistent template should not exist")
 		}
 	})
+
+	t.Run("github template removed", func(t *testing.T) {
+		_, ok := GetTemplate("github-rate-limit")
+		if ok {
+			t.Error("github-rate-limit template should not exist (removed)")
+		}
+	})
 }
 
 func TestBuildCardConfig(t *testing.T) {
-	tmpl, ok := GetTemplate("github-rate-limit")
+	tmpl, ok := GetTemplate("codex-usage")
 	if !ok {
-		t.Fatal("github-rate-limit template not found")
+		t.Fatal("codex-usage template not found")
 	}
 
 	config := BuildCardConfig(tmpl)
@@ -56,14 +63,14 @@ func TestBuildCardConfig(t *testing.T) {
 }
 
 func TestBuildExtraHeaders(t *testing.T) {
-	tmpl, ok := GetTemplate("github-rate-limit")
+	tmpl, ok := GetTemplate("codex-usage")
 	if !ok {
-		t.Fatal("github-rate-limit template not found")
+		t.Fatal("codex-usage template not found")
 	}
 
 	headers := BuildExtraHeaders(tmpl)
 	if len(headers) == 0 {
-		t.Error("github template should have extra headers (Accept)")
+		t.Error("codex template should have extra headers")
 	}
 
 	foundAccept := false
@@ -74,7 +81,7 @@ func TestBuildExtraHeaders(t *testing.T) {
 		}
 	}
 	if !foundAccept {
-		t.Error("github template should include Accept header")
+		t.Error("codex template should include Accept header")
 	}
 }
 
@@ -106,8 +113,8 @@ func TestXfyunCodingPlanTemplate(t *testing.T) {
 		t.Fatal("xfyun-coding-plan template not found")
 	}
 
-	if tmpl.Name != "讯飞 Coding Plan" {
-		t.Errorf("name = %s, want 讯飞 Coding Plan", tmpl.Name)
+	if tmpl.Name != "讯飞" {
+		t.Errorf("name = %s, want 讯飞", tmpl.Name)
 	}
 
 	// Should support cookie auth

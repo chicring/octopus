@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"slices"
 	"strings"
 	"time"
 
@@ -17,7 +18,7 @@ import (
 
 var usageCardCache = cache.New[uint, model.UsageCard](4)
 
-// UsageCardList 返回所有用量卡片（不返回密钥）
+// UsageCardList 返回所有用量卡片（不返回密钥），按 ID 升序排列
 func UsageCardList(ctx context.Context) ([]model.UsageCard, error) {
 	cards := make([]model.UsageCard, 0, usageCardCache.Len())
 	for _, card := range usageCardCache.GetAll() {
@@ -25,6 +26,10 @@ func UsageCardList(ctx context.Context) ([]model.UsageCard, error) {
 		card.EncryptedSecret = ""
 		cards = append(cards, card)
 	}
+	// 按 ID 升序排列，避免 map 遍历顺序不确定导致前端排序混乱
+	slices.SortFunc(cards, func(a, b model.UsageCard) int {
+		return int(a.ID - b.ID)
+	})
 	return cards, nil
 }
 
@@ -222,6 +227,20 @@ func UsageCardDelete(id uint, ctx context.Context) error {
 		return err
 	}
 	usageCardCache.Del(id)
+	return nil
+}
+
+// UsageCardBatchDelete 批量删除用量卡片
+func UsageCardBatchDelete(ids []uint, ctx context.Context) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	if err := db.GetDB().WithContext(ctx).Delete(&model.UsageCard{}, ids).Error; err != nil {
+		return err
+	}
+	for _, id := range ids {
+		usageCardCache.Del(id)
+	}
 	return nil
 }
 

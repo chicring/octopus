@@ -219,7 +219,12 @@
         "deleteSuccess": "用量卡片删除成功",
         "deleteError": "用量卡片删除失败",
         "refreshSuccess": "刷新成功",
-        "refreshError": "刷新失败"
+        "refreshError": "刷新失败",
+        "batchDeleteSuccess": "已删除 {count} 张用量卡片",
+        "batchDeleteError": "批量删除失败",
+        "batchImportSuccess": "已导入 {count} 张 Codex 用量卡片",
+        "batchImportError": "批量导入失败",
+        "batchRefreshSuccess": "批量刷新完成"
       },
       "metric": {
         "used": "已用",
@@ -243,7 +248,19 @@
       "noCodexChannels": "没有可用的 Codex 渠道",
       "importSuccess": "Codex 用量卡片导入成功",
       "importError": "Codex 用量卡片导入失败",
-      "codexSecretHint": "粘贴完整的 Codex 凭证 JSON，或从 Codex 渠道导入"
+      "codexSecretHint": "粘贴完整的 Codex 凭证 JSON，或从 Codex 渠道导入",
+      "exitEdit": "退出编辑",
+      "batchRefresh": "批量刷新",
+      "batchRefreshProgress": "刷新中 {current}/{total}",
+      "batchImport": "批量导入",
+      "batchDelete": "批量删除",
+      "batchDeleteTitle": "批量删除用量卡片",
+      "batchImportTitle": "批量导入 Codex 用量卡片",
+      "selectedCount": "已选 {count} 项",
+      "deleteSelected": "删除所选",
+      "importSelected": "导入所选",
+      "cancel": "取消",
+      "enterEdit": "进入编辑模式"
     }
   },
   "setting": {
