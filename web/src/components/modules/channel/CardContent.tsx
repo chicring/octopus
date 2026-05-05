@@ -25,6 +25,7 @@ import { type StatsMetricsFormatted } from '@/api/endpoints/stats';
 import { useTranslations } from 'next-intl';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { ChannelForm, type ChannelFormData } from './Form';
 import { parseOAuthLabel } from './utils';
 import { formatMoney, formatCount } from '@/lib/utils';
@@ -96,6 +97,15 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
         const req: UpdateChannelRequest = {
             id: channel.id,
             keys_to_update: keyIds.map(id => ({ id, enabled: false })),
+        };
+        await updateChannel.mutateAsync(req);
+        queryClient.invalidateQueries({ queryKey: ['channels', 'list'] });
+    }, [channel.id, updateChannel, queryClient]);
+
+    const toggleKeyEnabled = useCallback(async (keyId: number, enabled: boolean) => {
+        const req: UpdateChannelRequest = {
+            id: channel.id,
+            keys_to_update: [{ id: keyId, enabled }],
         };
         await updateChannel.mutateAsync(req);
         queryClient.invalidateQueries({ queryKey: ['channels', 'list'] });
@@ -458,7 +468,11 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
                                     <div className="rounded-2xl border bg-card overflow-hidden">
                                         {channel.keys?.map((key) => (
                                             <div key={key.id} className="flex items-center gap-3 p-3 sm:p-4 border-b last:border-0 hover:bg-accent/5 transition-colors">
-                                                <div className={cn("size-2 shrink-0 rounded-full", key.enabled ? "bg-emerald-500" : "bg-destructive")} />
+                                                <Switch
+                                                    checked={key.enabled}
+                                                    onCheckedChange={(checked) => toggleKeyEnabled(key.id, checked)}
+                                                    className="shrink-0 scale-75"
+                                                />
 
                                                 <span className="font-mono text-sm truncate min-w-0 flex-1">
                                                     {(() => {

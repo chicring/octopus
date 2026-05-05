@@ -536,6 +536,17 @@ export function ChannelForm({
                             return (
                                 <div key={idx} className="flex items-center justify-between rounded-xl border border-border px-3 py-2">
                                     <div className="flex items-center gap-2 min-w-0">
+                                        <Switch
+                                            checked={key.enabled}
+                                            onCheckedChange={(checked) => {
+                                                const filled = formData.keys.filter(k => k.channel_key.trim());
+                                                const realIdx = formData.keys.indexOf(key);
+                                                if (realIdx >= 0) {
+                                                    handleUpdateKey(realIdx, { enabled: checked });
+                                                }
+                                            }}
+                                            className="shrink-0 scale-75"
+                                        />
                                         <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0">Codex</Badge>
                                         <div className="min-w-0">
                                             <span className="text-sm text-muted-foreground truncate block">{key.remark || label || `${t('oauthAuthorized')} #${idx + 1}`}</span>
