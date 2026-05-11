@@ -146,7 +146,7 @@ func (o *CodexOutbound) TransformResponse(ctx context.Context, response *http.Re
 		return nil, fmt.Errorf("failed to unmarshal codex response: %w", err)
 	}
 
-	return convertToLLMResponseFromResponses(&resp), nil
+	return convertToLLMResponseFromResponses(&resp)
 }
 
 // TransformStream 将 Codex 流式事件转换为内部通用流式响应格式
@@ -157,11 +157,11 @@ func (o *CodexOutbound) TransformStream(ctx context.Context, eventData []byte) (
 
 // convertToLLMResponseFromResponses 将 OpenAI Responses API 响应转为内部格式
 // 复用 openai 包中的转换逻辑
-func convertToLLMResponseFromResponses(resp *openai.ResponsesResponse) *model.InternalLLMResponse {
+func convertToLLMResponseFromResponses(resp *openai.ResponsesResponse) (*model.InternalLLMResponse, error) {
 	if resp == nil {
 		return &model.InternalLLMResponse{
 			Object: "chat.completion",
-		}
+		}, nil
 	}
 
 	result := &model.InternalLLMResponse{
@@ -248,17 +248,28 @@ func convertToLLMResponseFromResponses(resp *openai.ResponsesResponse) *model.In
 		switch *resp.Status {
 		case "completed":
 			choice.FinishReason = loToPtr("stop")
-		case "failed":
-			choice.FinishReason = loToPtr("error")
 		case "incomplete":
 			choice.FinishReason = loToPtr("length")
+		case "failed":
+			errMsg := "upstream response failed"
+			if resp.Error != nil {
+				errMsg = resp.Error.Message
+			}
+			return nil, &model.ResponseError{
+				StatusCode: http.StatusInternalServerError,
+				Detail: model.ErrorDetail{
+					Message: errMsg,
+					Type:    "upstream_error",
+					Code:    "response_failed",
+				},
+			}
 		}
 	}
 
 	result.Choices = []model.Choice{choice}
 	result.Usage = convertResponsesUsage(resp.Usage)
 
-	return result
+	return result, nil
 }
 
 func convertResponsesUsage(usage *openai.ResponsesUsage) *model.Usage {

@@ -92,7 +92,7 @@ func (o *ResponseOutbound) TransformResponse(ctx context.Context, response *http
 	}
 
 	// Convert to internal response
-	return convertToLLMResponseFromResponses(&resp), nil
+	return convertToLLMResponseFromResponses(&resp)
 }
 
 func (o *ResponseOutbound) TransformStream(ctx context.Context, eventData []byte) (*model.InternalLLMResponse, error) {
@@ -213,6 +213,20 @@ func (o *ResponseOutbound) TransformStream(ctx context.Context, eventData []byte
 
 	case "response.completed":
 		if streamEvent.Response != nil {
+			if streamEvent.Response.Status != nil && *streamEvent.Response.Status == "failed" {
+				errMsg := "upstream response failed"
+				if streamEvent.Response.Error != nil {
+					errMsg = streamEvent.Response.Error.Message
+				}
+				return nil, &model.ResponseError{
+					StatusCode: http.StatusInternalServerError,
+					Detail: model.ErrorDetail{
+						Message: errMsg,
+						Type:    "upstream_error",
+						Code:    "response_failed",
+					},
+				}
+			}
 			var finishReason *string
 			if streamEvent.Response.Status != nil {
 				switch *streamEvent.Response.Status {
@@ -220,8 +234,6 @@ func (o *ResponseOutbound) TransformStream(ctx context.Context, eventData []byte
 					finishReason = lo.ToPtr("stop")
 				case "incomplete":
 					finishReason = lo.ToPtr("length")
-				case "failed":
-					finishReason = lo.ToPtr("error")
 				}
 			}
 			resp.Choices = []model.Choice{
@@ -236,10 +248,16 @@ func (o *ResponseOutbound) TransformStream(ctx context.Context, eventData []byte
 		}
 
 	case "response.failed", "response.incomplete", "error":
-		resp.Choices = []model.Choice{
-			{
-				Index:        0,
-				FinishReason: lo.ToPtr("error"),
+		errMsg := fmt.Sprintf("upstream stream error: %s", streamEvent.Type)
+		if streamEvent.Response != nil && streamEvent.Response.Error != nil {
+			errMsg = streamEvent.Response.Error.Message
+		}
+		return nil, &model.ResponseError{
+			StatusCode: http.StatusInternalServerError,
+			Detail: model.ErrorDetail{
+				Message: errMsg,
+				Type:    "upstream_error",
+				Code:    "response_failed",
 			},
 		}
 
@@ -729,11 +747,11 @@ func convertToolChoiceToResponses(tc *model.ToolChoice) *ResponsesToolChoice {
 	return result
 }
 
-func convertToLLMResponseFromResponses(resp *ResponsesResponse) *model.InternalLLMResponse {
+func convertToLLMResponseFromResponses(resp *ResponsesResponse) (*model.InternalLLMResponse, error) {
 	if resp == nil {
 		return &model.InternalLLMResponse{
 			Object: "chat.completion",
-		}
+		}, nil
 	}
 
 	result := &model.InternalLLMResponse{
@@ -835,17 +853,28 @@ func convertToLLMResponseFromResponses(resp *ResponsesResponse) *model.InternalL
 		switch *resp.Status {
 		case "completed":
 			choice.FinishReason = lo.ToPtr("stop")
-		case "failed":
-			choice.FinishReason = lo.ToPtr("error")
 		case "incomplete":
 			choice.FinishReason = lo.ToPtr("length")
+		case "failed":
+			errMsg := "upstream response failed"
+			if resp.Error != nil {
+				errMsg = resp.Error.Message
+			}
+			return nil, &model.ResponseError{
+				StatusCode: http.StatusInternalServerError,
+				Detail: model.ErrorDetail{
+					Message: errMsg,
+					Type:    "upstream_error",
+					Code:    "response_failed",
+				},
+			}
 		}
 	}
 
 	result.Choices = []model.Choice{choice}
 	result.Usage = convertResponsesUsage(resp.Usage)
 
-	return result
+	return result, nil
 }
 
 func convertResponsesUsage(usage *ResponsesUsage) *model.Usage {
