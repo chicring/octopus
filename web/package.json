@@ -2,13 +2,6 @@
   "name": "octopus",
   "version": "0.1.0",
   "private": true,
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@swc/core",
-      "sharp",
-      "unrs-resolver"
-    ]
-  },
   "scripts": {
     "dev": "next dev",
     "devs": "next dev --experimental-https --experimental-https-key /workplace/code/octopus/build/localhost-key.pem --experimental-https-cert /workplace/code/octopus/build/localhost.pem",
