@@ -317,8 +317,12 @@ func convertToAnthropicRequest(req *model.InternalLLMRequest) *anthropicModel.Me
 		result.Metadata = &anthropicModel.AnthropicMetadata{UserID: req.Metadata["user_id"]}
 	}
 
-	// Convert messages
-	result.Messages = convertMessages(req)
+	// Convert messages — pass thinkingEnabled so assistant messages include
+	// a thinking block even when ReasoningContent is nil or empty string.
+	// Many upstream providers (GLM, DeepSeek, Kimi) require the thinking
+	// block to be present in every assistant message when thinking mode is on.
+	thinkingEnabled := req.ReasoningEffort != ""
+	result.Messages = convertMessages(req, thinkingEnabled)
 
 	// Convert tools
 	if len(req.Tools) > 0 {
@@ -407,7 +411,7 @@ func convertSystemPrompt(req *model.InternalLLMRequest) *anthropicModel.SystemPr
 	}
 }
 
-func convertMessages(req *model.InternalLLMRequest) []anthropicModel.MessageParam {
+func convertMessages(req *model.InternalLLMRequest, thinkingEnabled bool) []anthropicModel.MessageParam {
 	messages := make([]anthropicModel.MessageParam, 0, len(req.Messages))
 	processedIndexes := make(map[int]bool)
 
@@ -416,7 +420,7 @@ func convertMessages(req *model.InternalLLMRequest) []anthropicModel.MessagePara
 			continue
 		}
 
-		converted := convertSingleMessage(msg, req.Messages, processedIndexes)
+		converted := convertSingleMessage(msg, req.Messages, processedIndexes, thinkingEnabled)
 		for _, convertedMsg := range converted {
 			// Anthropic API 要求消息角色必须交替出现（user/assistant/user/assistant）。
 			// 当 OpenAI 格式的多个连续 tool 消息被各自转换为独立的 user 消息时，
@@ -447,7 +451,7 @@ func contentToBlocks(c anthropicModel.MessageContent) []anthropicModel.MessageCo
 	return nil
 }
 
-func convertSingleMessage(msg model.Message, allMessages []model.Message, processedIndexes map[int]bool) []anthropicModel.MessageParam {
+func convertSingleMessage(msg model.Message, allMessages []model.Message, processedIndexes map[int]bool, thinkingEnabled bool) []anthropicModel.MessageParam {
 	switch msg.Role {
 	case "tool":
 		return convertToolMessage(msg, allMessages, processedIndexes)
@@ -457,7 +461,7 @@ func convertSingleMessage(msg model.Message, allMessages []model.Message, proces
 		}
 		return convertUserMessage(msg)
 	case "assistant":
-		return convertAssistantMessage(msg)
+		return convertAssistantMessage(msg, thinkingEnabled)
 	default:
 		return nil
 	}
@@ -498,7 +502,7 @@ func convertToolMessage(msg model.Message, allMessages []model.Message, processe
 	// Our internal format represents tool results as separate "tool" role messages, but the
 	// original Anthropic request may also include additional user content alongside tool_result.
 	if userMsg := findUserMessageByIndex(allMessages, *msg.MessageIndex); userMsg != nil {
-		userContent := buildMessageContent(*userMsg)
+		userContent := buildMessageContent(*userMsg, false)
 		contentBlocks = append(contentBlocks, contentToBlocks(userContent)...)
 	}
 
@@ -551,24 +555,33 @@ func convertToolResultBlock(msg model.Message) anthropicModel.MessageContentBloc
 }
 
 func convertUserMessage(msg model.Message) []anthropicModel.MessageParam {
-	content := buildMessageContent(msg)
+	content := buildMessageContent(msg, false)
 	return []anthropicModel.MessageParam{{Role: "user", Content: content}}
 }
 
-func convertAssistantMessage(msg model.Message) []anthropicModel.MessageParam {
+func convertAssistantMessage(msg model.Message, thinkingEnabled bool) []anthropicModel.MessageParam {
 	if len(msg.ToolCalls) > 0 {
-		return convertAssistantWithToolCalls(msg)
+		return convertAssistantWithToolCalls(msg, thinkingEnabled)
 	}
 
-	content := buildMessageContent(msg)
+	content := buildMessageContent(msg, thinkingEnabled)
 	return []anthropicModel.MessageParam{{Role: "assistant", Content: content}}
 }
 
-func convertAssistantWithToolCalls(msg model.Message) []anthropicModel.MessageParam {
+func convertAssistantWithToolCalls(msg model.Message, thinkingEnabled bool) []anthropicModel.MessageParam {
 	var blocks []anthropicModel.MessageContentBlock
 
-	// Add thinking block if present
-	if msg.ReasoningContent != nil && *msg.ReasoningContent != "" {
+	// Add thinking block if present or required by thinking mode.
+	// When thinking is enabled, upstream providers (GLM, DeepSeek, Kimi) require
+	// the thinking block to be present even if empty. nil means field was absent
+	// from the original request (client didn't send it), but we must synthesize
+	// an empty thinking block to satisfy the API contract.
+	if thinkingEnabled && msg.ReasoningContent == nil {
+		blocks = append(blocks, anthropicModel.MessageContentBlock{
+			Type:     "thinking",
+			Thinking: lo.ToPtr(""),
+		})
+	} else if msg.ReasoningContent != nil {
 		blocks = append(blocks, anthropicModel.MessageContentBlock{
 			Type:      "thinking",
 			Thinking:  msg.ReasoningContent,
@@ -622,11 +635,11 @@ func convertAssistantWithToolCalls(msg model.Message) []anthropicModel.MessagePa
 	}}
 }
 
-func buildMessageContent(msg model.Message) anthropicModel.MessageContent {
+func buildMessageContent(msg model.Message, thinkingEnabled bool) anthropicModel.MessageContent {
 	// Handle simple string content
 	if msg.Content.Content != nil {
-		if msg.CacheControl != nil || hasThinkingContent(msg) {
-			return buildMultipleContentWithThinking(msg)
+		if msg.CacheControl != nil || msg.ReasoningContent != nil || thinkingEnabled {
+			return buildMultipleContentWithThinking(msg, thinkingEnabled)
 		}
 		return anthropicModel.MessageContent{Content: msg.Content.Content}
 	}
@@ -636,21 +649,31 @@ func buildMessageContent(msg model.Message) anthropicModel.MessageContent {
 		return convertMultiplePartContent(msg)
 	}
 
+	// Empty content with thinking enabled — still need thinking block
+	if thinkingEnabled {
+		return buildMultipleContentWithThinking(msg, thinkingEnabled)
+	}
+
 	return anthropicModel.MessageContent{}
 }
 
-func hasThinkingContent(msg model.Message) bool {
-	return msg.ReasoningContent != nil && *msg.ReasoningContent != ""
-}
-
-func buildMultipleContentWithThinking(msg model.Message) anthropicModel.MessageContent {
+func buildMultipleContentWithThinking(msg model.Message, thinkingEnabled bool) anthropicModel.MessageContent {
 	var blocks []anthropicModel.MessageContentBlock
 
-	if msg.ReasoningContent != nil && *msg.ReasoningContent != "" {
+	// Add thinking block:
+	// - If ReasoningContent is non-nil (including empty string ""), always include it.
+	// - If thinking is enabled but ReasoningContent is nil, synthesize an empty
+	//   thinking block to satisfy upstream API requirements (GLM, DeepSeek, Kimi).
+	if msg.ReasoningContent != nil {
 		blocks = append(blocks, anthropicModel.MessageContentBlock{
 			Type:      "thinking",
 			Thinking:  msg.ReasoningContent,
 			Signature: msg.ReasoningSignature,
+		})
+	} else if thinkingEnabled {
+		blocks = append(blocks, anthropicModel.MessageContentBlock{
+			Type:     "thinking",
+			Thinking: lo.ToPtr(""),
 		})
 	}
 

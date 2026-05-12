@@ -512,8 +512,9 @@ type Message struct {
 }
 
 func (m *Message) ClearHelpFields() {
-	m.ReasoningContent = nil
-	m.Reasoning = nil
+	// Do NOT clear ReasoningContent and Reasoning — they are legitimate request fields
+	// that must be preserved when forwarding to upstream providers (e.g., DeepSeek, GLM)
+	// in thinking mode. Only ReasoningSignature is a helper field.
 	m.ReasoningSignature = nil
 }
 
