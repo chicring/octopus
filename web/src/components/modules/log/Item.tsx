@@ -42,6 +42,13 @@ function formatDuration(ms: number): string {
     return `${(ms / 1000).toFixed(2)}s`;
 }
 
+// 格式化大数字：>= 1000 用 K，>= 1000000 用 M
+function formatTokenCount(n: number): string {
+    if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
+    if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
+    return n.toString();
+}
+
 const REASONING_EFFORT_COLORS: Record<string, string> = {
     low: '#6b7280',
     medium: '#f59e0b',
@@ -332,54 +339,54 @@ export function LogCard({ log }: { log: RelayLog }) {
                                     <Pin className="size-3.5 shrink-0 text-amber-500" />
                                 )}
                             </div>
-                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs tabular-nums text-muted-foreground">
-                                <div className="flex items-center gap-1.5">
+                            <div className="grid grid-cols-[repeat(auto-fill,110px)] gap-x-2 gap-y-1 text-xs tabular-nums text-muted-foreground">
+                                <div className="flex items-center gap-1 overflow-hidden">
                                     <Clock className="size-3.5 shrink-0" style={{ color: brandColor }} />
-                                    <span>{formatTime(log.time)}</span>
+                                    <span className="truncate">{formatTime(log.time)}</span>
                                 </div>
                                 {requestAPIKeyName && (
-                                    <div className="flex items-center gap-1.5 max-w-[120px]">
+                                    <div className="flex items-center gap-1 overflow-hidden">
                                         <KeyRound className="size-3.5 shrink-0 text-orange-500" />
                                         <span className="truncate" title={requestAPIKeyName}>
                                             {requestAPIKeyName}
                                         </span>
                                     </div>
                                 )}
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex items-center gap-1 overflow-hidden">
                                     <Zap className="size-3.5 shrink-0 text-amber-500" />
-                                    <span>{t('firstToken')} {formatDuration(log.ftut)}</span>
+                                    <span className="truncate">{t('firstToken')} {formatDuration(log.ftut)}</span>
                                 </div>
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex items-center gap-1 overflow-hidden">
                                     <Cpu className="size-3.5 shrink-0 text-blue-500" />
-                                    <span>{t('totalTime')} {formatDuration(log.use_time)}</span>
+                                    <span className="truncate">{t('totalTime')} {formatDuration(log.use_time)}</span>
                                 </div>
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex items-center gap-1 overflow-hidden">
                                     <ArrowDownToLine className="size-3.5 shrink-0 text-green-500" />
-                                    <span>{t('input')} {log.input_tokens.toLocaleString()}</span>
+                                    <span className="truncate">{t('input')} {formatTokenCount(log.input_tokens)}</span>
                                 </div>
                                 {log.cached_tokens > 0 && (
-                                    <div className="flex items-center gap-1.5">
+                                    <div className="flex items-center gap-1 overflow-hidden">
                                         <Database className="size-3.5 shrink-0 text-orange-500" />
-                                        <span>{t('cachedTokens')} {log.cached_tokens.toLocaleString()}</span>
+                                        <span className="truncate">{t('cachedTokens')} {formatTokenCount(log.cached_tokens)}</span>
                                     </div>
                                 )}
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex items-center gap-1 overflow-hidden">
                                     <ArrowUpFromLine className="size-3.5 shrink-0 text-purple-500" />
-                                    <span>{t('output')} {log.output_tokens.toLocaleString()}</span>
+                                    <span className="truncate">{t('output')} {formatTokenCount(log.output_tokens)}</span>
                                 </div>
                                 {(() => {
                                     const outputTime = log.use_time - log.ftut;
                                     const tps = outputTime > 0 ? (log.output_tokens / outputTime * 1000) : (log.use_time > 0 ? (log.output_tokens / log.use_time * 1000) : 0);
                                     return tps > 0 ? (
-                                        <div className="flex items-center gap-1.5">
+                                        <div className="flex items-center gap-1 overflow-hidden">
                                             <Gauge className="size-3.5 shrink-0 text-cyan-500" />
-                                            <span>{t('tps')} {tps.toFixed(1)}</span>
+                                            <span className="truncate">{t('tps')} {tps.toFixed(1)}</span>
                                         </div>
                                     ) : null;
                                 })()}
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex items-center gap-1 overflow-hidden">
                                     <DollarSign className="size-3.5 shrink-0 text-emerald-500" />
-                                    <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                                    <span className="truncate font-medium text-emerald-600 dark:text-emerald-400">
                                         {t('cost')} {Number(log.cost).toFixed(6)}
                                     </span>
                                 </div>
@@ -548,40 +555,40 @@ export function LogCard({ log }: { log: RelayLog }) {
                             </div>
                         </MorphingDialogDescription>
 
-                        <div className="flex flex-wrap items-center gap-3 md:gap-4 pt-4 mt-auto text-xs text-muted-foreground shrink-0">
-                            <div className="flex items-center gap-1.5">
-                                <Clock className="size-3.5" style={{ color: brandColor }} />
-                                <span className="tabular-nums">{formatTime(log.time)}</span>
+                        <div className="grid grid-cols-[repeat(auto-fill,140px)] gap-x-3 gap-y-1 pt-4 mt-auto text-xs tabular-nums text-muted-foreground shrink-0">
+                            <div className="flex items-center gap-1 overflow-hidden">
+                                <Clock className="size-3.5 shrink-0" style={{ color: brandColor }} />
+                                <span className="truncate">{formatTime(log.time)}</span>
                             </div>
                             {requestAPIKeyName && (
-                                <div className="flex min-w-0 items-center gap-1.5">
+                                <div className="flex items-center gap-1 overflow-hidden">
                                     <KeyRound className="size-3.5 shrink-0 text-orange-500" />
                                     <span className="truncate" title={requestAPIKeyName}>
                                         {requestAPIKeyName}
                                     </span>
                                 </div>
                             )}
-                            <div className="flex items-center gap-1.5">
-                                <Zap className="size-3.5 text-amber-500" />
-                                <span>{t('firstTokenTime')}: {formatDuration(log.ftut)}</span>
+                            <div className="flex items-center gap-1 overflow-hidden">
+                                <Zap className="size-3.5 shrink-0 text-amber-500" />
+                                <span className="truncate">{t('firstTokenTime')}: {formatDuration(log.ftut)}</span>
                             </div>
-                            <div className="flex items-center gap-1.5">
-                                <Cpu className="size-3.5 text-blue-500" />
-                                <span>{t('totalTime')}: {formatDuration(log.use_time)}</span>
+                            <div className="flex items-center gap-1 overflow-hidden">
+                                <Cpu className="size-3.5 shrink-0 text-blue-500" />
+                                <span className="truncate">{t('totalTime')}: {formatDuration(log.use_time)}</span>
                             </div>
                             {(() => {
                                 const outputTime = log.use_time - log.ftut;
                                 const tps = outputTime > 0 ? (log.output_tokens / outputTime * 1000) : (log.use_time > 0 ? (log.output_tokens / log.use_time * 1000) : 0);
                                 return tps > 0 ? (
-                                    <div className="flex items-center gap-1.5">
-                                        <Gauge className="size-3.5 text-cyan-500" />
-                                        <span>{t('tps')}: {tps.toFixed(1)} tok/s</span>
+                                    <div className="flex items-center gap-1 overflow-hidden">
+                                        <Gauge className="size-3.5 shrink-0 text-cyan-500" />
+                                        <span className="truncate">{t('tps')}: {tps.toFixed(1)} tok/s</span>
                                     </div>
                                 ) : null;
                             })()}
-                            <div className="flex items-center gap-1.5">
-                                <DollarSign className="size-3.5 text-emerald-500" />
-                                <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                            <div className="flex items-center gap-1 overflow-hidden">
+                                <DollarSign className="size-3.5 shrink-0 text-emerald-500" />
+                                <span className="truncate font-medium text-emerald-600 dark:text-emerald-400">
                                     {t('cost')}: {Number(log.cost).toFixed(6)}
                                 </span>
                             </div>
