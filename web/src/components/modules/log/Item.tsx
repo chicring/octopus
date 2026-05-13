@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { Clock, Cpu, Zap, AlertCircle, ArrowDownToLine, ArrowUpFromLine, DollarSign, ArrowRight, ArrowDown, Send, MessageSquare, Loader2, RotateCw, ChevronDown, ChevronUp, Pin, KeyRound, Gauge, Brain, Database } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { motion, AnimatePresence } from 'motion/react';
@@ -455,12 +455,15 @@ function LogDetailPanels({ log }: { log: RelayLog }) {
     const { isOpen } = useMorphingDialog();
     const [detail, setDetail] = useState<RelayLog | null>(null);
     const [detailLoading, setDetailLoading] = useState(false);
+    const loadedLogId = useRef<number | null>(null);
 
     useEffect(() => {
         let cancelled = false;
-        if (isOpen && !detail && !detailLoading) {
+        if (isOpen && loadedLogId.current !== log.id) {
             queueMicrotask(() => {
                 if (cancelled) return;
+                loadedLogId.current = log.id;
+                setDetail(null);
                 setDetailLoading(true);
                 getLogDetail(log.id)
                     .then((data) => {
@@ -477,6 +480,7 @@ function LogDetailPanels({ log }: { log: RelayLog }) {
         if (!isOpen) {
             queueMicrotask(() => {
                 if (cancelled) return;
+                loadedLogId.current = null;
                 setDetail(null);
                 setDetailLoading(false);
             });
@@ -484,7 +488,7 @@ function LogDetailPanels({ log }: { log: RelayLog }) {
         return () => {
             cancelled = true;
         };
-    }, [isOpen, log.id, detail, detailLoading]);
+    }, [isOpen, log.id]);
 
     return (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 h-full min-h-0">
