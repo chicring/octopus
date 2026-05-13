@@ -607,9 +607,6 @@ func (ra *relayAttempt) handleResponse(ctx context.Context, response *http.Respo
 		return fmt.Errorf("failed to transform inbound response: %w", err)
 	}
 
-	// 保存客户端实际收到的响应 body（inbound 转换后的格式），用于日志记录
-	ra.metrics.ClientResponseBody = inResponse
-
 	ra.c.Data(http.StatusOK, "application/json", inResponse)
 	return nil
 }
@@ -625,15 +622,5 @@ func (ra *relayAttempt) collectResponse() (bool, string) {
 	}
 
 	ra.metrics.SetInternalResponse(internalResponse, ra.internalRequest.Model)
-
-	// 流式场景下 ClientResponseBody 为空，需要从 InternalResponse 转回客户端格式
-	// 用于日志记录真实的入站响应格式
-	if len(ra.metrics.ClientResponseBody) == 0 {
-		clientBody, err := ra.inAdapter.TransformResponse(context.Background(), internalResponse)
-		if err == nil && len(clientBody) > 0 {
-			ra.metrics.ClientResponseBody = clientBody
-		}
-	}
-
 	return true, ""
 }
