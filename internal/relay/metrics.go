@@ -30,6 +30,9 @@ type RelayMetrics struct {
 	InternalRequest  *transformerModel.InternalLLMRequest
 	InternalResponse *transformerModel.InternalLLMResponse
 
+	// 客户端实际收到的响应 body（inbound 转换后的格式）
+	ClientResponseBody []byte
+
 	// 统计指标
 	ActualModel string
 	Stats       model.StatsMetrics
@@ -276,8 +279,11 @@ func (m *RelayMetrics) saveLog(ctx context.Context, err error, duration time.Dur
 		}
 	}
 
-	// 响应内容
-	if m.InternalResponse != nil {
+	// 响应内容：非流式时记录客户端实际收到的响应（inbound 转换后的格式），
+	// 流式时记录内部格式（ClientResponseBody 为空，流式 chunk 无法完整收集）
+	if len(m.ClientResponseBody) > 0 {
+		relayLog.ResponseContent = string(m.ClientResponseBody)
+	} else if m.InternalResponse != nil {
 		respForLog := m.filterResponseForLog(m.InternalResponse)
 		if respJSON, jsonErr := json.Marshal(respForLog); jsonErr == nil {
 			if m.InternalResponse.Usage != nil && m.InternalResponse.Usage.AnthropicUsage {
