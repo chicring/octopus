@@ -39,6 +39,8 @@ export interface RelayLog {
     reasoning_effort?: string;
     input_tokens: number;
     output_tokens: number;
+    cached_tokens: number;
+    cache_creation_tokens: number;
     ftut: number;
     use_time: number;
     cost: number;
@@ -148,11 +150,9 @@ export function useLogs(options: { pageSize?: number } = {}) {
     const connectGenerationRef = useRef(0);
 
     // 使用 ref 保存筛选条件，避免 SSE 回调因状态变化而重新注册
-    const filterErrorRef = useRef(filterError);
     const filterAPIKeyNamesRef = useRef(filterAPIKeyNames);
     const filterModelNamesRef = useRef(filterModelNames);
 
-    useEffect(() => { filterErrorRef.current = filterError; }, [filterError]);
     useEffect(() => { filterAPIKeyNamesRef.current = filterAPIKeyNames; }, [filterAPIKeyNames]);
     useEffect(() => { filterModelNamesRef.current = filterModelNames; }, [filterModelNames]);
 
@@ -276,7 +276,6 @@ export function useLogs(options: { pageSize?: number } = {}) {
                     try {
                         const log: RelayLog = JSON.parse(event.data);
 
-                        const fe = filterErrorRef.current;
                         const akn = filterAPIKeyNamesRef.current;
                         const mn = filterModelNamesRef.current;
 

@@ -19,12 +19,20 @@ import (
 type MessagesOutbound struct{}
 
 func (o *MessagesOutbound) TransformRequest(ctx context.Context, request *model.InternalLLMRequest, baseUrl, key string) (*http.Request, error) {
-	// Convert internal request to Gemini format
-	geminiReq := convertLLMToGeminiRequest(request)
+	var body []byte
 
-	body, err := json.Marshal(geminiReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal gemini request: %w", err)
+	// 当入站格式也是 Gemini 时，直接透传原始请求 body，
+	// 避免 round-trip 转换破坏上游 prompt cache 的前缀匹配。
+	if model.ShouldPassthrough(request, model.APIFormatGeminiContents) {
+		body = model.PatchRawRequest(request.RawRequest, request)
+	} else {
+		// 不同格式间转换，走完整转换
+		geminiReq := convertLLMToGeminiRequest(request)
+		var err error
+		body, err = json.Marshal(geminiReq)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal gemini request: %w", err)
+		}
 	}
 
 	// Build URL

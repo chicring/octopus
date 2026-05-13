@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState, useEffect } from 'react';
-import { Clock, Cpu, Zap, AlertCircle, ArrowDownToLine, ArrowUpFromLine, DollarSign, ArrowRight, ArrowDown, Send, MessageSquare, Loader2, RotateCw, ChevronDown, ChevronUp, Pin, KeyRound, Gauge, Brain } from 'lucide-react';
+import { Clock, Cpu, Zap, AlertCircle, ArrowDownToLine, ArrowUpFromLine, DollarSign, ArrowRight, ArrowDown, Send, MessageSquare, Loader2, RotateCw, ChevronDown, ChevronUp, Pin, KeyRound, Gauge, Brain, Database } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { motion, AnimatePresence } from 'motion/react';
 import JsonView from '@uiw/react-json-view';
@@ -244,7 +244,7 @@ function LogDetailPanels({ log }: { log: RelayLog }) {
                     <Send className="size-4 text-green-500" />
                     <span className="text-sm font-medium text-card-foreground">{t('requestContent')}</span>
                     <Badge variant="secondary" className="ml-auto text-xs">
-                        {log.input_tokens.toLocaleString()} {t('tokens')}
+                        {log.input_tokens.toLocaleString()}{log.cached_tokens > 0 ? ` (${t('cachedTokens')}: ${log.cached_tokens.toLocaleString()})` : ''} {t('tokens')}
                     </Badge>
                 </div>
                 <div className="flex-1 overflow-auto min-h-0">
@@ -357,6 +357,12 @@ export function LogCard({ log }: { log: RelayLog }) {
                                     <ArrowDownToLine className="size-3.5 shrink-0 text-green-500" />
                                     <span>{t('input')} {log.input_tokens.toLocaleString()}</span>
                                 </div>
+                                {log.cached_tokens > 0 && (
+                                    <div className="flex items-center gap-1.5">
+                                        <Database className="size-3.5 shrink-0 text-orange-500" />
+                                        <span>{t('cachedTokens')} {log.cached_tokens.toLocaleString()}</span>
+                                    </div>
+                                )}
                                 <div className="flex items-center gap-1.5">
                                     <ArrowUpFromLine className="size-3.5 shrink-0 text-purple-500" />
                                     <span>{t('output')} {log.output_tokens.toLocaleString()}</span>

@@ -596,7 +596,9 @@
       "retryDetails": "重试详情",
       "attempts": "次尝试",
       "success": "成功",
-      "failed": "失败"
+      "failed": "失败",
+      "cachedTokens": "缓存命中",
+      "cacheCreationTokens": "缓存写入"
     },
     "activeRequest": {
       "active": "进行中",

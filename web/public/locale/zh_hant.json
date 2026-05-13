@@ -596,7 +596,9 @@
       "retryDetails": "重試詳情",
       "attempts": "次嘗試",
       "success": "成功",
-      "failed": "失敗"
+      "failed": "失敗",
+      "cachedTokens": "快取命中",
+      "cacheCreationTokens": "快取寫入"
     },
     "activeRequest": {
       "active": "進行中",

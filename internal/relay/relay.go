@@ -369,6 +369,19 @@ func parseRequest(inboundType inbound.InboundType, c *gin.Context) (*model.Inter
 		return nil, nil, err
 	}
 
+	// 保存原始请求 body 和 API 格式，用于相同格式时的直接透传
+	internalRequest.RawRequest = body
+	switch inboundType {
+	case inbound.InboundTypeOpenAIChat:
+		internalRequest.RawAPIFormat = model.APIFormatOpenAIChatCompletion
+	case inbound.InboundTypeOpenAIResponse:
+		internalRequest.RawAPIFormat = model.APIFormatOpenAIResponse
+	case inbound.InboundTypeAnthropic:
+		internalRequest.RawAPIFormat = model.APIFormatAnthropicMessage
+	case inbound.InboundTypeOpenAIEmbedding:
+		internalRequest.RawAPIFormat = model.APIFormatOpenAIEmbedding
+	}
+
 	// Pass through the original query parameters
 	internalRequest.Query = c.Request.URL.Query()
 

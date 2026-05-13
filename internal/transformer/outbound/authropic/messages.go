@@ -32,12 +32,20 @@ func (o *MessageOutbound) TransformRequest(ctx context.Context, request *model.I
 		return nil, fmt.Errorf("request is nil")
 	}
 
-	// Convert to Anthropic request format
-	anthropicReq := convertToAnthropicRequest(request)
+	var body []byte
 
-	body, err := json.Marshal(anthropicReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal anthropic request: %w", err)
+	// 当入站格式也是 Anthropic Messages 时，直接透传原始请求 body，
+	// 避免 round-trip 转换破坏上游 prompt cache 的前缀匹配。
+	if model.ShouldPassthrough(request, model.APIFormatAnthropicMessage) {
+		body = model.PatchRawRequest(request.RawRequest, request)
+	} else {
+		// 不同格式间转换，走完整转换
+		anthropicReq := convertToAnthropicRequest(request)
+		var err error
+		body, err = json.Marshal(anthropicReq)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal anthropic request: %w", err)
+		}
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "", bytes.NewReader(body))

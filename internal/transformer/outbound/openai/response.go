@@ -28,12 +28,20 @@ func (o *ResponseOutbound) TransformRequest(ctx context.Context, request *model.
 		return nil, fmt.Errorf("request is nil")
 	}
 
-	// Convert to Responses API request format
-	responsesReq := ConvertToResponsesRequest(request)
+	var body []byte
 
-	body, err := json.Marshal(responsesReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal responses api request: %w", err)
+	// 当入站格式也是 Responses API 时，直接透传原始请求 body，
+	// 避免 round-trip 转换破坏 OpenAI prompt cache 的前缀匹配。
+	if model.ShouldPassthrough(request, model.APIFormatOpenAIResponse) {
+		body = model.PatchRawRequest(request.RawRequest, request)
+	} else {
+		// 不同格式间转换（如 Chat API → Responses API），走完整转换
+		responsesReq := ConvertToResponsesRequest(request)
+		var err error
+		body, err = json.Marshal(responsesReq)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal responses api request: %w", err)
+		}
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "", bytes.NewReader(body))

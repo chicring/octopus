@@ -16,26 +16,40 @@ import (
 type ChatOutbound struct{}
 
 func (o *ChatOutbound) TransformRequest(ctx context.Context, request *model.InternalLLMRequest, baseUrl, key string) (*http.Request, error) {
-	request.ClearHelpFields()
-
-	// Convert developer role to system role for compatibility
-	for i := range request.Messages {
-		if request.Messages[i].Role == "developer" {
-			request.Messages[i].Role = "system"
-		}
+	if request == nil {
+		return nil, fmt.Errorf("request is nil")
 	}
 
-	if request.Stream != nil && *request.Stream {
-		if request.StreamOptions == nil {
-			request.StreamOptions = &model.StreamOptions{IncludeUsage: true}
-		} else if !request.StreamOptions.IncludeUsage {
-			request.StreamOptions.IncludeUsage = true
-		}
-	}
+	var body []byte
 
-	body, err := json.Marshal(request)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	// 当入站格式也是 Chat API 时，直接透传原始请求 body，
+	// 避免 round-trip 转换破坏上游 prompt cache 的前缀匹配。
+	if model.ShouldPassthrough(request, model.APIFormatOpenAIChatCompletion) {
+		body = model.PatchRawRequest(request.RawRequest, request)
+	} else {
+		// 不同格式间转换，走完整转换
+		request.ClearHelpFields()
+
+		// Convert developer role to system role for compatibility
+		for i := range request.Messages {
+			if request.Messages[i].Role == "developer" {
+				request.Messages[i].Role = "system"
+			}
+		}
+
+		if request.Stream != nil && *request.Stream {
+			if request.StreamOptions == nil {
+				request.StreamOptions = &model.StreamOptions{IncludeUsage: true}
+			} else if !request.StreamOptions.IncludeUsage {
+				request.StreamOptions.IncludeUsage = true
+			}
+		}
+
+		var err error
+		body, err = json.Marshal(request)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal request: %w", err)
+		}
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "", bytes.NewReader(body))

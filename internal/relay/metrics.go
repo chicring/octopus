@@ -261,11 +261,17 @@ func (m *RelayMetrics) saveLog(ctx context.Context, err error, duration time.Dur
 		relayLog.InputTokens = int(m.InternalResponse.Usage.PromptTokens)
 		relayLog.OutputTokens = int(m.InternalResponse.Usage.CompletionTokens)
 		relayLog.Cost = m.Stats.InputCost + m.Stats.OutputCost
+		if m.InternalResponse.Usage.PromptTokensDetails != nil {
+			relayLog.CachedTokens = int(m.InternalResponse.Usage.PromptTokensDetails.CachedTokens)
+		}
+		relayLog.CacheCreationTokens = int(m.InternalResponse.Usage.CacheCreationInputTokens)
 	}
 
-	// 请求内容
+	// 请求内容：透传时记录原始入站 body（真实请求格式），否则记录内部格式
 	if m.InternalRequest != nil {
-		if reqJSON, jsonErr := json.Marshal(m.InternalRequest); jsonErr == nil {
+		if m.InternalRequest.RawAPIFormat != "" && len(m.InternalRequest.RawRequest) > 0 {
+			relayLog.RequestContent = string(m.InternalRequest.RawRequest)
+		} else if reqJSON, jsonErr := json.Marshal(m.InternalRequest); jsonErr == nil {
 			relayLog.RequestContent = string(reqJSON)
 		}
 	}

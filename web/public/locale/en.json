@@ -596,7 +596,9 @@
       "retryDetails": "Retry Details",
       "attempts": "attempts",
       "success": "Success",
-      "failed": "Failed"
+      "failed": "Failed",
+      "cachedTokens": "Cached",
+      "cacheCreationTokens": "Cache Write"
     },
     "activeRequest": {
       "active": "Active",
