@@ -3,6 +3,7 @@ package openai
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/bestruirui/octopus/internal/transformer/model"
@@ -432,4 +433,72 @@ func TestResponseInbound_StreamWithReasoningContent(t *testing.T) {
 	}
 
 	t.Logf("ClientResponseBody: %s", string(clientBody))
+}
+
+func TestResponseInbound_StreamCompletedIncludesOutput(t *testing.T) {
+	adapter := &ResponseInbound{}
+
+	content := "Hello from stream"
+	finishReason := "stop"
+	usage := &model.Usage{PromptTokens: 3, CompletionTokens: 4, TotalTokens: 7}
+
+	chunks := []*model.InternalLLMResponse{
+		{
+			ID:      "resp-123",
+			Object:  "chat.completion.chunk",
+			Model:   "gpt-4o",
+			Created: 123,
+			Choices: []model.Choice{{Index: 0, Delta: &model.Message{Role: "assistant"}}},
+		},
+		{
+			ID:      "resp-123",
+			Object:  "chat.completion.chunk",
+			Model:   "gpt-4o",
+			Created: 123,
+			Choices: []model.Choice{{Index: 0, Delta: &model.Message{Content: model.MessageContent{Content: &content}}}},
+		},
+		{
+			ID:      "resp-123",
+			Object:  "chat.completion.chunk",
+			Model:   "gpt-4o",
+			Created: 123,
+			Choices: []model.Choice{{Index: 0, FinishReason: &finishReason}},
+			Usage:   usage,
+		},
+	}
+
+	var completed *ResponsesResponse
+	for _, chunk := range chunks {
+		data, err := adapter.TransformStream(context.Background(), chunk)
+		if err != nil {
+			t.Fatalf("TransformStream error: %v", err)
+		}
+		for _, line := range strings.Split(string(data), "\n\n") {
+			line = strings.TrimSpace(line)
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+			var event ResponsesStreamEvent
+			if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &event); err != nil {
+				t.Fatalf("event is not valid JSON: %v", err)
+			}
+			if event.Type == "response.completed" {
+				completed = event.Response
+			}
+		}
+	}
+
+	if completed == nil {
+		t.Fatal("response.completed was not emitted")
+	}
+	if len(completed.Output) == 0 {
+		t.Fatal("response.completed output is empty")
+	}
+	item := completed.Output[0]
+	if item.Type != "message" || item.Content == nil || len(item.Content.Items) != 1 {
+		t.Fatalf("unexpected completed output item: %+v", item)
+	}
+	if item.Content.Items[0].Text == nil || *item.Content.Items[0].Text != content {
+		t.Fatalf("completed output text = %v, want %q", item.Content.Items[0].Text, content)
+	}
 }

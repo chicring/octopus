@@ -24,6 +24,7 @@ func (o *MessagesOutbound) TransformRequest(ctx context.Context, request *model.
 	// 当入站格式也是 Gemini 时，直接透传原始请求 body，
 	// 避免 round-trip 转换破坏上游 prompt cache 的前缀匹配。
 	if model.ShouldPassthrough(request, model.APIFormatGeminiContents) {
+		model.MarkPassthrough(request, model.APIFormatGeminiContents)
 		body = model.PatchRawRequest(request.RawRequest, request)
 	} else {
 		// 不同格式间转换，走完整转换
@@ -62,6 +63,8 @@ func (o *MessagesOutbound) TransformRequest(ctx context.Context, request *model.
 		q.Set("alt", "sse")
 	}
 	parsedUrl.RawQuery = q.Encode()
+
+	request.UpstreamRequestBody = body
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, parsedUrl.String(), bytes.NewReader(body))
 	if err != nil {
@@ -108,7 +111,9 @@ func (o *MessagesOutbound) TransformStream(ctx context.Context, eventData []byte
 	}
 
 	// Convert to internal format
-	return convertGeminiToLLMResponse(&geminiResp, true), nil
+	resp := convertGeminiToLLMResponse(&geminiResp, true)
+	resp.RawChunk = append([]byte(nil), eventData...)
+	return resp, nil
 }
 
 // Helper functions

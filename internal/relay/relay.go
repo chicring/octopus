@@ -182,6 +182,7 @@ func Handler(inboundType inbound.InboundType, c *gin.Context) {
 
 		// 设置实际模型
 		internalRequest.Model = item.ModelName
+		model.ClearPassthrough(internalRequest)
 
 		// 重置入站适配器的尝试级响应状态，避免前次尝试的残留数据
 		// （streamChunks/storedResponse 等）污染后续的响应聚合
@@ -252,17 +253,23 @@ func (ra *relayAttempt) attempt() attemptResult {
 		// ====== 成功 ======
 		ok, emptyReason := ra.collectResponse()
 		if !ok {
-			// 上游返回 2xx 但响应为空（如余额不足返回空响应），视为失败以触发重试
-			emptyRespErr := fmt.Errorf("channel %s returned empty response (status %d): %s", ra.channel.Name, statusCode, emptyReason)
-			ra.usedKey.TotalRequests++
-			op.ChannelKeyUpdate(ra.usedKey)
-			span.End(dbmodel.AttemptFailed, statusCode, emptyRespErr.Error())
-			op.StatsChannelUpdate(ra.channel.ID, dbmodel.StatsMetrics{RequestFailed: 1})
-			balancer.RecordFailure(ra.channel.ID, ra.usedKey.ID, ra.internalRequest.Model)
-			return attemptResult{
-				Success: false,
-				Written: ra.c.Writer.Written(),
-				Err:     emptyRespErr,
+			if ra.c.Writer.Written() {
+				// 响应已经写给客户端时不能再把“日志聚合为空”当失败重试，
+				// 否则会破坏同格式透传场景的 prompt cache，造成重复扣费。
+				log.Warnf("channel %s response was written but log aggregation is empty (status %d): %s", ra.channel.Name, statusCode, emptyReason)
+			} else {
+				// 上游返回 2xx 但响应为空（如余额不足返回空响应），视为失败以触发重试
+				emptyRespErr := fmt.Errorf("channel %s returned empty response (status %d): %s", ra.channel.Name, statusCode, emptyReason)
+				ra.usedKey.TotalRequests++
+				op.ChannelKeyUpdate(ra.usedKey)
+				span.End(dbmodel.AttemptFailed, statusCode, emptyRespErr.Error())
+				op.StatsChannelUpdate(ra.channel.ID, dbmodel.StatsMetrics{RequestFailed: 1})
+				balancer.RecordFailure(ra.channel.ID, ra.usedKey.ID, ra.internalRequest.Model)
+				return attemptResult{
+					Success: false,
+					Written: false,
+					Err:     emptyRespErr,
+				}
 			}
 		}
 		ra.usedKey.TotalCost += ra.metrics.Stats.InputCost + ra.metrics.Stats.OutputCost
@@ -308,6 +315,10 @@ func (ra *relayAttempt) attempt() attemptResult {
 					balancer.SetSticky(ra.apiKeyID, ra.requestModel, ra.channel.ID, ra.usedKey.ID, ra.internalRequest.Model)
 					return attemptResult{Success: true}
 				}
+				if ra.c.Writer.Written() {
+					log.Warnf("channel %s response was written after 401 retry but log aggregation is empty (status %d): %s", ra.channel.Name, retryStatusCode, emptyReason)
+					return attemptResult{Success: true}
+				}
 				// 重试成功但响应为空
 				emptyRespErr := fmt.Errorf("channel %s returned empty response after 401 retry (status %d): %s", ra.channel.Name, retryStatusCode, emptyReason)
 				ra.usedKey.TotalRequests++
@@ -315,7 +326,7 @@ func (ra *relayAttempt) attempt() attemptResult {
 				span.End(dbmodel.AttemptFailed, retryStatusCode, emptyRespErr.Error())
 				op.StatsChannelUpdate(ra.channel.ID, dbmodel.StatsMetrics{RequestFailed: 1})
 				balancer.RecordFailure(ra.channel.ID, ra.usedKey.ID, ra.internalRequest.Model)
-				return attemptResult{Success: false, Written: ra.c.Writer.Written(), Err: emptyRespErr}
+				return attemptResult{Success: false, Written: false, Err: emptyRespErr}
 			}
 			// 重试仍失败，自动关闭 key
 			log.Warnf("[codex-auth] key %d: 401 retry still failed (status %d), disabling key", ra.usedKey.ID, retryStatusCode)
@@ -379,6 +390,8 @@ func parseRequest(inboundType inbound.InboundType, c *gin.Context) (*model.Inter
 		internalRequest.RawAPIFormat = model.APIFormatOpenAIResponse
 	case inbound.InboundTypeAnthropic:
 		internalRequest.RawAPIFormat = model.APIFormatAnthropicMessage
+	case inbound.InboundTypeGemini:
+		internalRequest.RawAPIFormat = model.APIFormatGeminiContents
 	case inbound.InboundTypeOpenAIEmbedding:
 		internalRequest.RawAPIFormat = model.APIFormatOpenAIEmbedding
 	}
@@ -493,6 +506,7 @@ func (ra *relayAttempt) handleStreamResponse(ctx context.Context, response *http
 
 	type sseReadResult struct {
 		data string
+		typ  string
 		err  error
 	}
 	results := make(chan sseReadResult, 1)
@@ -504,7 +518,7 @@ func (ra *relayAttempt) handleStreamResponse(ctx context.Context, response *http
 				results <- sseReadResult{err: err}
 				return
 			}
-			results <- sseReadResult{data: ev.Data}
+			results <- sseReadResult{data: ev.Data, typ: ev.Type}
 		}
 	}()
 
@@ -540,7 +554,7 @@ func (ra *relayAttempt) handleStreamResponse(ctx context.Context, response *http
 				return fmt.Errorf("failed to read stream event: %w", r.err)
 			}
 
-			data, err := ra.transformStreamData(ctx, r.data)
+			data, err := ra.transformStreamData(ctx, r.data, r.typ)
 			if err != nil {
 				var respErr *model.ResponseError
 				if errors.As(err, &respErr) {
@@ -575,13 +589,28 @@ func (ra *relayAttempt) handleStreamResponse(ctx context.Context, response *http
 }
 
 // transformStreamData 转换流式数据
-func (ra *relayAttempt) transformStreamData(ctx context.Context, data string) ([]byte, error) {
+func (ra *relayAttempt) transformStreamData(ctx context.Context, data string, eventType string) ([]byte, error) {
 	internalStream, err := ra.outAdapter.TransformStream(ctx, []byte(data))
 	if err != nil {
 		log.Warnf("failed to transform stream: %v", err)
 		return nil, err
 	}
 	if internalStream == nil {
+		return nil, nil
+	}
+
+	// 同格式透传：原始数据直接转发给客户端，同时仍将内部响应送入 inbound adapter
+	// 以累积 streamChunks 供聚合/日志使用（TransformStream 的输出被丢弃）。
+	if model.IsPassthrough(ra.internalRequest, ra.internalRequest.RawAPIFormat) {
+		_, _ = ra.inAdapter.TransformStream(ctx, internalStream)
+
+		if internalStream.Object == "[DONE]" {
+			return []byte("data: [DONE]\n\n"), nil
+		}
+		if len(internalStream.RawChunk) > 0 {
+			return formatRawSSEEvent(eventType, internalStream.RawChunk), nil
+		}
+		// 无 RawChunk 的内部事件（如 usage-only chunk）不发送给客户端
 		return nil, nil
 	}
 
@@ -592,6 +621,19 @@ func (ra *relayAttempt) transformStreamData(ctx context.Context, data string) ([
 	}
 
 	return inStream, nil
+}
+
+func formatRawSSEEvent(eventType string, data []byte) []byte {
+	var b strings.Builder
+	if eventType != "" {
+		b.WriteString("event: ")
+		b.WriteString(eventType)
+		b.WriteByte('\n')
+	}
+	b.WriteString("data: ")
+	b.Write(data)
+	b.WriteString("\n\n")
+	return []byte(b.String())
 }
 
 // handleResponse 处理非流式响应

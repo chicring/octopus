@@ -33,6 +33,7 @@ func (o *ResponseOutbound) TransformRequest(ctx context.Context, request *model.
 	// 当入站格式也是 Responses API 时，直接透传原始请求 body，
 	// 避免 round-trip 转换破坏 OpenAI prompt cache 的前缀匹配。
 	if model.ShouldPassthrough(request, model.APIFormatOpenAIResponse) {
+		model.MarkPassthrough(request, model.APIFormatOpenAIResponse)
 		body = model.PatchRawRequest(request.RawRequest, request)
 	} else {
 		// 不同格式间转换（如 Chat API → Responses API），走完整转换
@@ -43,6 +44,8 @@ func (o *ResponseOutbound) TransformRequest(ctx context.Context, request *model.
 			return nil, fmt.Errorf("failed to marshal responses api request: %w", err)
 		}
 	}
+
+	request.UpstreamRequestBody = body
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "", bytes.NewReader(body))
 	if err != nil {
@@ -205,7 +208,7 @@ func (o *ResponseOutbound) TransformStream(ctx context.Context, eventData []byte
 				},
 			}
 		} else {
-			return nil, nil
+			resp.Choices = []model.Choice{}
 		}
 
 	case "response.reasoning_summary_text.delta":
@@ -235,7 +238,7 @@ func (o *ResponseOutbound) TransformStream(ctx context.Context, eventData []byte
 					},
 				}
 			}
-			var finishReason *string
+			finishReason := lo.ToPtr("stop")
 			if streamEvent.Response.Status != nil {
 				switch *streamEvent.Response.Status {
 				case "completed":
@@ -252,6 +255,18 @@ func (o *ResponseOutbound) TransformStream(ctx context.Context, eventData []byte
 			}
 			if streamEvent.Response.Usage != nil {
 				resp.Usage = convertResponsesUsage(streamEvent.Response.Usage)
+			}
+			if len(streamEvent.Response.Output) > 0 {
+				completedResp, err := convertToLLMResponseFromResponses(streamEvent.Response)
+				if err != nil {
+					return nil, err
+				}
+				for idx := range completedResp.Choices {
+					if completedResp.Choices[idx].FinishReason == nil {
+						completedResp.Choices[idx].FinishReason = finishReason
+					}
+				}
+				resp.Choices = completedResp.Choices
 			}
 		}
 
@@ -270,10 +285,10 @@ func (o *ResponseOutbound) TransformStream(ctx context.Context, eventData []byte
 		}
 
 	default:
-		// Skip unhandled events
-		return nil, nil
+		resp.Choices = []model.Choice{}
 	}
 
+	resp.RawChunk = append([]byte(nil), eventData...)
 	return resp, nil
 }
 

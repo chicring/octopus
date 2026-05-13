@@ -1,6 +1,8 @@
 package anthropic
 
 import (
+	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/bestruirui/octopus/internal/transformer/model"
@@ -112,6 +114,48 @@ func TestMessagesInbound_Reset_AllowsRetryWithCleanState(t *testing.T) {
 	// inputToken preserved
 	if adapter.inputToken != 5000 {
 		t.Errorf("inputToken should be 5000, got %d", adapter.inputToken)
+	}
+}
+
+func TestMessagesInbound_UsageKeepsInputTokensTotal(t *testing.T) {
+	adapter := &MessagesInbound{}
+	content := "hello"
+	finishReason := "stop"
+	resp := &model.InternalLLMResponse{
+		ID:    "msg_123",
+		Model: "claude-3-5-sonnet",
+		Choices: []model.Choice{{
+			Index:        0,
+			Message:      &model.Message{Role: "assistant", Content: model.MessageContent{Content: &content}},
+			FinishReason: &finishReason,
+		}},
+		Usage: &model.Usage{
+			PromptTokens:     100,
+			CompletionTokens: 20,
+			TotalTokens:      120,
+			PromptTokensDetails: &model.PromptTokensDetails{
+				CachedTokens: 30,
+			},
+		},
+	}
+
+	body, err := adapter.ConvertResponseToClientFormat(context.Background(), resp)
+	if err != nil {
+		t.Fatalf("ConvertResponseToClientFormat error: %v", err)
+	}
+
+	var msg Message
+	if err := json.Unmarshal(body, &msg); err != nil {
+		t.Fatalf("invalid Anthropic message JSON: %v", err)
+	}
+	if msg.Usage == nil {
+		t.Fatal("usage is nil")
+	}
+	if msg.Usage.InputTokens != 100 {
+		t.Fatalf("input_tokens = %d, want total 100", msg.Usage.InputTokens)
+	}
+	if msg.Usage.CacheReadInputTokens != 30 {
+		t.Fatalf("cache_read_input_tokens = %d, want 30", msg.Usage.CacheReadInputTokens)
 	}
 }
 

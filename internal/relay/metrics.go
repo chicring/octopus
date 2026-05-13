@@ -103,8 +103,8 @@ func (m *RelayMetrics) SetInternalResponse(resp *transformerModel.InternalLLMRes
 func (m *RelayMetrics) SaveEarlyFailure(err error) {
 	duration := time.Since(m.StartTime)
 	globalStats := model.StatsMetrics{
-		WaitTime:       duration.Milliseconds(),
-		RequestFailed:  1,
+		WaitTime:      duration.Milliseconds(),
+		RequestFailed: 1,
 	}
 	op.StatsTotalUpdate(globalStats)
 	op.StatsHourlyUpdate(globalStats)
@@ -269,9 +269,12 @@ func (m *RelayMetrics) saveLog(ctx context.Context, err error, duration time.Dur
 		relayLog.CacheCreationTokens = int(m.InternalResponse.Usage.CacheCreationInputTokens)
 	}
 
-	// 请求内容：透传时记录原始入站 body（真实请求格式），否则记录内部格式
+	// 请求内容：优先记录实际发送给上游的 body（含 model/patch 变更），
+	// 回退到原始入站 body，最后记录内部 JSON 格式。
 	if m.InternalRequest != nil {
-		if m.InternalRequest.RawAPIFormat != "" && len(m.InternalRequest.RawRequest) > 0 {
+		if len(m.InternalRequest.UpstreamRequestBody) > 0 {
+			relayLog.RequestContent = string(m.InternalRequest.UpstreamRequestBody)
+		} else if m.InternalRequest.RawAPIFormat != "" && len(m.InternalRequest.RawRequest) > 0 {
 			relayLog.RequestContent = string(m.InternalRequest.RawRequest)
 		} else if reqJSON, jsonErr := json.Marshal(m.InternalRequest); jsonErr == nil {
 			relayLog.RequestContent = string(reqJSON)
@@ -280,9 +283,22 @@ func (m *RelayMetrics) saveLog(ctx context.Context, err error, duration time.Dur
 
 	// 响应内容：通过 inbound adapter 转为客户端实际格式记录
 	if m.InternalResponse != nil {
-		if m.inAdapter != nil {
+		if m.InternalRequest != nil && transformerModel.IsPassthrough(m.InternalRequest, m.InternalRequest.RawAPIFormat) {
+			respForLog := m.filterResponseForLog(m.InternalResponse)
+			if respJSON, jsonErr := json.Marshal(respForLog); jsonErr == nil {
+				relayLog.ResponseContent = string(respJSON)
+			}
+		} else if m.inAdapter != nil {
 			if clientBody, err := m.inAdapter.ConvertResponseToClientFormat(context.Background(), m.InternalResponse); err == nil && len(clientBody) > 0 {
 				relayLog.ResponseContent = string(clientBody)
+			} else {
+				respForLog := m.filterResponseForLog(m.InternalResponse)
+				if respJSON, jsonErr := json.Marshal(respForLog); jsonErr == nil {
+					relayLog.ResponseContent = string(respJSON)
+				}
+				if err != nil {
+					log.Warnf("failed to convert response content for log: %v", err)
+				}
 			}
 		} else {
 			// fallback: 记录内部格式

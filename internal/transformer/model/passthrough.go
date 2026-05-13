@@ -58,3 +58,22 @@ func PatchRawRequest(raw []byte, request *InternalLLMRequest) []byte {
 func ShouldPassthrough(request *InternalLLMRequest, outboundFormat APIFormat) bool {
 	return request.RawAPIFormat == outboundFormat && len(request.RawRequest) > 0
 }
+
+// MarkPassthrough 记录本次出站请求实际走了原始 body 透传。
+func MarkPassthrough(request *InternalLLMRequest, outboundFormat APIFormat) {
+	if request != nil {
+		request.PassthroughAPIFormat = outboundFormat
+	}
+}
+
+// ClearPassthrough 清除本次尝试的透传标记。
+func ClearPassthrough(request *InternalLLMRequest) {
+	if request != nil {
+		request.PassthroughAPIFormat = ""
+	}
+}
+
+// IsPassthrough 判断本次尝试是否实际透传到了指定格式。
+func IsPassthrough(request *InternalLLMRequest, outboundFormat APIFormat) bool {
+	return request != nil && request.PassthroughAPIFormat == outboundFormat
+}

@@ -41,29 +41,38 @@ func (o *EmbeddingOutbound) TransformRequest(ctx context.Context, request *model
 		return nil, errors.New("not an embedding request")
 	}
 
-	// 构建 embedding 请求体（使用 OpenAI 标准字段名）
-	embeddingRequest := map[string]any{
-		"model": request.Model,
-		"input": request.EmbeddingInput, // 上游期望 "input"
+	var body []byte
+	if model.ShouldPassthrough(request, model.APIFormatOpenAIEmbedding) {
+		model.MarkPassthrough(request, model.APIFormatOpenAIEmbedding)
+		body = model.PatchRawRequest(request.RawRequest, request)
+	} else {
+		// 构建 embedding 请求体（使用 OpenAI 标准字段名）
+		embeddingRequest := map[string]any{
+			"model": request.Model,
+			"input": request.EmbeddingInput, // 上游期望 "input"
+		}
+
+		// 添加可选参数
+		if request.EmbeddingDimensions != nil {
+			embeddingRequest["dimensions"] = *request.EmbeddingDimensions
+		}
+
+		if request.EmbeddingEncodingFormat != nil {
+			embeddingRequest["encoding_format"] = *request.EmbeddingEncodingFormat
+		}
+
+		if request.User != nil {
+			embeddingRequest["user"] = *request.User
+		}
+
+		var err error
+		body, err = json.Marshal(embeddingRequest)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal request: %w", err)
+		}
 	}
 
-	// 添加可选参数
-	if request.EmbeddingDimensions != nil {
-		embeddingRequest["dimensions"] = *request.EmbeddingDimensions
-	}
-
-	if request.EmbeddingEncodingFormat != nil {
-		embeddingRequest["encoding_format"] = *request.EmbeddingEncodingFormat
-	}
-
-	if request.User != nil {
-		embeddingRequest["user"] = *request.User
-	}
-
-	body, err := json.Marshal(embeddingRequest)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
-	}
+	request.UpstreamRequestBody = body
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "", bytes.NewReader(body))
 	if err != nil {

@@ -25,6 +25,7 @@ func (o *ChatOutbound) TransformRequest(ctx context.Context, request *model.Inte
 	// 当入站格式也是 Chat API 时，直接透传原始请求 body，
 	// 避免 round-trip 转换破坏上游 prompt cache 的前缀匹配。
 	if model.ShouldPassthrough(request, model.APIFormatOpenAIChatCompletion) {
+		model.MarkPassthrough(request, model.APIFormatOpenAIChatCompletion)
 		body = model.PatchRawRequest(request.RawRequest, request)
 	} else {
 		// 不同格式间转换，走完整转换
@@ -51,6 +52,8 @@ func (o *ChatOutbound) TransformRequest(ctx context.Context, request *model.Inte
 			return nil, fmt.Errorf("failed to marshal request: %w", err)
 		}
 	}
+
+	request.UpstreamRequestBody = body
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "", bytes.NewReader(body))
 	if err != nil {
@@ -108,5 +111,6 @@ func (o *ChatOutbound) TransformStream(ctx context.Context, eventData []byte) (*
 	if err := json.Unmarshal(eventData, &resp); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal stream chunk: %w", err)
 	}
+	resp.RawChunk = append([]byte(nil), eventData...)
 	return &resp, nil
 }

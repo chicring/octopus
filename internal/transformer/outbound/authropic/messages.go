@@ -37,6 +37,7 @@ func (o *MessageOutbound) TransformRequest(ctx context.Context, request *model.I
 	// 当入站格式也是 Anthropic Messages 时，直接透传原始请求 body，
 	// 避免 round-trip 转换破坏上游 prompt cache 的前缀匹配。
 	if model.ShouldPassthrough(request, model.APIFormatAnthropicMessage) {
+		model.MarkPassthrough(request, model.APIFormatAnthropicMessage)
 		body = patchAnthropicThinkingBlocks(model.PatchRawRequest(request.RawRequest, request), request)
 	} else {
 		// 不同格式间转换，走完整转换
@@ -47,6 +48,8 @@ func (o *MessageOutbound) TransformRequest(ctx context.Context, request *model.I
 			return nil, fmt.Errorf("failed to marshal anthropic request: %w", err)
 		}
 	}
+
+	request.UpstreamRequestBody = body
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "", bytes.NewReader(body))
 	if err != nil {
@@ -282,7 +285,7 @@ func (o *MessageOutbound) TransformStream(ctx context.Context, eventData []byte)
 
 	case "error":
 		var errResp struct {
-			Type  string                          `json:"type"`
+			Type  string                     `json:"type"`
 			Error anthropicModel.ErrorDetail `json:"error"`
 		}
 		if err := json.Unmarshal(eventData, &errResp); err == nil && errResp.Error.Message != "" {
@@ -296,12 +299,13 @@ func (o *MessageOutbound) TransformStream(ctx context.Context, eventData []byte)
 		return nil, fmt.Errorf("anthropic stream error: %s", string(eventData))
 
 	case "content_block_stop", "ping":
-		return nil, nil
+		resp.Choices = []model.Choice{}
 
 	default:
-		return nil, nil
+		resp.Choices = []model.Choice{}
 	}
 
+	resp.RawChunk = append([]byte(nil), eventData...)
 	return resp, nil
 }
 

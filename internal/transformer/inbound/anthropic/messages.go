@@ -309,7 +309,7 @@ func (i *MessagesInbound) TransformRequest(ctx context.Context, body []byte) (*m
 			if anthropicReq.ToolChoice.Name != nil {
 				chatReq.ToolChoice = &model.ToolChoice{
 					NamedToolChoice: &model.NamedToolChoice{
-						Type: "function",
+						Type:     "function",
 						Function: model.ToolFunction{Name: *anthropicReq.ToolChoice.Name},
 					},
 				}
@@ -510,7 +510,6 @@ func (i *MessagesInbound) ConvertResponseToClientFormat(ctx context.Context, res
 		}
 		if response.Usage.PromptTokensDetails != nil {
 			usage.CacheReadInputTokens = response.Usage.PromptTokensDetails.CachedTokens
-			usage.InputTokens -= usage.CacheReadInputTokens
 		}
 		if response.Usage.CacheCreationInputTokens > 0 {
 			usage.CacheCreationInputTokens = response.Usage.CacheCreationInputTokens
@@ -922,7 +921,6 @@ func (i *MessagesInbound) convertUsage(usage *model.Usage) *Usage {
 	}
 	if usage.PromptTokensDetails != nil {
 		anthropicUsage.CacheReadInputTokens = usage.PromptTokensDetails.CachedTokens
-		anthropicUsage.InputTokens -= anthropicUsage.CacheReadInputTokens
 	}
 	if usage.CacheCreationInputTokens > 0 {
 		anthropicUsage.CacheCreationInputTokens = usage.CacheCreationInputTokens

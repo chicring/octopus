@@ -86,8 +86,11 @@ func TestTransformStream_PingEvent(t *testing.T) {
 	eventData := []byte(`{"type":"ping"}`)
 	result, err := o.TransformStream(context.Background(), eventData)
 
-	if result != nil {
-		t.Errorf("expected nil result for ping, got %v", result)
+	if result == nil {
+		t.Fatal("expected raw passthrough result for ping, got nil")
+	}
+	if string(result.RawChunk) != string(eventData) {
+		t.Errorf("RawChunk changed, got %s want %s", result.RawChunk, eventData)
 	}
 	if err != nil {
 		t.Errorf("expected nil error for ping, got %v", err)
@@ -100,8 +103,11 @@ func TestTransformStream_ContentBlockStop(t *testing.T) {
 	eventData := []byte(`{"type":"content_block_stop","index":0}`)
 	result, err := o.TransformStream(context.Background(), eventData)
 
-	if result != nil {
-		t.Errorf("expected nil result, got %v", result)
+	if result == nil {
+		t.Fatal("expected raw passthrough result, got nil")
+	}
+	if string(result.RawChunk) != string(eventData) {
+		t.Errorf("RawChunk changed, got %s want %s", result.RawChunk, eventData)
 	}
 	if err != nil {
 		t.Errorf("expected nil error, got %v", err)
@@ -255,7 +261,7 @@ func TestConvertAssistantWithToolCalls_ThinkingModeEmptyStringReasoningContent(t
 		Content: model.MessageContent{
 			Content: lo.ToPtr(""),
 		},
-		ReasoningContent: lo.ToPtr(""), // explicit empty string
+		ReasoningContent:   lo.ToPtr(""), // explicit empty string
 		ReasoningSignature: lo.ToPtr("sig123"),
 		ToolCalls: []model.ToolCall{
 			{

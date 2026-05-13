@@ -1,10 +1,13 @@
 package relay
 
 import (
+	"context"
+	"strings"
 	"testing"
 
 	"github.com/bestruirui/octopus/internal/transformer/inbound"
 	"github.com/bestruirui/octopus/internal/transformer/model"
+	openaiOutbound "github.com/bestruirui/octopus/internal/transformer/outbound/openai"
 )
 
 // TestInboundReset_AcrossRetrySimulatesRetry 测试入站适配器在重试场景下的状态隔离
@@ -55,7 +58,7 @@ func TestInboundReset_AcrossRetrySimulatesRetry(t *testing.T) {
 		},
 		Choices: []model.Choice{
 			{
-				Index:       0,
+				Index:        0,
 				FinishReason: ptrStr("stop"),
 			},
 		},
@@ -178,3 +181,102 @@ func TestInboundReset_AnthropicPreservesInputToken(t *testing.T) {
 }
 
 func ptrStr(s string) *string { return &s }
+
+// TestPassthroughStreamStillStoresChunksForAggregation 验证同格式透传流式路径下，
+// outbound TransformStream 的内部响应仍通过 inbound TransformStream 累积，
+// 使得 GetInternalResponse 能正确聚合 usage 等统计数据。
+func TestPassthroughStreamStillStoresChunksForAggregation(t *testing.T) {
+	// 模拟 OpenAI Chat 的透传流式路径
+	outAdapter := &openaiOutbound.ChatOutbound{}
+	inAdapter := inbound.Get(inbound.InboundTypeOpenAIChat)
+
+	internalReq := &model.InternalLLMRequest{
+		Model:        "gpt-4o",
+		RawRequest:   []byte(`{"model":"gpt-4o","messages":[{"role":"user","content":"hi"}],"stream":true}`),
+		RawAPIFormat: model.APIFormatOpenAIChatCompletion,
+		Stream:       boolPtr(true),
+	}
+
+	// 模拟 relay 的透传路径：TransformRequest 已设置 PassthroughAPIFormat
+	model.MarkPassthrough(internalReq, model.APIFormatOpenAIChatCompletion)
+
+	// 模拟上游流式 chunk
+	chunks := []string{
+		`{"id":"chatcmpl-123","object":"chat.completion.chunk","created":1000,"model":"gpt-4o","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}`,
+		`{"id":"chatcmpl-123","object":"chat.completion.chunk","created":1000,"model":"gpt-4o","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}]}`,
+		`{"id":"chatcmpl-123","object":"chat.completion.chunk","created":1000,"model":"gpt-4o","choices":[{"index":0,"delta":{"content":" world"},"finish_reason":null}]}`,
+		`{"id":"chatcmpl-123","object":"chat.completion.chunk","created":1000,"model":"gpt-4o","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}`,
+		`[DONE]`,
+	}
+
+	// 模拟 relay transformStreamData 的透传路径
+	for _, chunk := range chunks {
+		internalStream, err := outAdapter.TransformStream(context.Background(), []byte(chunk))
+		if err != nil {
+			t.Fatalf("TransformStream error on chunk %q: %v", chunk, err)
+		}
+		if internalStream == nil {
+			continue
+		}
+
+		// 验证透传判断
+		if !model.IsPassthrough(internalReq, model.APIFormatOpenAIChatCompletion) {
+			t.Fatal("should be passthrough")
+		}
+
+		// 透传模式：将内部响应送入 inbound adapter 累积（如 relay 所做），
+		// 但返回原始数据给客户端（此处只验证累积，不验证返回值）
+		_, _ = inAdapter.TransformStream(context.Background(), internalStream)
+
+		// 验证原始数据不变
+		if internalStream.Object == "[DONE]" {
+			// [DONE] 标记被正确识别
+			continue
+		}
+		if len(internalStream.RawChunk) == 0 {
+			t.Fatalf("RawChunk should be set for chunk: %s", chunk)
+		}
+		if string(internalStream.RawChunk) != chunk {
+			t.Fatalf("RawChunk changed\ngot:  %s\nwant: %s", internalStream.RawChunk, chunk)
+		}
+	}
+
+	// 验证聚合：GetInternalResponse 应返回包含 usage 的完整响应
+	resp, err := inAdapter.GetInternalResponse(context.Background())
+	if err != nil {
+		t.Fatalf("GetInternalResponse error: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("GetInternalResponse should not be nil after streaming")
+	}
+	if resp.Usage == nil {
+		t.Fatal("usage should be aggregated from stream chunks")
+	}
+	if resp.Usage.PromptTokens != 10 {
+		t.Errorf("prompt_tokens = %d, want 10", resp.Usage.PromptTokens)
+	}
+	if resp.Usage.CompletionTokens != 5 {
+		t.Errorf("completion_tokens = %d, want 5", resp.Usage.CompletionTokens)
+	}
+	if len(resp.Choices) != 1 {
+		t.Fatalf("expected 1 choice, got %d", len(resp.Choices))
+	}
+	if resp.Choices[0].Message == nil || resp.Choices[0].Message.Content.Content == nil {
+		t.Fatal("expected message content in aggregated response")
+	}
+	if *resp.Choices[0].Message.Content.Content != "Hello world" {
+		t.Errorf("aggregated content = %q, want %q", *resp.Choices[0].Message.Content.Content, "Hello world")
+	}
+}
+
+func boolPtr(b bool) *bool { return &b }
+
+func TestFormatRawSSEEventPreservesEventType(t *testing.T) {
+	got := string(formatRawSSEEvent("content_block_delta", []byte(`{"type":"content_block_delta","delta":{"type":"text_delta","text":"hi"}}`)))
+	if !strings.HasPrefix(got, "event: content_block_delta\n") {
+		t.Fatalf("event type was not preserved: %q", got)
+	}
+	if !strings.Contains(got, `data: {"type":"content_block_delta"`) {
+		t.Fatalf("data payload was not preserved: %q", got)
+	}
+}

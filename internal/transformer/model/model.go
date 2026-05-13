@@ -236,6 +236,16 @@ type InternalLLMRequest struct {
 	// e.g. the request from the chat/completions endpoint is in the openai/chat_completion format.
 	RawAPIFormat APIFormat `json:"-"`
 
+	// PassthroughAPIFormat is set by an outbound adapter when it forwards RawRequest.
+	// It is attempt-scoped because different retry channels may use different formats.
+	PassthroughAPIFormat APIFormat `json:"-"`
+
+	// UpstreamRequestBody is the final request body actually sent to the upstream provider.
+	// For passthrough this equals the patched raw body; for cross-format conversion it
+	// equals the marshalled outbound struct. Set by outbound TransformRequest.
+	// Used by logging to record what was truly sent upstream.
+	UpstreamRequestBody []byte `json:"-"`
+
 	// TransformerMetadata stores transformer-specific metadata for preserving format during transformations.
 	// This is a help field and will not be sent to the llm service.
 	TransformerMetadata map[string]string `json:"-"`
@@ -330,7 +340,6 @@ func (r *InternalLLMRequest) fillMissingToolCallIDs() {
 		}
 	}
 }
-
 
 func (r *InternalLLMRequest) fillMissingToolCallIDsFromToolMessages() {
 	for msgIndex := 0; msgIndex < len(r.Messages); msgIndex++ {
@@ -677,6 +686,9 @@ type InternalLLMResponse struct {
 
 	// Error is the error information, will present if request to llm service failed with status >= 400.
 	Error *ResponseError `json:"error,omitempty"`
+
+	// RawChunk is the original SSE data payload from an upstream stream event.
+	RawChunk []byte `json:"-"`
 }
 
 func (r *InternalLLMResponse) ClearHelpFields() {

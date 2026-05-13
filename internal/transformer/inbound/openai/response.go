@@ -43,7 +43,8 @@ type ResponseInbound struct {
 	toolCallOutputIndex map[int]int
 
 	// Usage tracking
-	usage *model.Usage
+	usage           *model.Usage
+	completedOutput []ResponsesItem
 
 	// Stream chunks storage for aggregation
 	streamChunks []*model.InternalLLMResponse
@@ -71,6 +72,7 @@ func (i *ResponseInbound) Reset() {
 	i.toolCallItemStarted = nil
 	i.toolCallOutputIndex = nil
 	i.usage = nil
+	i.completedOutput = nil
 	i.streamChunks = nil
 	i.storedResponse = nil
 }
@@ -206,7 +208,7 @@ func (i *ResponseInbound) TransformStream(ctx context.Context, stream *model.Int
 			Model:     i.model,
 			CreatedAt: i.createdAt,
 			Status:    &status,
-			Output:    []ResponsesItem{},
+			Output:    i.completedOutput,
 			Usage:     convertUsageToResponses(i.usage),
 		}
 
@@ -457,8 +459,9 @@ func (i *ResponseInbound) closeReasoningItem() [][]byte {
 
 	// Emit output_item.done
 	item := ResponsesItem{
-		ID:   i.currentItemID,
-		Type: "reasoning",
+		ID:     i.currentItemID,
+		Type:   "reasoning",
+		Status: lo.ToPtr("completed"),
 		Summary: []ResponsesReasoningSummary{{
 			Type: "summary_text",
 			Text: fullReasoning,
@@ -471,6 +474,7 @@ func (i *ResponseInbound) closeReasoningItem() [][]byte {
 		Item:        &item,
 	}))
 
+	i.completedOutput = append(i.completedOutput, item)
 	i.outputIndex++
 	i.accumulatedReasoning.Reset()
 
@@ -509,6 +513,7 @@ func (i *ResponseInbound) closeMessageItem() [][]byte {
 		Item:        &item,
 	}))
 
+	i.completedOutput = append(i.completedOutput, item)
 	i.outputIndex++
 	i.contentIndex = 0
 	i.accumulatedText.Reset()
@@ -595,6 +600,7 @@ func (i *ResponseInbound) closeCurrentOutputItem() [][]byte {
 				Item:        &item,
 			}))
 
+			i.completedOutput = append(i.completedOutput, item)
 			i.toolCallItemStarted[idx] = false
 		}
 	}
