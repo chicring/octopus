@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/bestruirui/octopus/internal/model"
@@ -29,6 +28,9 @@ type RelayMetrics struct {
 	// 请求和响应内容
 	InternalRequest  *transformerModel.InternalLLMRequest
 	InternalResponse *transformerModel.InternalLLMResponse
+
+	// inbound adapter，用于将 InternalResponse 转为客户端格式记录日志
+	inAdapter transformerModel.Inbound
 
 	// 统计指标
 	ActualModel string
@@ -276,17 +278,18 @@ func (m *RelayMetrics) saveLog(ctx context.Context, err error, duration time.Dur
 		}
 	}
 
-	// 响应内容
+	// 响应内容：通过 inbound adapter 转为客户端实际格式记录
 	if m.InternalResponse != nil {
-		respForLog := m.filterResponseForLog(m.InternalResponse)
-		if respJSON, jsonErr := json.Marshal(respForLog); jsonErr == nil {
-			if m.InternalResponse.Usage != nil && m.InternalResponse.Usage.AnthropicUsage {
-				respStr := string(respJSON)
-				old := `"usage":{`
-				insert := fmt.Sprintf(`"usage":{"cache_creation_input_tokens":%d,`, m.InternalResponse.Usage.CacheCreationInputTokens)
-				respJSON = []byte(strings.Replace(respStr, old, insert, 1))
+		if m.inAdapter != nil {
+			if clientBody, err := m.inAdapter.ConvertResponseToClientFormat(context.Background(), m.InternalResponse); err == nil && len(clientBody) > 0 {
+				relayLog.ResponseContent = string(clientBody)
 			}
-			relayLog.ResponseContent = string(respJSON)
+		} else {
+			// fallback: 记录内部格式
+			respForLog := m.filterResponseForLog(m.InternalResponse)
+			if respJSON, jsonErr := json.Marshal(respForLog); jsonErr == nil {
+				relayLog.ResponseContent = string(respJSON)
+			}
 		}
 	}
 

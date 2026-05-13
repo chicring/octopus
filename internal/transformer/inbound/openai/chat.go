@@ -28,9 +28,12 @@ func (i *ChatInbound) TransformRequest(ctx context.Context, body []byte) (*model
 }
 
 func (i *ChatInbound) TransformResponse(ctx context.Context, response *model.InternalLLMResponse) ([]byte, error) {
-	// Store the response for later retrieval
 	i.storedResponse = response
+	return i.ConvertResponseToClientFormat(ctx, response)
+}
 
+// ConvertResponseToClientFormat 将内部响应转为 Chat Completion 格式，不修改 adapter 状态
+func (i *ChatInbound) ConvertResponseToClientFormat(ctx context.Context, response *model.InternalLLMResponse) ([]byte, error) {
 	body, err := json.Marshal(response)
 	if err != nil {
 		return nil, err

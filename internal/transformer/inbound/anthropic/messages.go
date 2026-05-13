@@ -367,8 +367,15 @@ func (i *MessagesInbound) TransformRequest(ctx context.Context, body []byte) (*m
 }
 
 func (i *MessagesInbound) TransformResponse(ctx context.Context, response *model.InternalLLMResponse) ([]byte, error) {
-	// Store the response for later retrieval
 	i.storedResponse = response
+	return i.ConvertResponseToClientFormat(ctx, response)
+}
+
+// ConvertResponseToClientFormat 将内部响应转为 Anthropic Messages 格式，不修改 adapter 状态
+func (i *MessagesInbound) ConvertResponseToClientFormat(ctx context.Context, response *model.InternalLLMResponse) ([]byte, error) {
+	if response == nil {
+		return nil, fmt.Errorf("response is nil")
+	}
 
 	resp := &Message{
 		ID:    response.ID,

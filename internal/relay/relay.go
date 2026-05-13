@@ -39,6 +39,7 @@ func Handler(inboundType inbound.InboundType, c *gin.Context) {
 
 	// 提前初始化 Metrics，确保早期失败也有日志记录
 	metrics := NewRelayMetrics(apiKeyID, requestModel, internalRequest, c.Request.UserAgent())
+	metrics.inAdapter = inAdapter
 
 	// 注册活跃请求
 	var apiKeyName string

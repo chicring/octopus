@@ -55,19 +55,20 @@ func (i *EmbeddingInbound) TransformRequest(ctx context.Context, body []byte) (*
 }
 
 func (i *EmbeddingInbound) TransformResponse(ctx context.Context, response *model.InternalLLMResponse) ([]byte, error) {
-	// Store the response for later retrieval
 	i.storedResponse = response
+	return i.ConvertResponseToClientFormat(ctx, response)
+}
 
-	// 转换为 OpenAI 标准格式
+// ConvertResponseToClientFormat 将内部响应转为 Embedding 格式，不修改 adapter 状态
+func (i *EmbeddingInbound) ConvertResponseToClientFormat(ctx context.Context, response *model.InternalLLMResponse) ([]byte, error) {
 	openAIResp := OpenAIEmbeddingResponse{
 		ID:      response.ID,
 		Object:  response.Object,
 		Created: response.Created,
 		Model:   response.Model,
-		Data:    response.EmbeddingData, // 使用 "data" 返回给客户端
+		Data:    response.EmbeddingData,
 		Usage:   response.Usage,
 	}
-
 	body, err := json.Marshal(openAIResp)
 	if err != nil {
 		return nil, err

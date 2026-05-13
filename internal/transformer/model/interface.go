@@ -10,6 +10,7 @@ type Inbound interface {
 	TransformRequest(ctx context.Context, body []byte) (*InternalLLMRequest, error)
 
 	// 将出站内部通用响应转为入站对应的响应格式
+	// 注意：此方法会修改 adapter 的 storedResponse 状态，仅在正常响应流程中调用
 	TransformResponse(ctx context.Context, response *InternalLLMResponse) ([]byte, error)
 
 	// 将出站内部通用流式响应转为入站对应的流式响应格式
@@ -19,6 +20,10 @@ type Inbound interface {
 	// 流式场景：将储存的流式响应聚合为完整的响应
 	// 非流式场景：返回储存的完整响应
 	GetInternalResponse(ctx context.Context) (*InternalLLMResponse, error)
+
+	// 将内部通用响应转为入站对应的响应格式，不修改 adapter 状态
+	// 用于日志记录等场景，避免 TransformResponse 的 storedResponse 副作用
+	ConvertResponseToClientFormat(ctx context.Context, response *InternalLLMResponse) ([]byte, error)
 
 	// Reset 清除内部累积的响应状态（streamChunks/storedResponse）
 	// 在每次重试尝试前调用，避免前次尝试的残留数据污染后续的响应聚合

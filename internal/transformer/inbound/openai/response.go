@@ -92,18 +92,20 @@ func (i *ResponseInbound) TransformResponse(ctx context.Context, response *model
 	if response == nil {
 		return nil, fmt.Errorf("response is nil")
 	}
-
-	// Store the response for later retrieval
 	i.storedResponse = response
+	return i.ConvertResponseToClientFormat(ctx, response)
+}
 
-	// Convert to Responses API format
-	resp := convertToResponsesAPIResponse(response)
-
+// ConvertResponseToClientFormat 将内部响应转为 Responses API 格式，不修改 adapter 状态
+func (i *ResponseInbound) ConvertResponseToClientFormat(ctx context.Context, response *model.InternalLLMResponse) ([]byte, error) {
+	if response == nil {
+		return nil, fmt.Errorf("response is nil")
+	}
+	resp := ConvertToResponsesAPIResponse(response)
 	body, err := json.Marshal(resp)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal responses api response: %w", err)
 	}
-
 	return body, nil
 }
 
@@ -1285,7 +1287,7 @@ func convertToolsToInternal(tools []ResponsesTool) ([]model.Tool, error) {
 	return result, nil
 }
 
-func convertToResponsesAPIResponse(resp *model.InternalLLMResponse) *ResponsesResponse {
+func ConvertToResponsesAPIResponse(resp *model.InternalLLMResponse) *ResponsesResponse {
 	result := &ResponsesResponse{
 		Object:    "response",
 		ID:        resp.ID,
