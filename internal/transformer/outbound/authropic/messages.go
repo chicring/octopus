@@ -37,7 +37,7 @@ func (o *MessageOutbound) TransformRequest(ctx context.Context, request *model.I
 	// 当入站格式也是 Anthropic Messages 时，直接透传原始请求 body，
 	// 避免 round-trip 转换破坏上游 prompt cache 的前缀匹配。
 	if model.ShouldPassthrough(request, model.APIFormatAnthropicMessage) {
-		body = model.PatchRawRequest(request.RawRequest, request)
+		body = patchAnthropicThinkingBlocks(model.PatchRawRequest(request.RawRequest, request), request)
 	} else {
 		// 不同格式间转换，走完整转换
 		anthropicReq := convertToAnthropicRequest(request)
@@ -1001,4 +1001,155 @@ func convertToolChoiceToAnthropic(tc *model.ToolChoice, parallel *bool) *anthrop
 	}
 
 	return result
+}
+
+// patchAnthropicThinkingBlocks 在 Anthropic 透传模式下修补 thinking block。
+// 当 thinking 模式开启时（thinking.type 为 enabled 或 adaptive），上游 API 要求
+// 每个 assistant 消息的 content 中必须包含 thinking block。
+// 客户端可能遗漏（如 claude-code 不回传 reasoning_content），此函数为缺少
+// thinking block 的 assistant 消息合成一个空 thinking block，避免上游 400 报错。
+func patchAnthropicThinkingBlocks(raw []byte, request *model.InternalLLMRequest) []byte {
+	// 仅在 thinking 模式开启时才需要修补
+	if request.ReasoningEffort == "" {
+		return raw
+	}
+
+	var req map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &req); err != nil {
+		return raw
+	}
+
+	// 检查 thinking 配置是否开启
+	thinkingRaw, ok := req["thinking"]
+	if !ok {
+		return raw
+	}
+
+	var thinkingConfig struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(thinkingRaw, &thinkingConfig); err != nil {
+		return raw
+	}
+
+	// thinking.type 为 disabled 时不需要修补
+	if thinkingConfig.Type == anthropicModel.ThinkingTypeDisabled {
+		return raw
+	}
+
+	// 获取 messages
+	messagesRaw, ok := req["messages"]
+	if !ok {
+		return raw
+	}
+
+	var messages []json.RawMessage
+	if err := json.Unmarshal(messagesRaw, &messages); err != nil {
+		return raw
+	}
+
+	patched := false
+	for i, msgRaw := range messages {
+		var msg struct {
+			Role    string          `json:"role"`
+			Content json.RawMessage `json:"content"`
+		}
+		if err := json.Unmarshal(msgRaw, &msg); err != nil {
+			continue
+		}
+
+		if msg.Role != "assistant" {
+			continue
+		}
+
+		// content 可能是字符串或数组
+		var contentBlocks []json.RawMessage
+		if err := json.Unmarshal(msg.Content, &contentBlocks); err != nil {
+			// content 是字符串格式，转换为数组格式并添加 thinking block
+			var newBlocks []map[string]string
+			newBlocks = append(newBlocks, map[string]string{
+				"type":     "thinking",
+				"thinking": "",
+			})
+			var textContent string
+			json.Unmarshal(msg.Content, &textContent)
+			newBlocks = append(newBlocks, map[string]string{
+				"type": "text",
+				"text": textContent,
+			})
+			newContent, err := json.Marshal(newBlocks)
+			if err != nil {
+				continue
+			}
+			var newMsg map[string]json.RawMessage
+			json.Unmarshal(msgRaw, &newMsg)
+			newMsg["content"] = json.RawMessage(newContent)
+			newMsgRaw, err := json.Marshal(newMsg)
+			if err != nil {
+				continue
+			}
+			messages[i] = newMsgRaw
+			patched = true
+			continue
+		}
+
+		// content 是数组格式，检查是否有 thinking block
+		hasThinking := false
+		for _, blockRaw := range contentBlocks {
+			var block struct {
+				Type string `json:"type"`
+			}
+			json.Unmarshal(blockRaw, &block)
+			if block.Type == "thinking" || block.Type == "redacted_thinking" {
+				hasThinking = true
+				break
+			}
+		}
+
+		if hasThinking {
+			continue
+		}
+
+		// 缺少 thinking block，在数组开头插入空的 thinking block
+		emptyThinking := map[string]string{
+			"type":     "thinking",
+			"thinking": "",
+		}
+		emptyThinkingRaw, err := json.Marshal(emptyThinking)
+		if err != nil {
+			continue
+		}
+
+		newBlocks := append([]json.RawMessage{emptyThinkingRaw}, contentBlocks...)
+		newContent, err := json.Marshal(newBlocks)
+		if err != nil {
+			continue
+		}
+
+		var newMsg map[string]json.RawMessage
+		json.Unmarshal(msgRaw, &newMsg)
+		newMsg["content"] = json.RawMessage(newContent)
+		newMsgRaw, err := json.Marshal(newMsg)
+		if err != nil {
+			continue
+		}
+		messages[i] = newMsgRaw
+		patched = true
+	}
+
+	if !patched {
+		return raw
+	}
+
+	newMessagesRaw, err := json.Marshal(messages)
+	if err != nil {
+		return raw
+	}
+	req["messages"] = newMessagesRaw
+
+	body, err := json.Marshal(req)
+	if err != nil {
+		return raw
+	}
+	return body
 }
