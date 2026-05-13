@@ -2,8 +2,13 @@ package relay
 
 import (
 	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/gin-gonic/gin"
 
 	"github.com/bestruirui/octopus/internal/transformer/inbound"
 	"github.com/bestruirui/octopus/internal/transformer/model"
@@ -278,5 +283,94 @@ func TestFormatRawSSEEventPreservesEventType(t *testing.T) {
 	}
 	if !strings.Contains(got, `data: {"type":"content_block_delta"`) {
 		t.Fatalf("data payload was not preserved: %q", got)
+	}
+}
+
+func TestFormatRawSSEEventWithoutEventType(t *testing.T) {
+	got := string(formatRawSSEEvent("", []byte(`{"type":"chunk"}`)))
+	if got != "data: {\"type\":\"chunk\"}\n\n" {
+		t.Fatalf("unexpected SSE event: %q", got)
+	}
+}
+
+func TestMetricsClientResponseBodyIsBounded(t *testing.T) {
+	m := &RelayMetrics{}
+	m.AppendClientResponseBody([]byte("hello"))
+	m.AppendClientResponseBody([]byte(" world"))
+	if string(m.ClientResponseBody()) != "hello world" {
+		t.Fatalf("client response body = %q", m.ClientResponseBody())
+	}
+
+	large := strings.Repeat("x", maxLoggedResponseBodyBytes+100)
+	m.SetClientResponseBody([]byte(large))
+	if len(m.ClientResponseBody()) != maxLoggedResponseBodyBytes {
+		t.Fatalf("client response body size = %d, want %d", len(m.ClientResponseBody()), maxLoggedResponseBodyBytes)
+	}
+}
+
+func TestHandleResponsePassthroughWritesRawBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	raw := []byte(`{"z":1,"unknown":{"kept":true},"choices":[]}`)
+	req := &model.InternalLLMRequest{
+		Model:                "gpt-4o",
+		RawAPIFormat:         model.APIFormatOpenAIChatCompletion,
+		PassthroughAPIFormat: model.APIFormatOpenAIChatCompletion,
+	}
+	metrics := NewRelayMetrics(0, req.Model, req, "")
+	ra := &relayAttempt{
+		relayRequest: &relayRequest{
+			c:               c,
+			internalRequest: req,
+			inAdapter:       inbound.Get(inbound.InboundTypeOpenAIChat),
+			metrics:         metrics,
+		},
+		outAdapter: &openaiOutbound.ChatOutbound{},
+	}
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json; charset=utf-8"}},
+		Body:       io.NopCloser(strings.NewReader(string(raw))),
+	}
+
+	if err := ra.handleResponse(context.Background(), resp); err != nil {
+		t.Fatalf("handleResponse error: %v", err)
+	}
+	if w.Body.String() != string(raw) {
+		t.Fatalf("body changed\ngot:  %s\nwant: %s", w.Body.String(), raw)
+	}
+	if string(metrics.ClientResponseBody()) != string(raw) {
+		t.Fatalf("logged client body changed\ngot:  %s\nwant: %s", metrics.ClientResponseBody(), raw)
+	}
+}
+
+func TestHandleResponseNonPassthroughRecordsWrittenBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	req := &model.InternalLLMRequest{Model: "gpt-4o"}
+	metrics := NewRelayMetrics(0, req.Model, req, "")
+	ra := &relayAttempt{
+		relayRequest: &relayRequest{
+			c:               c,
+			internalRequest: req,
+			inAdapter:       inbound.Get(inbound.InboundTypeOpenAIChat),
+			metrics:         metrics,
+		},
+		outAdapter: &openaiOutbound.ChatOutbound{},
+	}
+	raw := `{"id":"chatcmpl-1","object":"chat.completion","model":"gpt-4o","choices":[]}`
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(raw)),
+	}
+
+	if err := ra.handleResponse(context.Background(), resp); err != nil {
+		t.Fatalf("handleResponse error: %v", err)
+	}
+	if string(metrics.ClientResponseBody()) != w.Body.String() {
+		t.Fatalf("client response body = %q, want written body %q", metrics.ClientResponseBody(), w.Body.String())
 	}
 }

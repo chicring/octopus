@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/bestruirui/octopus/internal/model"
@@ -26,8 +27,9 @@ type RelayMetrics struct {
 	FirstTokenTime time.Time
 
 	// 请求和响应内容
-	InternalRequest  *transformerModel.InternalLLMRequest
-	InternalResponse *transformerModel.InternalLLMResponse
+	InternalRequest    *transformerModel.InternalLLMRequest
+	InternalResponse   *transformerModel.InternalLLMResponse
+	clientResponseBody []byte
 
 	// inbound adapter，用于将 InternalResponse 转为客户端格式记录日志
 	inAdapter transformerModel.Inbound
@@ -40,6 +42,8 @@ type RelayMetrics struct {
 	UserAgent  string
 	ClientName string
 }
+
+const maxLoggedResponseBodyBytes = 1 << 20
 
 func NewRelayMetrics(apiKeyID int, requestModel string, req *transformerModel.InternalLLMRequest, userAgent string) *RelayMetrics {
 	m := &RelayMetrics{
@@ -97,6 +101,28 @@ func (m *RelayMetrics) SetInternalResponse(resp *transformerModel.InternalLLMRes
 		m.Stats.InputCost = (float64(usage.PromptTokensDetails.CachedTokens)*modelPrice.CacheRead + float64(usage.PromptTokens-usage.PromptTokensDetails.CachedTokens)*modelPrice.Input) * 1e-6
 	}
 	m.Stats.OutputCost = float64(usage.CompletionTokens) * modelPrice.Output * 1e-6
+}
+
+func (m *RelayMetrics) SetClientResponseBody(body []byte) {
+	if len(body) > maxLoggedResponseBodyBytes {
+		body = body[:maxLoggedResponseBodyBytes]
+	}
+	m.clientResponseBody = append(m.clientResponseBody[:0], body...)
+}
+
+func (m *RelayMetrics) AppendClientResponseBody(chunk []byte) {
+	if len(chunk) == 0 || len(m.clientResponseBody) >= maxLoggedResponseBodyBytes {
+		return
+	}
+	remaining := maxLoggedResponseBodyBytes - len(m.clientResponseBody)
+	if len(chunk) > remaining {
+		chunk = chunk[:remaining]
+	}
+	m.clientResponseBody = append(m.clientResponseBody, chunk...)
+}
+
+func (m *RelayMetrics) ClientResponseBody() []byte {
+	return m.clientResponseBody
 }
 
 // SaveEarlyFailure 记录早期失败（解析失败、模型不支持等），此时无渠道信息
@@ -282,7 +308,9 @@ func (m *RelayMetrics) saveLog(ctx context.Context, err error, duration time.Dur
 	}
 
 	// 响应内容：通过 inbound adapter 转为客户端实际格式记录
-	if m.InternalResponse != nil {
+	if len(m.clientResponseBody) > 0 {
+		relayLog.ResponseContent = strings.TrimSuffix(string(m.clientResponseBody), "\n\n")
+	} else if m.InternalResponse != nil {
 		if m.InternalRequest != nil && transformerModel.IsPassthrough(m.InternalRequest, m.InternalRequest.RawAPIFormat) {
 			respForLog := m.filterResponseForLog(m.InternalResponse)
 			if respJSON, jsonErr := json.Marshal(respForLog); jsonErr == nil {

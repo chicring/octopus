@@ -38,7 +38,7 @@ func (o *MessageOutbound) TransformRequest(ctx context.Context, request *model.I
 	// 避免 round-trip 转换破坏上游 prompt cache 的前缀匹配。
 	if model.ShouldPassthrough(request, model.APIFormatAnthropicMessage) {
 		model.MarkPassthrough(request, model.APIFormatAnthropicMessage)
-		body = patchAnthropicThinkingBlocks(model.PatchRawRequest(request.RawRequest, request), request)
+		body = patchAnthropicPassthroughRequest(model.PatchRawRequestModelOnly(request.RawRequest, request), request)
 	} else {
 		// 不同格式间转换，走完整转换
 		anthropicReq := convertToAnthropicRequest(request)
@@ -81,6 +81,50 @@ func (o *MessageOutbound) TransformRequest(ctx context.Context, request *model.I
 	req.URL = parsedUrl
 
 	return req, nil
+}
+
+func patchAnthropicPassthroughRequest(raw []byte, request *model.InternalLLMRequest) []byte {
+	return patchAnthropicThinkingBlocks(patchAnthropicThinkingConfig(raw, request), request)
+}
+
+func patchAnthropicThinkingConfig(raw []byte, request *model.InternalLLMRequest) []byte {
+	if request.ReasoningEffort == "" {
+		return raw
+	}
+
+	var req map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &req); err != nil {
+		return raw
+	}
+
+	if request.AdaptiveThinking {
+		thinking := map[string]any{"type": anthropicModel.ThinkingTypeAdaptive}
+		outputConfig := map[string]any{"effort": request.ReasoningEffort}
+		thinkingBytes, thinkingErr := json.Marshal(thinking)
+		outputBytes, outputErr := json.Marshal(outputConfig)
+		if thinkingErr != nil || outputErr != nil {
+			return raw
+		}
+		req["thinking"] = thinkingBytes
+		req["output_config"] = outputBytes
+	} else {
+		thinking := map[string]any{
+			"type":          anthropicModel.ThinkingTypeEnabled,
+			"budget_tokens": *getThinkingBudget(request.ReasoningEffort, request.ReasoningBudget),
+		}
+		thinkingBytes, err := json.Marshal(thinking)
+		if err != nil {
+			return raw
+		}
+		req["thinking"] = thinkingBytes
+		delete(req, "output_config")
+	}
+
+	body, err := json.Marshal(req)
+	if err != nil {
+		return raw
+	}
+	return body
 }
 
 func (o *MessageOutbound) TransformResponse(ctx context.Context, response *http.Response) (*model.InternalLLMResponse, error) {

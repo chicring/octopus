@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"testing"
 
+	anthropicModel "github.com/bestruirui/octopus/internal/transformer/inbound/anthropic"
 	"github.com/bestruirui/octopus/internal/transformer/model"
 	authropic "github.com/bestruirui/octopus/internal/transformer/outbound/authropic"
+	"github.com/bestruirui/octopus/internal/transformer/outbound/gemini"
 )
 
 func TestResponseOutboundCompletedWithoutStatusSetsFinishReason(t *testing.T) {
@@ -215,6 +217,66 @@ func TestChatOutboundSetsUpstreamRequestBody(t *testing.T) {
 	}
 	if len(internalReq.UpstreamRequestBody) == 0 {
 		t.Fatal("UpstreamRequestBody should be set")
+	}
+}
+
+func TestGeminiOutboundStreamKeepsRawChunkForPassthrough(t *testing.T) {
+	out := &gemini.MessagesOutbound{}
+	raw := []byte(`{"candidates":[{"content":{"role":"model","parts":[{"text":"hello"}]},"finishReason":"STOP","index":0}]}`)
+
+	resp, err := out.TransformStream(context.Background(), raw)
+	if err != nil {
+		t.Fatalf("TransformStream error: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("expected non-nil response")
+	}
+	if string(resp.RawChunk) != string(raw) {
+		t.Fatalf("RawChunk changed\ngot:  %s\nwant: %s", resp.RawChunk, raw)
+	}
+}
+
+func TestAnthropicPassthroughUpstreamRequestBodyIncludesThinkingPatch(t *testing.T) {
+	out := &authropic.MessageOutbound{}
+	raw := []byte(`{"model":"claude-sonnet-4-5","max_tokens":1024,"thinking":{"type":"enabled","budget_tokens":1024},"messages":[{"role":"assistant","content":"hello"}]}`)
+	internalReq := &model.InternalLLMRequest{
+		Model:           "claude-sonnet-4-5",
+		RawRequest:      raw,
+		RawAPIFormat:    model.APIFormatAnthropicMessage,
+		ReasoningEffort: "medium",
+		Messages: []model.Message{
+			{Role: "assistant", Content: model.MessageContent{Content: strPtr("hello")}},
+		},
+	}
+
+	_, err := out.TransformRequest(context.Background(), internalReq, "https://api.anthropic.com", "key")
+	if err != nil {
+		t.Fatalf("TransformRequest error: %v", err)
+	}
+	if !model.IsPassthrough(internalReq, model.APIFormatAnthropicMessage) {
+		t.Fatal("passthrough was not marked for anthropic")
+	}
+
+	var got anthropicModel.MessageRequest
+	if err := json.Unmarshal(internalReq.UpstreamRequestBody, &got); err != nil {
+		t.Fatalf("UpstreamRequestBody is not valid Anthropic request: %v", err)
+	}
+	var rawMap map[string]json.RawMessage
+	if err := json.Unmarshal(internalReq.UpstreamRequestBody, &rawMap); err != nil {
+		t.Fatalf("UpstreamRequestBody is not valid JSON: %v", err)
+	}
+	if _, ok := rawMap["reasoning"]; ok {
+		t.Fatal("Anthropic passthrough body must not contain OpenAI reasoning field")
+	}
+	if got.Thinking == nil || got.Thinking.Type != anthropicModel.ThinkingTypeEnabled {
+		t.Fatalf("thinking config not preserved/patched: %+v", got.Thinking)
+	}
+	if len(got.Messages) != 1 || len(got.Messages[0].Content.MultipleContent) == 0 {
+		t.Fatalf("expected patched multiple content, got %+v", got.Messages)
+	}
+	first := got.Messages[0].Content.MultipleContent[0]
+	if first.Type != "thinking" || first.Thinking == nil || *first.Thinking != "" {
+		t.Fatalf("thinking block not patched: %+v", first)
 	}
 }
 

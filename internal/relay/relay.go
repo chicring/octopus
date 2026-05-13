@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -582,7 +583,8 @@ func (ra *relayAttempt) handleStreamResponse(ctx context.Context, response *http
 				}
 			}
 
-			ra.c.Writer.Write(data)
+			ra.metrics.AppendClientResponseBody(data)
+			_, _ = ra.c.Writer.Write(data)
 			ra.c.Writer.Flush()
 		}
 	}
@@ -602,7 +604,9 @@ func (ra *relayAttempt) transformStreamData(ctx context.Context, data string, ev
 	// 同格式透传：原始数据直接转发给客户端，同时仍将内部响应送入 inbound adapter
 	// 以累积 streamChunks 供聚合/日志使用（TransformStream 的输出被丢弃）。
 	if model.IsPassthrough(ra.internalRequest, ra.internalRequest.RawAPIFormat) {
-		_, _ = ra.inAdapter.TransformStream(ctx, internalStream)
+		if _, err := ra.inAdapter.TransformStream(ctx, internalStream); err != nil {
+			log.Warnf("failed to aggregate passthrough stream: %v", err)
+		}
 
 		if internalStream.Object == "[DONE]" {
 			return []byte("data: [DONE]\n\n"), nil
@@ -638,6 +642,29 @@ func formatRawSSEEvent(eventType string, data []byte) []byte {
 
 // handleResponse 处理非流式响应
 func (ra *relayAttempt) handleResponse(ctx context.Context, response *http.Response) error {
+	if model.IsPassthrough(ra.internalRequest, ra.internalRequest.RawAPIFormat) {
+		rawBody, err := io.ReadAll(response.Body)
+		if err != nil {
+			return fmt.Errorf("failed to read passthrough response body: %w", err)
+		}
+		ra.metrics.SetClientResponseBody(rawBody)
+
+		response.Body = io.NopCloser(bytes.NewReader(rawBody))
+		internalResponse, err := ra.outAdapter.TransformResponse(ctx, response)
+		if err != nil {
+			log.Warnf("failed to transform passthrough response for metrics: %v", err)
+		} else if internalResponse != nil {
+			ra.metrics.SetInternalResponse(internalResponse, ra.internalRequest.Model)
+		}
+
+		contentType := response.Header.Get("Content-Type")
+		if contentType == "" {
+			contentType = "application/json"
+		}
+		ra.c.Data(http.StatusOK, contentType, rawBody)
+		return nil
+	}
+
 	internalResponse, err := ra.outAdapter.TransformResponse(ctx, response)
 	if err != nil {
 		log.Warnf("failed to transform response: %v", err)
@@ -650,6 +677,7 @@ func (ra *relayAttempt) handleResponse(ctx context.Context, response *http.Respo
 		return fmt.Errorf("failed to transform inbound response: %w", err)
 	}
 
+	ra.metrics.SetClientResponseBody(inResponse)
 	ra.c.Data(http.StatusOK, "application/json", inResponse)
 	return nil
 }

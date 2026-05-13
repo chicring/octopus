@@ -7,6 +7,16 @@ import "encoding/json"
 // 其余字段原样保留，确保上游 prompt cache 前缀匹配不被破坏。
 // 当入站和出站格式相同时调用，避免 round-trip 转换改变序列化结果。
 func PatchRawRequest(raw []byte, request *InternalLLMRequest) []byte {
+	return patchRawRequest(raw, request, true)
+}
+
+// PatchRawRequestModelOnly 仅更新原始请求中的 model 字段。
+// 用于不支持 OpenAI reasoning 字段的协议（如 Anthropic Messages）。
+func PatchRawRequestModelOnly(raw []byte, request *InternalLLMRequest) []byte {
+	return patchRawRequest(raw, request, false)
+}
+
+func patchRawRequest(raw []byte, request *InternalLLMRequest, patchReasoning bool) []byte {
 	var req map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &req); err != nil {
 		return raw
@@ -29,7 +39,7 @@ func PatchRawRequest(raw []byte, request *InternalLLMRequest) []byte {
 	}
 
 	// 覆盖 reasoning effort（分组可能 override 了 reasoning_effort）
-	if request.ReasoningEffort != "" {
+	if patchReasoning && request.ReasoningEffort != "" {
 		reasoning := map[string]any{"effort": request.ReasoningEffort}
 		if request.ReasoningBudget != nil {
 			reasoning["max_tokens"] = *request.ReasoningBudget
