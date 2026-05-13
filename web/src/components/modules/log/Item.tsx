@@ -222,6 +222,232 @@ function DeferredJsonContent({ content, fallbackText, loading }: { content: stri
     );
 }
 
+type ParsedResponseLog = {
+    text: string;
+    thinking: string;
+    toolCalls: string[];
+    meta: string[];
+    hasSummary: boolean;
+    isJson: boolean;
+    jsonData: unknown;
+};
+
+type JsonRecord = Record<string, unknown>;
+
+const MAX_SUMMARY_CHARS = 60000;
+const MAX_SSE_EVENTS = 2000;
+
+function appendLimited(current: string, value?: string): string {
+    if (!value) return current;
+    if (current.length >= MAX_SUMMARY_CHARS) return current;
+    const next = current + value;
+    return next.length > MAX_SUMMARY_CHARS ? `${next.slice(0, MAX_SUMMARY_CHARS)}\n...[truncated]` : next;
+}
+
+function parseSSE(content: string): Array<{ event?: string; data: string }> {
+    const events: Array<{ event?: string; data: string }> = [];
+    const blocks = content.split(/\n\s*\n/);
+    for (const block of blocks) {
+        if (events.length >= MAX_SSE_EVENTS) break;
+        const lines = block.split(/\r?\n/);
+        let event: string | undefined;
+        const data: string[] = [];
+        for (const line of lines) {
+            if (line.startsWith('event:')) event = line.slice(6).trim();
+            if (line.startsWith('data:')) data.push(line.slice(5).trimStart());
+        }
+        if (data.length > 0) events.push({ event, data: data.join('\n') });
+    }
+    return events;
+}
+
+function extractTextFromUnknown(value: unknown): string {
+    if (typeof value === 'string') return value;
+    if (!value || typeof value !== 'object') return '';
+    if (Array.isArray(value)) return value.map(extractTextFromUnknown).filter(Boolean).join('');
+
+    const obj = value as Record<string, unknown>;
+    if (typeof obj.text === 'string') return obj.text;
+    if (typeof obj.content === 'string') return obj.content;
+    if (Array.isArray(obj.content)) return obj.content.map(extractTextFromUnknown).filter(Boolean).join('');
+    if (Array.isArray(obj.parts)) return obj.parts.map(extractTextFromUnknown).filter(Boolean).join('');
+    if (Array.isArray(obj.output)) return obj.output.map(extractTextFromUnknown).filter(Boolean).join('');
+    if (obj.message) return extractTextFromUnknown(obj.message);
+    return '';
+}
+
+function parseResponseEvent(data: unknown, acc: ParsedResponseLog) {
+    if (!data || typeof data !== 'object') return;
+    const obj = data as JsonRecord;
+    const type = typeof obj.type === 'string' ? obj.type : undefined;
+
+    // OpenAI Responses / Anthropic style event type
+    if (type === 'response.output_text.delta' && typeof obj.delta === 'string') {
+        acc.text = appendLimited(acc.text, obj.delta);
+    } else if (type === 'response.reasoning_summary_text.delta' && typeof obj.delta === 'string') {
+        acc.thinking = appendLimited(acc.thinking, obj.delta);
+    } else if (type === 'response.completed' && obj.response && typeof obj.response === 'object') {
+        const response = obj.response as JsonRecord;
+        acc.text = appendLimited(acc.text, extractTextFromUnknown(response.output));
+        if (response.status) acc.meta.push(`status: ${String(response.status)}`);
+    } else if (type === 'response.output_item.added' && obj.item && typeof obj.item === 'object' && (obj.item as JsonRecord).type === 'function_call') {
+        const item = obj.item as JsonRecord;
+        acc.toolCalls.push(`${String(item.name ?? 'function')}(${String(item.arguments ?? '')})`);
+    } else if (type === 'response.function_call_arguments.delta' && typeof obj.delta === 'string') {
+        acc.toolCalls.push(`arguments delta: ${obj.delta}`);
+    } else if (type === 'content_block_delta' && obj.delta && typeof obj.delta === 'object') {
+        const delta = obj.delta as JsonRecord;
+        if (delta.type === 'text_delta') acc.text = appendLimited(acc.text, typeof delta.text === 'string' ? delta.text : undefined);
+        if (delta.type === 'thinking_delta') acc.thinking = appendLimited(acc.thinking, typeof delta.thinking === 'string' ? delta.thinking : undefined);
+        if (delta.type === 'input_json_delta') acc.toolCalls.push(`input delta: ${String(delta.partial_json ?? '')}`);
+    } else if (type === 'content_block_start' && obj.content_block && typeof obj.content_block === 'object' && (obj.content_block as JsonRecord).type === 'tool_use') {
+        const block = obj.content_block as JsonRecord;
+        acc.toolCalls.push(`${String(block.name ?? 'tool')}(${JSON.stringify(block.input ?? {})})`);
+    } else if (type === 'message_delta') {
+        if (obj.delta && typeof obj.delta === 'object' && (obj.delta as JsonRecord).stop_reason) {
+            acc.meta.push(`stop: ${String((obj.delta as JsonRecord).stop_reason)}`);
+        }
+    }
+
+    // OpenAI Chat Completions stream
+    if (Array.isArray(obj.choices)) {
+        for (const choice of obj.choices) {
+            if (!choice || typeof choice !== 'object') continue;
+            const choiceObj = choice as JsonRecord;
+            const delta = choiceObj.delta && typeof choiceObj.delta === 'object' ? choiceObj.delta as JsonRecord : {};
+            const message = choiceObj.message && typeof choiceObj.message === 'object' ? choiceObj.message as JsonRecord : {};
+            acc.text = appendLimited(acc.text, extractTextFromUnknown(delta.content ?? message.content));
+            const thinking = delta.reasoning_content ?? delta.reasoning ?? message.reasoning_content ?? message.reasoning;
+            acc.thinking = appendLimited(acc.thinking, typeof thinking === 'string' ? thinking : undefined);
+            const toolCalls = delta.tool_calls ?? message.tool_calls;
+            if (Array.isArray(toolCalls)) {
+                for (const call of toolCalls) {
+                    if (!call || typeof call !== 'object') continue;
+                    const callObj = call as JsonRecord;
+                    const fn = callObj.function && typeof callObj.function === 'object' ? callObj.function as JsonRecord : {};
+                    acc.toolCalls.push(`${String(fn.name ?? callObj.id ?? 'tool')}(${String(fn.arguments ?? '')})`);
+                }
+            }
+            if (choiceObj.finish_reason) acc.meta.push(`finish: ${String(choiceObj.finish_reason)}`);
+        }
+    }
+
+    // Gemini stream / JSON
+    if (Array.isArray(obj.candidates)) {
+        for (const candidate of obj.candidates) {
+            if (!candidate || typeof candidate !== 'object') continue;
+            const candidateObj = candidate as JsonRecord;
+            const content = candidateObj.content && typeof candidateObj.content === 'object' ? candidateObj.content as JsonRecord : {};
+            acc.text = appendLimited(acc.text, extractTextFromUnknown(content.parts));
+            if (candidateObj.finishReason) acc.meta.push(`finish: ${String(candidateObj.finishReason)}`);
+        }
+    }
+
+    acc.text = appendLimited(acc.text, extractTextFromUnknown(obj.content));
+}
+
+function parseResponseLog(content: string | undefined): ParsedResponseLog {
+    const parsed: ParsedResponseLog = {
+        text: '',
+        thinking: '',
+        toolCalls: [],
+        meta: [],
+        hasSummary: false,
+        isJson: false,
+        jsonData: null,
+    };
+    if (!content) return parsed;
+
+    const looksLikeSSE = /(^|\n)(event|data):/.test(content);
+    if (looksLikeSSE) {
+        for (const event of parseSSE(content)) {
+            if (event.data === '[DONE]') continue;
+            try {
+                parseResponseEvent(JSON.parse(event.data), parsed);
+            } catch {
+                // Keep raw fallback.
+            }
+        }
+    } else {
+        try {
+            parsed.jsonData = JSON.parse(content);
+            parsed.isJson = true;
+            parseResponseEvent(parsed.jsonData, parsed);
+            parsed.text = appendLimited(parsed.text, extractTextFromUnknown(parsed.jsonData));
+        } catch {
+            parsed.jsonData = content;
+        }
+    }
+
+    parsed.toolCalls = [...new Set(parsed.toolCalls.filter(Boolean))].slice(0, 20);
+    parsed.meta = [...new Set(parsed.meta.filter(Boolean))].slice(0, 20);
+    parsed.hasSummary = Boolean(parsed.text.trim() || parsed.thinking.trim() || parsed.toolCalls.length || parsed.meta.length);
+    return parsed;
+}
+
+function ResponseLogContent({ content, fallbackText, loading }: { content: string | undefined; fallbackText: string; loading?: boolean }) {
+    const [rawOpen, setRawOpen] = useState(false);
+    const parsed = useMemo(() => parseResponseLog(content), [content]);
+
+    if (loading || !content || !parsed.hasSummary) {
+        return <DeferredJsonContent content={content} fallbackText={fallbackText} loading={loading} />;
+    }
+
+    return (
+        <div className="p-4 space-y-3 text-xs">
+            {parsed.text.trim() && (
+                <section>
+                    <div className="mb-1 font-medium text-card-foreground">摘要</div>
+                    <pre className="whitespace-pre-wrap wrap-break-word leading-relaxed text-muted-foreground font-sans">
+                        {parsed.text.trim()}
+                    </pre>
+                </section>
+            )}
+            {parsed.thinking.trim() && (
+                <details className="rounded-xl border border-border bg-background/50 p-3">
+                    <summary className="cursor-pointer font-medium text-card-foreground">思考内容</summary>
+                    <pre className="mt-2 whitespace-pre-wrap wrap-break-word leading-relaxed text-muted-foreground font-sans">
+                        {parsed.thinking.trim()}
+                    </pre>
+                </details>
+            )}
+            {parsed.toolCalls.length > 0 && (
+                <section>
+                    <div className="mb-1 font-medium text-card-foreground">工具调用</div>
+                    <div className="space-y-1">
+                        {parsed.toolCalls.map((tool, idx) => (
+                            <pre key={`${tool}-${idx}`} className="rounded-lg bg-background/70 px-2 py-1 font-mono text-muted-foreground whitespace-pre-wrap wrap-break-word">
+                                {tool}
+                            </pre>
+                        ))}
+                    </div>
+                </section>
+            )}
+            {parsed.meta.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                    {parsed.meta.map((item) => (
+                        <Badge key={item} variant="secondary" className="text-[10px]">
+                            {item}
+                        </Badge>
+                    ))}
+                </div>
+            )}
+            <button
+                type="button"
+                onClick={() => setRawOpen(v => !v)}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+                {rawOpen ? '隐藏原始响应' : '查看原始响应'}
+            </button>
+            {rawOpen && (
+                <pre className="rounded-xl border border-border bg-background/70 p-3 text-xs text-muted-foreground whitespace-pre-wrap wrap-break-word font-mono leading-relaxed">
+                    {content}
+                </pre>
+            )}
+        </div>
+    );
+}
+
 // 必须在 MorphingDialog 内部使用，才能拿到 useMorphingDialog 的 context
 // 负责懒加载 request_content / response_content 并渲染双栏内容
 function LogDetailPanels({ log }: { log: RelayLog }) {
@@ -231,17 +457,33 @@ function LogDetailPanels({ log }: { log: RelayLog }) {
     const [detailLoading, setDetailLoading] = useState(false);
 
     useEffect(() => {
+        let cancelled = false;
         if (isOpen && !detail && !detailLoading) {
-            setDetailLoading(true);
-            getLogDetail(log.id)
-                .then((data) => setDetail(data ?? null))
-                .catch(() => setDetail(null))
-                .finally(() => setDetailLoading(false));
+            queueMicrotask(() => {
+                if (cancelled) return;
+                setDetailLoading(true);
+                getLogDetail(log.id)
+                    .then((data) => {
+                        if (!cancelled) setDetail(data ?? null);
+                    })
+                    .catch(() => {
+                        if (!cancelled) setDetail(null);
+                    })
+                    .finally(() => {
+                        if (!cancelled) setDetailLoading(false);
+                    });
+            });
         }
         if (!isOpen) {
-            setDetail(null);
-            setDetailLoading(false);
+            queueMicrotask(() => {
+                if (cancelled) return;
+                setDetail(null);
+                setDetailLoading(false);
+            });
         }
+        return () => {
+            cancelled = true;
+        };
     }, [isOpen, log.id, detail, detailLoading]);
 
     return (
@@ -267,7 +509,7 @@ function LogDetailPanels({ log }: { log: RelayLog }) {
                     </Badge>
                 </div>
                 <div className="flex-1 overflow-auto min-h-0">
-                    <DeferredJsonContent content={detail?.response_content} fallbackText={detailLoading ? '' : t('noResponseContent')} loading={detailLoading} />
+                    <ResponseLogContent content={detail?.response_content} fallbackText={detailLoading ? '' : t('noResponseContent')} loading={detailLoading} />
                 </div>
             </div>
         </div>
