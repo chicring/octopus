@@ -250,10 +250,9 @@ func (o *MessageOutbound) TransformStream(ctx context.Context, eventData []byte)
 					},
 				}
 			case "text", "thinking":
-				// These are handled in content_block_delta
-				return nil, nil
+				resp.Choices = []model.Choice{}
 			default:
-				return nil, nil
+				resp.Choices = []model.Choice{}
 			}
 		}
 
@@ -295,10 +294,12 @@ func (o *MessageOutbound) TransformStream(ctx context.Context, eventData []byte)
 					choice.Delta.ReasoningSignature = streamEvent.Delta.Signature
 				}
 			default:
-				return nil, nil
+				resp.Choices = []model.Choice{}
 			}
 
-			resp.Choices = []model.Choice{choice}
+			if len(resp.Choices) == 0 {
+				resp.Choices = []model.Choice{choice}
+			}
 		}
 
 	case "message_delta":

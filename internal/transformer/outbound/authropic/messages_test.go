@@ -114,6 +114,40 @@ func TestTransformStream_ContentBlockStop(t *testing.T) {
 	}
 }
 
+func TestTransformStream_ContentBlockStartTextKeepsRawChunk(t *testing.T) {
+	o := &MessageOutbound{}
+
+	eventData := []byte(`{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`)
+	result, err := o.TransformStream(context.Background(), eventData)
+
+	if result == nil {
+		t.Fatal("expected raw passthrough result, got nil")
+	}
+	if string(result.RawChunk) != string(eventData) {
+		t.Errorf("RawChunk changed, got %s want %s", result.RawChunk, eventData)
+	}
+	if err != nil {
+		t.Errorf("expected nil error, got %v", err)
+	}
+}
+
+func TestTransformStream_ContentBlockStartThinkingKeepsRawChunk(t *testing.T) {
+	o := &MessageOutbound{}
+
+	eventData := []byte(`{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}}`)
+	result, err := o.TransformStream(context.Background(), eventData)
+
+	if result == nil {
+		t.Fatal("expected raw passthrough result, got nil")
+	}
+	if string(result.RawChunk) != string(eventData) {
+		t.Errorf("RawChunk changed, got %s want %s", result.RawChunk, eventData)
+	}
+	if err != nil {
+		t.Errorf("expected nil error, got %v", err)
+	}
+}
+
 func isResponseError(err error) bool {
 	_, ok := err.(*model.ResponseError)
 	return ok
