@@ -235,3 +235,100 @@ func TestMessagesInbound_StreamWithThinkingAndToolUse(t *testing.T) {
 
 	t.Logf("ClientResponseBody: %s", string(clientBody))
 }
+
+func TestMessagesInbound_StreamWithReasoningAliasAndToolUse(t *testing.T) {
+	adapter := &MessagesInbound{}
+
+	thinking := "Need the current date before calling weather."
+	finishReason := "tool_calls"
+
+	chunks := []*model.InternalLLMResponse{
+		{
+			ID:    "msg_deepseek",
+			Model: "deepseek-reasoner",
+			Choices: []model.Choice{
+				{
+					Index: 0,
+					Delta: &model.Message{
+						Role:      "assistant",
+						Reasoning: &thinking,
+					},
+				},
+			},
+		},
+		{
+			ID:    "msg_deepseek",
+			Model: "deepseek-reasoner",
+			Choices: []model.Choice{
+				{
+					Index: 0,
+					Delta: &model.Message{
+						ToolCalls: []model.ToolCall{
+							{
+								ID:   "call_date",
+								Type: "function",
+								Function: model.FunctionCall{
+									Name:      "get_date",
+									Arguments: `{}`,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			ID:    "msg_deepseek",
+			Model: "deepseek-reasoner",
+			Choices: []model.Choice{
+				{
+					Index:        0,
+					FinishReason: &finishReason,
+				},
+			},
+		},
+	}
+
+	for _, chunk := range chunks {
+		adapter.streamChunks = append(adapter.streamChunks, chunk)
+	}
+
+	internalResp, err := adapter.GetInternalResponse(context.Background())
+	if err != nil {
+		t.Fatalf("GetInternalResponse error: %v", err)
+	}
+
+	msg := internalResp.Choices[0].Message
+	if msg.ReasoningContent == nil || *msg.ReasoningContent != thinking {
+		t.Fatalf("reasoning_content = %v, want %q", msg.ReasoningContent, thinking)
+	}
+
+	clientBody, err := adapter.TransformResponse(context.Background(), internalResp)
+	if err != nil {
+		t.Fatalf("TransformResponse error: %v", err)
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(clientBody, &resp); err != nil {
+		t.Fatalf("client body is not valid JSON: %v", err)
+	}
+
+	contentArr, ok := resp["content"].([]any)
+	if !ok {
+		t.Fatalf("content is not an array, got %T", resp["content"])
+	}
+
+	if len(contentArr) < 2 {
+		t.Fatalf("content blocks = %v, want thinking and tool_use", contentArr)
+	}
+
+	thinkingBlock, _ := contentArr[0].(map[string]any)
+	if thinkingBlock["type"] != "thinking" || thinkingBlock["thinking"] != thinking {
+		t.Fatalf("first block = %v, want thinking block with reasoning content", thinkingBlock)
+	}
+
+	toolBlock, _ := contentArr[1].(map[string]any)
+	if toolBlock["type"] != "tool_use" || toolBlock["id"] != "call_date" {
+		t.Fatalf("second block = %v, want tool_use block", toolBlock)
+	}
+}

@@ -220,6 +220,101 @@ func TestChatOutboundSetsUpstreamRequestBody(t *testing.T) {
 	}
 }
 
+func TestChatOutboundAnthropicToOpenAIChatPreservesReasoningContentWithToolCalls(t *testing.T) {
+	out := &ChatOutbound{}
+	reasoning := "Need the current date before calling weather."
+	internalReq := &model.InternalLLMRequest{
+		Model:        "deepseek-reasoner",
+		RawAPIFormat: model.APIFormatAnthropicMessage,
+		Messages: []model.Message{
+			{
+				Role:             "assistant",
+				ReasoningContent: &reasoning,
+				ToolCalls: []model.ToolCall{
+					{
+						ID:   "call_date",
+						Type: "function",
+						Function: model.FunctionCall{
+							Name:      "get_date",
+							Arguments: `{}`,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	_, err := out.TransformRequest(context.Background(), internalReq, "https://api.deepseek.com/v1", "key")
+	if err != nil {
+		t.Fatalf("TransformRequest error: %v", err)
+	}
+
+	var got struct {
+		Messages []model.Message `json:"messages"`
+	}
+	if err := json.Unmarshal(internalReq.UpstreamRequestBody, &got); err != nil {
+		t.Fatalf("UpstreamRequestBody is not valid JSON: %v", err)
+	}
+	if len(got.Messages) != 1 {
+		t.Fatalf("messages len = %d, want 1", len(got.Messages))
+	}
+	msg := got.Messages[0]
+	if msg.ReasoningContent == nil || *msg.ReasoningContent != reasoning {
+		t.Fatalf("reasoning_content = %v, want %q", msg.ReasoningContent, reasoning)
+	}
+	if len(msg.ToolCalls) != 1 || msg.ToolCalls[0].ID != "call_date" {
+		t.Fatalf("tool_calls = %+v, want call_date", msg.ToolCalls)
+	}
+}
+
+func TestChatOutboundAnthropicToOpenAIChatPreservesReasoningAliasWithToolCalls(t *testing.T) {
+	out := &ChatOutbound{}
+	reasoning := "Need the current date before calling weather."
+	internalReq := &model.InternalLLMRequest{
+		Model:        "openrouter-model",
+		RawAPIFormat: model.APIFormatAnthropicMessage,
+		Messages: []model.Message{
+			{
+				Role:      "assistant",
+				Reasoning: &reasoning,
+				ToolCalls: []model.ToolCall{
+					{
+						ID:   "call_date",
+						Type: "function",
+						Function: model.FunctionCall{
+							Name:      "get_date",
+							Arguments: `{}`,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	_, err := out.TransformRequest(context.Background(), internalReq, "https://openrouter.ai/api/v1", "key")
+	if err != nil {
+		t.Fatalf("TransformRequest error: %v", err)
+	}
+
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(internalReq.UpstreamRequestBody, &body); err != nil {
+		t.Fatalf("UpstreamRequestBody is not valid JSON: %v", err)
+	}
+	var messages []map[string]json.RawMessage
+	if err := json.Unmarshal(body["messages"], &messages); err != nil {
+		t.Fatalf("messages is not valid JSON: %v", err)
+	}
+	if len(messages) != 1 {
+		t.Fatalf("messages len = %d, want 1", len(messages))
+	}
+	if _, ok := messages[0]["reasoning"]; !ok {
+		t.Fatalf("reasoning alias missing from message: %s", messages[0])
+	}
+	if _, ok := messages[0]["tool_calls"]; !ok {
+		t.Fatalf("tool_calls missing from message: %s", messages[0])
+	}
+}
+
 func TestGeminiOutboundStreamKeepsRawChunkForPassthrough(t *testing.T) {
 	out := &gemini.MessagesOutbound{}
 	raw := []byte(`{"candidates":[{"content":{"role":"model","parts":[{"text":"hello"}]},"finishReason":"STOP","index":0}]}`)

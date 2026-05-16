@@ -213,6 +213,21 @@ func TestPatchRawRequestPreservesSerialization(t *testing.T) {
 	}
 }
 
+func TestPatchRawRequestPreservesImageResponseWhenReasoningMatches(t *testing.T) {
+	original := []byte(`{"model":"gpt-4o","input":[{"role":"user","content":[{"type":"input_text","text":"describe"},{"type":"input_image","image_url":"data:image/png;base64,abc","detail":"low"}]}],"reasoning":{ "effort" : "medium" },"stream":true}`)
+
+	request := &InternalLLMRequest{
+		Model:           "gpt-4o",
+		ReasoningEffort: "medium",
+	}
+
+	result := PatchRawRequest(original, request)
+
+	if string(result) != string(original) {
+		t.Errorf("PatchRawRequest() should preserve raw image request when effective reasoning is unchanged.\ngot:  %s\nwant: %s", result, original)
+	}
+}
+
 func TestPatchRawRequestPreservesFieldOrder(t *testing.T) {
 	// 测试当需要 patch 时，其他字段的顺序和值保持不变
 	original := []byte(`{"stream":true,"model":"o3-mini","temperature":0.5,"messages":[{"role":"user","content":"hi"}]}`)

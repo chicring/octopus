@@ -1,6 +1,9 @@
 package model
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"reflect"
+)
 
 // PatchRawRequest 对原始请求 body 做最小修改：
 // 仅更新 model 字段（模型名映射）和 reasoning 字段（reasoning effort override），
@@ -44,7 +47,8 @@ func patchRawRequest(raw []byte, request *InternalLLMRequest, patchReasoning boo
 		if request.ReasoningBudget != nil {
 			reasoning["max_tokens"] = *request.ReasoningBudget
 		}
-		if reasoningBytes, err := json.Marshal(reasoning); err == nil {
+		reasoningBytes, err := json.Marshal(reasoning)
+		if err == nil && !jsonEqual(req["reasoning"], reasoningBytes) {
 			req["reasoning"] = reasoningBytes
 			patched = true
 		}
@@ -60,6 +64,21 @@ func patchRawRequest(raw []byte, request *InternalLLMRequest, patchReasoning boo
 		return raw
 	}
 	return body
+}
+
+func jsonEqual(a, b []byte) bool {
+	if len(a) == 0 {
+		return len(b) == 0
+	}
+	var av any
+	var bv any
+	if err := json.Unmarshal(a, &av); err != nil {
+		return false
+	}
+	if err := json.Unmarshal(b, &bv); err != nil {
+		return false
+	}
+	return reflect.DeepEqual(av, bv)
 }
 
 // ShouldPassthrough 判断是否应该直接透传原始请求 body，

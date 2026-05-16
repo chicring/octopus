@@ -400,10 +400,10 @@ func (i *MessagesInbound) ConvertResponseToClientFormat(ctx context.Context, res
 			var contentBlocks []MessageContentBlock
 
 			// Handle reasoning content (thinking) first if present
-			if message.ReasoningContent != nil && *message.ReasoningContent != "" {
+			if reasoningContent := message.GetReasoningContent(); reasoningContent != "" {
 				thinkingBlock := MessageContentBlock{
 					Type:     "thinking",
-					Thinking: message.ReasoningContent,
+					Thinking: lo.ToPtr(reasoningContent),
 				}
 				if message.ReasoningSignature != nil && *message.ReasoningSignature != "" {
 					thinkingBlock.Signature = message.ReasoningSignature
@@ -575,7 +575,8 @@ func (i *MessagesInbound) TransformStream(ctx context.Context, stream *model.Int
 		choice := stream.Choices[0]
 
 		// Handle reasoning content (thinking) delta
-		if choice.Delta != nil && choice.Delta.ReasoningContent != nil && *choice.Delta.ReasoningContent != "" {
+		if choice.Delta != nil && choice.Delta.GetReasoningContent() != "" {
+			reasoningContent := choice.Delta.GetReasoningContent()
 			// If the tool content has started before the thinking content, we need to stop it
 			if i.hasToolContentStarted {
 				i.hasToolContentStarted = false
@@ -619,7 +620,7 @@ func (i *MessagesInbound) TransformStream(ctx context.Context, stream *model.Int
 				Index: &i.contentIndex,
 				Delta: &StreamDelta{
 					Type:     lo.ToPtr("thinking_delta"),
-					Thinking: choice.Delta.ReasoningContent,
+					Thinking: lo.ToPtr(reasoningContent),
 				},
 			}
 			data, err := json.Marshal(deltaEvent)
@@ -998,11 +999,11 @@ func (i *MessagesInbound) GetInternalResponse(ctx context.Context) (*model.Inter
 				}
 
 				// Append reasoning content
-				if delta.ReasoningContent != nil {
+				if reasoningContent := delta.GetReasoningContent(); reasoningContent != "" {
 					if existingChoice.Message.ReasoningContent == nil {
 						existingChoice.Message.ReasoningContent = new(string)
 					}
-					*existingChoice.Message.ReasoningContent += *delta.ReasoningContent
+					*existingChoice.Message.ReasoningContent += reasoningContent
 				}
 
 				// Aggregate tool calls
