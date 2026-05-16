@@ -375,6 +375,101 @@ func TestMessagesInbound_StreamReasoningContentDoesNotSynthesizeSignature(t *tes
 	t.Fatalf("missing thinking content_block_start in events: %v", events)
 }
 
+func TestMessagesInbound_StreamDoneFinalizesWithoutUsageChunk(t *testing.T) {
+	adapter := &MessagesInbound{}
+	thinking := "Need the current date before calling weather."
+	finishReason := "tool_calls"
+
+	chunks := []*model.InternalLLMResponse{
+		{
+			ID:    "msg_deepseek",
+			Model: "deepseek-reasoner",
+			Choices: []model.Choice{
+				{
+					Index: 0,
+					Delta: &model.Message{
+						Role:             "assistant",
+						ReasoningContent: &thinking,
+					},
+				},
+			},
+		},
+		{
+			ID:    "msg_deepseek",
+			Model: "deepseek-reasoner",
+			Choices: []model.Choice{
+				{
+					Index: 0,
+					Delta: &model.Message{
+						ToolCalls: []model.ToolCall{
+							{
+								Index: 0,
+								ID:    "call_date",
+								Type:  "function",
+								Function: model.FunctionCall{
+									Name:      "get_date",
+									Arguments: `{}`,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			ID:    "msg_deepseek",
+			Model: "deepseek-reasoner",
+			Choices: []model.Choice{
+				{
+					Index:        0,
+					FinishReason: &finishReason,
+				},
+			},
+		},
+		{Object: "[DONE]"},
+	}
+
+	var clientBody []byte
+	for _, chunk := range chunks {
+		data, err := adapter.TransformStream(context.Background(), chunk)
+		if err != nil {
+			t.Fatalf("TransformStream error: %v", err)
+		}
+		clientBody = append(clientBody, data...)
+	}
+
+	events := parseSSEEvents(t, clientBody)
+	hasMessageDelta := false
+	hasMessageStop := false
+	for _, event := range events {
+		switch event["type"] {
+		case "message_delta":
+			hasMessageDelta = true
+			delta, _ := event["delta"].(map[string]any)
+			if delta["stop_reason"] != "tool_use" {
+				t.Fatalf("message_delta stop_reason = %v, want tool_use", delta["stop_reason"])
+			}
+		case "message_stop":
+			hasMessageStop = true
+		}
+	}
+	if !hasMessageDelta || !hasMessageStop {
+		t.Fatalf("stream must finalize on [DONE] without usage chunk; message_delta=%t message_stop=%t events=%v", hasMessageDelta, hasMessageStop, events)
+	}
+
+	internalResp, err := adapter.GetInternalResponse(context.Background())
+	if err != nil {
+		t.Fatalf("GetInternalResponse error: %v", err)
+	}
+	msg := internalResp.Choices[0].Message
+	if msg.ReasoningContent == nil || *msg.ReasoningContent != thinking {
+		t.Fatalf("aggregated reasoning_content = %v, want %q", msg.ReasoningContent, thinking)
+	}
+	if len(msg.ToolCalls) != 1 || msg.ToolCalls[0].ID != "call_date" {
+		t.Fatalf("aggregated tool_calls = %+v, want call_date", msg.ToolCalls)
+	}
+}
+
 func parseSSEEvents(t *testing.T, data []byte) []map[string]any {
 	t.Helper()
 

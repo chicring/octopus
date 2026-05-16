@@ -521,6 +521,13 @@ func (i *MessagesInbound) ConvertResponseToClientFormat(ctx context.Context, res
 func (i *MessagesInbound) TransformStream(ctx context.Context, stream *model.InternalLLMResponse) ([]byte, error) {
 	// Handle [DONE] marker
 	if stream.Object == "[DONE]" {
+		if i.hasFinished && !i.messageStopped {
+			events, err := i.buildTerminalStreamEvents(nil)
+			if err != nil {
+				return nil, err
+			}
+			return joinSSEEvents(events), nil
+		}
 		return nil, nil
 	}
 
@@ -865,42 +872,58 @@ func (i *MessagesInbound) TransformStream(ctx context.Context, stream *model.Int
 
 	// Handle usage chunk after finish_reason
 	if stream.Usage != nil && i.hasFinished && !i.messageStopped {
-		msgDeltaEvent := StreamEvent{
-			Type: "message_delta",
-		}
-
-		if i.stopReason != nil {
-			msgDeltaEvent.Delta = &StreamDelta{
-				StopReason: i.stopReason,
-			}
-		}
-
-		msgDeltaEvent.Usage = i.convertUsage(stream.Usage)
-
-		data, err := json.Marshal(msgDeltaEvent)
+		terminalEvents, err := i.buildTerminalStreamEvents(stream.Usage)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal message_delta event: %w", err)
+			return nil, err
 		}
-		events = append(events, formatSSEEvent("message_delta", data))
-
-		// Generate message_stop
-		msgStopEvent := StreamEvent{
-			Type: "message_stop",
-		}
-		data, err = json.Marshal(msgStopEvent)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal message_stop event: %w", err)
-		}
-		events = append(events, formatSSEEvent("message_stop", data))
-
-		i.messageStopped = true
+		events = append(events, terminalEvents...)
 	}
 
 	if len(events) == 0 {
 		return nil, nil
 	}
 
-	// Join events with newlines for SSE format
+	return joinSSEEvents(events), nil
+}
+
+func (i *MessagesInbound) buildTerminalStreamEvents(usage *model.Usage) ([][]byte, error) {
+	msgDeltaEvent := StreamEvent{
+		Type: "message_delta",
+	}
+
+	if i.stopReason != nil {
+		msgDeltaEvent.Delta = &StreamDelta{
+			StopReason: i.stopReason,
+		}
+	}
+
+	if usage != nil {
+		msgDeltaEvent.Usage = i.convertUsage(usage)
+	} else {
+		msgDeltaEvent.Usage = &Usage{}
+	}
+
+	data, err := json.Marshal(msgDeltaEvent)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal message_delta event: %w", err)
+	}
+
+	msgStopEvent := StreamEvent{
+		Type: "message_stop",
+	}
+	stopData, err := json.Marshal(msgStopEvent)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal message_stop event: %w", err)
+	}
+
+	i.messageStopped = true
+	return [][]byte{
+		formatSSEEvent("message_delta", data),
+		formatSSEEvent("message_stop", stopData),
+	}, nil
+}
+
+func joinSSEEvents(events [][]byte) []byte {
 	result := make([]byte, 0)
 	for idx, event := range events {
 		if idx > 0 {
@@ -908,8 +931,7 @@ func (i *MessagesInbound) TransformStream(ctx context.Context, stream *model.Int
 		}
 		result = append(result, event...)
 	}
-
-	return result, nil
+	return result
 }
 
 func (i *MessagesInbound) convertUsage(usage *model.Usage) *Usage {
