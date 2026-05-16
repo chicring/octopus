@@ -30,7 +30,7 @@ func (o *ChatOutbound) TransformRequest(ctx context.Context, request *model.Inte
 	} else {
 		// 不同格式间转换，走完整转换
 		request.ClearHelpFields()
-		model.NormalizeDeepSeekThinkingWrappers(request)
+		model.NormalizeReasoningContentReplay(request)
 
 		// Convert developer role to system role for compatibility
 		for i := range request.Messages {

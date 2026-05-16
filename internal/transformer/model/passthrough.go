@@ -3,7 +3,6 @@ package model
 import (
 	"encoding/json"
 	"reflect"
-	"strings"
 )
 
 // PatchRawRequest 对原始请求 body 做最小修改：
@@ -55,7 +54,7 @@ func patchRawRequest(raw []byte, request *InternalLLMRequest, patchReasoning boo
 		}
 	}
 
-	if patchReasoning && isDeepSeekModel(request.Model) && patchThinkingWrappers(req) {
+	if patchReasoning && PatchRawReasoningContentReplay(req, request.Model) {
 		patched = true
 	}
 
@@ -69,92 +68,6 @@ func patchRawRequest(raw []byte, request *InternalLLMRequest, patchReasoning boo
 		return raw
 	}
 	return body
-}
-
-func isDeepSeekModel(model string) bool {
-	return strings.Contains(strings.ToLower(model), "deepseek")
-}
-
-func NormalizeDeepSeekThinkingWrappers(request *InternalLLMRequest) {
-	if request == nil || !isDeepSeekModel(request.Model) {
-		return
-	}
-
-	for idx := range request.Messages {
-		msg := &request.Messages[idx]
-		if msg.ReasoningContent != nil || msg.Reasoning != nil || len(msg.ToolCalls) == 0 || msg.Content.Content == nil {
-			continue
-		}
-		thinking, ok := extractWholeThinkingContent(*msg.Content.Content)
-		if !ok {
-			continue
-		}
-		msg.ReasoningContent = &thinking
-		msg.Content.Content = nil
-	}
-}
-
-func patchThinkingWrappers(req map[string]json.RawMessage) bool {
-	messagesRaw, ok := req["messages"]
-	if !ok {
-		return false
-	}
-
-	var messages []map[string]json.RawMessage
-	if err := json.Unmarshal(messagesRaw, &messages); err != nil {
-		return false
-	}
-
-	patched := false
-	for idx := range messages {
-		if _, ok := messages[idx]["reasoning_content"]; ok {
-			continue
-		}
-		if _, ok := messages[idx]["reasoning"]; ok {
-			continue
-		}
-		if _, ok := messages[idx]["tool_calls"]; !ok {
-			continue
-		}
-
-		var content string
-		if err := json.Unmarshal(messages[idx]["content"], &content); err != nil {
-			continue
-		}
-		thinking, ok := extractWholeThinkingContent(content)
-		if !ok {
-			continue
-		}
-		reasoningBytes, err := json.Marshal(thinking)
-		if err != nil {
-			continue
-		}
-		messages[idx]["reasoning_content"] = reasoningBytes
-		delete(messages[idx], "content")
-		patched = true
-	}
-
-	if !patched {
-		return false
-	}
-
-	body, err := json.Marshal(messages)
-	if err != nil {
-		return false
-	}
-	req["messages"] = body
-	return true
-}
-
-func extractWholeThinkingContent(content string) (string, bool) {
-	trimmed := strings.TrimSpace(content)
-	if !strings.HasPrefix(trimmed, "<thinking>") || !strings.HasSuffix(trimmed, "</thinking>") {
-		return "", false
-	}
-
-	thinking := strings.TrimPrefix(trimmed, "<thinking>")
-	thinking = strings.TrimSuffix(thinking, "</thinking>")
-	return strings.TrimSpace(thinking), true
 }
 
 func jsonEqual(a, b []byte) bool {

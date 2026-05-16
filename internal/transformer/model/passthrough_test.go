@@ -259,7 +259,7 @@ func TestPatchRawRequestMovesThinkingWrapperToReasoningContent(t *testing.T) {
 	}
 }
 
-func TestNormalizeDeepSeekThinkingWrappers(t *testing.T) {
+func TestNormalizeReasoningContentReplay(t *testing.T) {
 	content := "<thinking>\nI should call the tool.\n</thinking>"
 	request := &InternalLLMRequest{
 		Model: "deepseek-v4-flash",
@@ -279,7 +279,7 @@ func TestNormalizeDeepSeekThinkingWrappers(t *testing.T) {
 		},
 	}
 
-	NormalizeDeepSeekThinkingWrappers(request)
+	NormalizeReasoningContentReplay(request)
 
 	msg := request.Messages[0]
 	if msg.ReasoningContent == nil || *msg.ReasoningContent != "I should call the tool." {
@@ -287,6 +287,37 @@ func TestNormalizeDeepSeekThinkingWrappers(t *testing.T) {
 	}
 	if msg.Content.Content != nil {
 		t.Fatalf("thinking wrapper must not remain as content: %q", *msg.Content.Content)
+	}
+}
+
+func TestNormalizeReasoningContentReplayDoesNotAffectNonCompatibleModels(t *testing.T) {
+	content := "<thinking>\nI should call the tool.\n</thinking>"
+	request := &InternalLLMRequest{
+		Model: "gpt-4o",
+		Messages: []Message{
+			{
+				Role:    "assistant",
+				Content: MessageContent{Content: &content},
+				ToolCalls: []ToolCall{{
+					ID:   "call_read",
+					Type: "function",
+					Function: FunctionCall{
+						Name:      "Read",
+						Arguments: `{}`,
+					},
+				}},
+			},
+		},
+	}
+
+	NormalizeReasoningContentReplay(request)
+
+	msg := request.Messages[0]
+	if msg.ReasoningContent != nil {
+		t.Fatalf("non-compatible model must not get reasoning_content: %v", *msg.ReasoningContent)
+	}
+	if msg.Content.Content == nil || *msg.Content.Content != content {
+		t.Fatalf("non-compatible model content changed: %v", msg.Content.Content)
 	}
 }
 
