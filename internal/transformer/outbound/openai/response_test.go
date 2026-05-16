@@ -3,12 +3,14 @@ package openai
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	anthropicModel "github.com/bestruirui/octopus/internal/transformer/inbound/anthropic"
 	"github.com/bestruirui/octopus/internal/transformer/model"
 	authropic "github.com/bestruirui/octopus/internal/transformer/outbound/authropic"
 	"github.com/bestruirui/octopus/internal/transformer/outbound/gemini"
+	"github.com/samber/lo"
 )
 
 func TestResponseOutboundCompletedWithoutStatusSetsFinishReason(t *testing.T) {
@@ -500,6 +502,275 @@ func TestAnthropicStringThinkingWrapperPreservesReasoningContent(t *testing.T) {
 	if len(assistant.ToolCalls) != 1 || assistant.ToolCalls[0].ID != "call_00_S7C4wPEA3gZgX0SylKvs7524" {
 		t.Fatalf("tool_calls = %+v, want call_00_S7C4wPEA3gZgX0SylKvs7524", assistant.ToolCalls)
 	}
+}
+
+func TestChatOutboundNonPassthroughNormalizesDeepSeekThinkingWrapper(t *testing.T) {
+	reasoning := "The task is straightforward: read the file."
+	content := "<thinking>\nThe task is straightforward: read the file.\n</thinking>"
+	internalReq := &model.InternalLLMRequest{
+		Model:        "deepseek-v4-flash",
+		RawAPIFormat: model.APIFormatAnthropicMessage,
+		Messages: []model.Message{
+			{
+				Role:    "assistant",
+				Content: model.MessageContent{Content: &content},
+				ToolCalls: []model.ToolCall{{
+					ID:   "call_00_H0UUl3NxXD3HzTBgzxlt8338",
+					Type: "function",
+					Function: model.FunctionCall{
+						Name:      "Read",
+						Arguments: `{"file_path":"/Users/chenjh/Dev/stable/octopus/AGENTS.md"}`,
+					},
+				}},
+			},
+			{
+				Role:       "tool",
+				ToolCallID: lo.ToPtr("call_00_H0UUl3NxXD3HzTBgzxlt8338"),
+				Content:    model.MessageContent{Content: lo.ToPtr("# Repository Guidelines")},
+			},
+		},
+	}
+
+	out := &ChatOutbound{}
+	_, err := out.TransformRequest(context.Background(), internalReq, "https://api.deepseek.com/v1", "key")
+	if err != nil {
+		t.Fatalf("TransformRequest error: %v", err)
+	}
+
+	var upstream struct {
+		Messages []model.Message `json:"messages"`
+	}
+	if err := json.Unmarshal(internalReq.UpstreamRequestBody, &upstream); err != nil {
+		t.Fatalf("UpstreamRequestBody is not valid JSON: %v", err)
+	}
+	if len(upstream.Messages) != 2 {
+		t.Fatalf("messages len = %d, want 2", len(upstream.Messages))
+	}
+	assistant := upstream.Messages[0]
+	if assistant.ReasoningContent == nil || *assistant.ReasoningContent != reasoning {
+		t.Fatalf("reasoning_content = %v, want %q; body=%s", assistant.ReasoningContent, reasoning, internalReq.UpstreamRequestBody)
+	}
+	if assistant.Content.Content != nil {
+		t.Fatalf("thinking wrapper must not remain as content: %q", *assistant.Content.Content)
+	}
+	if len(assistant.ToolCalls) != 1 || assistant.ToolCalls[0].ID != "call_00_H0UUl3NxXD3HzTBgzxlt8338" {
+		t.Fatalf("tool_calls = %+v, want call_00_H0UUl3NxXD3HzTBgzxlt8338", assistant.ToolCalls)
+	}
+}
+
+func TestDeepSeekAnthropicStreamingToolUseRoundTripPreservesReasoningContent(t *testing.T) {
+	reasoning := "I need to inspect the file before answering."
+	finishReason := "tool_calls"
+	firstTurnChunks := []*model.InternalLLMResponse{
+		{
+			ID:    "chatcmpl_deepseek_stream",
+			Model: "deepseek-v4-flash",
+			Choices: []model.Choice{{
+				Index: 0,
+				Delta: &model.Message{
+					Role:             "assistant",
+					ReasoningContent: &reasoning,
+				},
+			}},
+		},
+		{
+			ID:    "chatcmpl_deepseek_stream",
+			Model: "deepseek-v4-flash",
+			Choices: []model.Choice{{
+				Index: 0,
+				Delta: &model.Message{
+					ToolCalls: []model.ToolCall{{
+						Index: 0,
+						ID:    "call_read_stream",
+						Type:  "function",
+						Function: model.FunctionCall{
+							Name:      "Read",
+							Arguments: `{"file_path":"/tmp/example.txt"}`,
+						},
+					}},
+				},
+			}},
+		},
+		{
+			ID:    "chatcmpl_deepseek_stream",
+			Model: "deepseek-v4-flash",
+			Choices: []model.Choice{{
+				Index:        0,
+				FinishReason: &finishReason,
+			}},
+			Usage: &model.Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15},
+		},
+		{Object: "[DONE]"},
+	}
+
+	firstInbound := &anthropicModel.MessagesInbound{}
+	var streamBody []byte
+	for _, chunk := range firstTurnChunks {
+		data, err := firstInbound.TransformStream(context.Background(), chunk)
+		if err != nil {
+			t.Fatalf("first turn TransformStream error: %v", err)
+		}
+		streamBody = append(streamBody, data...)
+	}
+
+	assistantContent := collectAnthropicStreamContent(t, streamBody)
+	if len(assistantContent) != 2 {
+		t.Fatalf("assistant content blocks len = %d, want 2; body=%s", len(assistantContent), streamBody)
+	}
+	if assistantContent[0]["type"] != "thinking" || assistantContent[0]["thinking"] != reasoning {
+		t.Fatalf("thinking block = %+v, want %q", assistantContent[0], reasoning)
+	}
+	if assistantContent[1]["type"] != "tool_use" || assistantContent[1]["id"] != "call_read_stream" {
+		t.Fatalf("tool_use block = %+v, want call_read_stream", assistantContent[1])
+	}
+
+	secondTurnReq := struct {
+		Model     string `json:"model"`
+		MaxTokens int64  `json:"max_tokens"`
+		Stream    bool   `json:"stream"`
+		Messages  []struct {
+			Role    string          `json:"role"`
+			Content json.RawMessage `json:"content"`
+		} `json:"messages"`
+	}{
+		Model:     "deepseek-v4-flash",
+		MaxTokens: 1024,
+		Stream:    true,
+		Messages: []struct {
+			Role    string          `json:"role"`
+			Content json.RawMessage `json:"content"`
+		}{
+			{
+				Role:    "user",
+				Content: mustMarshalRaw(t, "Read /tmp/example.txt first."),
+			},
+			{
+				Role:    "assistant",
+				Content: mustMarshalRaw(t, assistantContent),
+			},
+			{
+				Role: "user",
+				Content: mustMarshalRaw(t, []map[string]any{
+					{"type": "tool_result", "tool_use_id": "call_read_stream", "content": "example file content"},
+					{"type": "text", "text": "Now answer with exactly: ok"},
+				}),
+			},
+		},
+	}
+	secondBody, err := json.Marshal(secondTurnReq)
+	if err != nil {
+		t.Fatalf("marshal second turn request: %v", err)
+	}
+
+	secondInbound := &anthropicModel.MessagesInbound{}
+	internalReq, err := secondInbound.TransformRequest(context.Background(), secondBody)
+	if err != nil {
+		t.Fatalf("second turn TransformRequest error: %v", err)
+	}
+
+	out := &ChatOutbound{}
+	_, err = out.TransformRequest(context.Background(), internalReq, "https://api.deepseek.com/v1", "key")
+	if err != nil {
+		t.Fatalf("second turn ChatOutbound TransformRequest error: %v", err)
+	}
+
+	var upstream struct {
+		Stream        bool            `json:"stream"`
+		StreamOptions json.RawMessage `json:"stream_options"`
+		Messages      []model.Message `json:"messages"`
+	}
+	if err := json.Unmarshal(internalReq.UpstreamRequestBody, &upstream); err != nil {
+		t.Fatalf("UpstreamRequestBody is not valid JSON: %v", err)
+	}
+	if !upstream.Stream {
+		t.Fatal("second turn upstream request must remain streaming")
+	}
+	if len(upstream.StreamOptions) == 0 {
+		t.Fatal("second turn stream_options must request usage")
+	}
+	if len(upstream.Messages) != 4 {
+		t.Fatalf("second turn messages len = %d, want 4; body=%s", len(upstream.Messages), internalReq.UpstreamRequestBody)
+	}
+
+	assistant := upstream.Messages[1]
+	if assistant.Role != "assistant" {
+		t.Fatalf("message[1].role = %q, want assistant", assistant.Role)
+	}
+	if assistant.ReasoningContent == nil || *assistant.ReasoningContent != reasoning {
+		t.Fatalf("second turn reasoning_content = %v, want %q; body=%s", assistant.ReasoningContent, reasoning, internalReq.UpstreamRequestBody)
+	}
+	if len(assistant.ToolCalls) != 1 || assistant.ToolCalls[0].ID != "call_read_stream" {
+		t.Fatalf("second turn tool_calls = %+v, want call_read_stream", assistant.ToolCalls)
+	}
+	if upstream.Messages[2].Role != "tool" || upstream.Messages[2].ToolCallID == nil || *upstream.Messages[2].ToolCallID != "call_read_stream" {
+		t.Fatalf("message[2] must be tool_result for call_read_stream, got %+v", upstream.Messages[2])
+	}
+	if upstream.Messages[3].Role != "user" || upstream.Messages[3].Content.Content == nil || *upstream.Messages[3].Content.Content != "Now answer with exactly: ok" {
+		t.Fatalf("message[3] must be follow-up user text, got %+v", upstream.Messages[3])
+	}
+}
+
+func collectAnthropicStreamContent(t *testing.T, data []byte) []map[string]any {
+	t.Helper()
+	var blocks []map[string]any
+	for _, frame := range strings.Split(string(data), "\n\n") {
+		if frame == "" {
+			continue
+		}
+		var payload string
+		for _, line := range strings.Split(frame, "\n") {
+			if strings.HasPrefix(line, "data:") {
+				payload = strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+			}
+		}
+		if payload == "" {
+			continue
+		}
+		var event map[string]any
+		if err := json.Unmarshal([]byte(payload), &event); err != nil {
+			t.Fatalf("invalid SSE payload %q: %v", payload, err)
+		}
+		switch event["type"] {
+		case "content_block_start":
+			idx := int(event["index"].(float64))
+			for len(blocks) <= idx {
+				blocks = append(blocks, nil)
+			}
+			block := event["content_block"].(map[string]any)
+			if block["type"] == "thinking" {
+				block["thinking"] = ""
+			}
+			if block["type"] == "tool_use" {
+				block["_partial_json"] = ""
+			}
+			blocks[idx] = block
+		case "content_block_delta":
+			idx := int(event["index"].(float64))
+			if idx >= len(blocks) || blocks[idx] == nil {
+				continue
+			}
+			delta := event["delta"].(map[string]any)
+			switch delta["type"] {
+			case "thinking_delta":
+				blocks[idx]["thinking"] = blocks[idx]["thinking"].(string) + delta["thinking"].(string)
+			case "input_json_delta":
+				blocks[idx]["_partial_json"] = blocks[idx]["_partial_json"].(string) + delta["partial_json"].(string)
+			}
+		case "content_block_stop":
+			idx := int(event["index"].(float64))
+			if idx >= len(blocks) || blocks[idx] == nil || blocks[idx]["type"] != "tool_use" {
+				continue
+			}
+			partial := blocks[idx]["_partial_json"].(string)
+			delete(blocks[idx], "_partial_json")
+			var input any
+			if err := json.Unmarshal([]byte(partial), &input); err != nil {
+				t.Fatalf("invalid tool input partial JSON %q: %v", partial, err)
+			}
+			blocks[idx]["input"] = input
+		}
+	}
+	return blocks
 }
 
 func mustMarshalRaw(t *testing.T, v any) json.RawMessage {

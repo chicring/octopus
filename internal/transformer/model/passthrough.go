@@ -75,6 +75,25 @@ func isDeepSeekModel(model string) bool {
 	return strings.Contains(strings.ToLower(model), "deepseek")
 }
 
+func NormalizeDeepSeekThinkingWrappers(request *InternalLLMRequest) {
+	if request == nil || !isDeepSeekModel(request.Model) {
+		return
+	}
+
+	for idx := range request.Messages {
+		msg := &request.Messages[idx]
+		if msg.ReasoningContent != nil || msg.Reasoning != nil || len(msg.ToolCalls) == 0 || msg.Content.Content == nil {
+			continue
+		}
+		thinking, ok := extractWholeThinkingContent(*msg.Content.Content)
+		if !ok {
+			continue
+		}
+		msg.ReasoningContent = &thinking
+		msg.Content.Content = nil
+	}
+}
+
 func patchThinkingWrappers(req map[string]json.RawMessage) bool {
 	messagesRaw, ok := req["messages"]
 	if !ok {

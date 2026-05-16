@@ -259,6 +259,37 @@ func TestPatchRawRequestMovesThinkingWrapperToReasoningContent(t *testing.T) {
 	}
 }
 
+func TestNormalizeDeepSeekThinkingWrappers(t *testing.T) {
+	content := "<thinking>\nI should call the tool.\n</thinking>"
+	request := &InternalLLMRequest{
+		Model: "deepseek-v4-flash",
+		Messages: []Message{
+			{
+				Role:    "assistant",
+				Content: MessageContent{Content: &content},
+				ToolCalls: []ToolCall{{
+					ID:   "call_read",
+					Type: "function",
+					Function: FunctionCall{
+						Name:      "Read",
+						Arguments: `{"file_path":"/tmp/example.txt"}`,
+					},
+				}},
+			},
+		},
+	}
+
+	NormalizeDeepSeekThinkingWrappers(request)
+
+	msg := request.Messages[0]
+	if msg.ReasoningContent == nil || *msg.ReasoningContent != "I should call the tool." {
+		t.Fatalf("reasoning_content = %v, want extracted thinking", msg.ReasoningContent)
+	}
+	if msg.Content.Content != nil {
+		t.Fatalf("thinking wrapper must not remain as content: %q", *msg.Content.Content)
+	}
+}
+
 func TestPatchRawRequestPreservesFieldOrder(t *testing.T) {
 	// 测试当需要 patch 时，其他字段的顺序和值保持不变
 	original := []byte(`{"stream":true,"model":"o3-mini","temperature":0.5,"messages":[{"role":"user","content":"hi"}]}`)
