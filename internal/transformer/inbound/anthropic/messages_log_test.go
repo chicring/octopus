@@ -3,6 +3,7 @@ package anthropic
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/bestruirui/octopus/internal/transformer/model"
@@ -326,9 +327,70 @@ func TestMessagesInbound_StreamWithReasoningAliasAndToolUse(t *testing.T) {
 	if thinkingBlock["type"] != "thinking" || thinkingBlock["thinking"] != thinking {
 		t.Fatalf("first block = %v, want thinking block with reasoning content", thinkingBlock)
 	}
+	if _, ok := thinkingBlock["signature"]; ok {
+		t.Fatalf("thinking block must not synthesize signature for DeepSeek reasoning_content: %v", thinkingBlock)
+	}
 
 	toolBlock, _ := contentArr[1].(map[string]any)
 	if toolBlock["type"] != "tool_use" || toolBlock["id"] != "call_date" {
 		t.Fatalf("second block = %v, want tool_use block", toolBlock)
 	}
+}
+
+func TestMessagesInbound_StreamReasoningContentDoesNotSynthesizeSignature(t *testing.T) {
+	adapter := &MessagesInbound{}
+	thinking := "Need the current date before calling weather."
+
+	resp, err := adapter.TransformStream(context.Background(), &model.InternalLLMResponse{
+		ID:    "msg_deepseek",
+		Model: "deepseek-reasoner",
+		Choices: []model.Choice{
+			{
+				Index: 0,
+				Delta: &model.Message{
+					Role:             "assistant",
+					ReasoningContent: &thinking,
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("TransformStream error: %v", err)
+	}
+
+	events := parseSSEEvents(t, resp)
+	for _, event := range events {
+		if event["type"] != "content_block_start" {
+			continue
+		}
+		block, ok := event["content_block"].(map[string]any)
+		if !ok || block["type"] != "thinking" {
+			continue
+		}
+		if _, ok := block["signature"]; ok {
+			t.Fatalf("thinking stream start must not synthesize signature: %v", block)
+		}
+		return
+	}
+	t.Fatalf("missing thinking content_block_start in events: %v", events)
+}
+
+func parseSSEEvents(t *testing.T, data []byte) []map[string]any {
+	t.Helper()
+
+	parts := strings.Split(string(data), "\n\n")
+	events := make([]map[string]any, 0, len(parts))
+	for _, part := range parts {
+		for _, line := range strings.Split(part, "\n") {
+			if !strings.HasPrefix(line, "data:") {
+				continue
+			}
+			var event map[string]any
+			if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data:")), &event); err != nil {
+				t.Fatalf("event is not valid JSON: %v", err)
+			}
+			events = append(events, event)
+		}
+	}
+	return events
 }

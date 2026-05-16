@@ -407,8 +407,6 @@ func (i *MessagesInbound) ConvertResponseToClientFormat(ctx context.Context, res
 				}
 				if message.ReasoningSignature != nil && *message.ReasoningSignature != "" {
 					thinkingBlock.Signature = message.ReasoningSignature
-				} else {
-					thinkingBlock.Signature = lo.ToPtr("ANTHROPIC_MAGIC_STRING_TRIGGER_REDACTED_THINKING_46C9A13E193C177646C7398A98432ECCCE4C1253D5E2D82641AC0E52CC2876CB")
 				}
 
 				contentBlocks = append(contentBlocks, thinkingBlock)
@@ -602,9 +600,8 @@ func (i *MessagesInbound) TransformStream(ctx context.Context, stream *model.Int
 					Type:  "content_block_start",
 					Index: &i.contentIndex,
 					ContentBlock: &MessageContentBlock{
-						Type:      "thinking",
-						Thinking:  lo.ToPtr(""),
-						Signature: lo.ToPtr(""),
+						Type:     "thinking",
+						Thinking: lo.ToPtr(""),
 					},
 				}
 				data, err := json.Marshal(startEvent)

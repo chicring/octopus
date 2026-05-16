@@ -315,6 +315,138 @@ func TestChatOutboundAnthropicToOpenAIChatPreservesReasoningAliasWithToolCalls(t
 	}
 }
 
+func TestDeepSeekReasoningContentRoundTripForToolCalls(t *testing.T) {
+	reasoning := "Need the current date before calling weather."
+	text := "Let me check the date first."
+	finishReason := "tool_calls"
+	upstream := &model.InternalLLMResponse{
+		ID:    "chatcmpl_deepseek",
+		Model: "deepseek-reasoner",
+		Choices: []model.Choice{
+			{
+				Index: 0,
+				Message: &model.Message{
+					Role:             "assistant",
+					ReasoningContent: &reasoning,
+					Content:          model.MessageContent{Content: &text},
+					ToolCalls: []model.ToolCall{
+						{
+							ID:   "call_date",
+							Type: "function",
+							Function: model.FunctionCall{
+								Name:      "get_date",
+								Arguments: `{}`,
+							},
+						},
+					},
+				},
+				FinishReason: &finishReason,
+			},
+		},
+	}
+
+	in := &anthropicModel.MessagesInbound{}
+	claudeBody, err := in.TransformResponse(context.Background(), upstream)
+	if err != nil {
+		t.Fatalf("TransformResponse error: %v", err)
+	}
+
+	var claudeResp struct {
+		Content []struct {
+			Type      string          `json:"type"`
+			Thinking  *string         `json:"thinking,omitempty"`
+			Signature *string         `json:"signature,omitempty"`
+			Text      *string         `json:"text,omitempty"`
+			ID        string          `json:"id,omitempty"`
+			Name      *string         `json:"name,omitempty"`
+			Input     json.RawMessage `json:"input,omitempty"`
+		} `json:"content"`
+	}
+	if err := json.Unmarshal(claudeBody, &claudeResp); err != nil {
+		t.Fatalf("Claude response is not valid JSON: %v", err)
+	}
+	if len(claudeResp.Content) != 3 {
+		t.Fatalf("content blocks len = %d, want 3; body=%s", len(claudeResp.Content), claudeBody)
+	}
+	if claudeResp.Content[0].Type != "thinking" || claudeResp.Content[0].Thinking == nil || *claudeResp.Content[0].Thinking != reasoning {
+		t.Fatalf("thinking block = %+v, want DeepSeek reasoning_content", claudeResp.Content[0])
+	}
+	if claudeResp.Content[0].Signature != nil {
+		t.Fatalf("DeepSeek reasoning_content must not synthesize Anthropic signature: %+v", claudeResp.Content[0])
+	}
+	if claudeResp.Content[1].Type != "text" || claudeResp.Content[1].Text == nil || *claudeResp.Content[1].Text != text {
+		t.Fatalf("text block = %+v, want %q", claudeResp.Content[1], text)
+	}
+	if claudeResp.Content[2].Type != "tool_use" || claudeResp.Content[2].ID != "call_date" {
+		t.Fatalf("tool_use block = %+v, want call_date", claudeResp.Content[2])
+	}
+
+	followUpReq := struct {
+		Model     string `json:"model"`
+		MaxTokens int64  `json:"max_tokens"`
+		Messages  []struct {
+			Role    string          `json:"role"`
+			Content json.RawMessage `json:"content"`
+		} `json:"messages"`
+	}{
+		Model:     "deepseek-reasoner",
+		MaxTokens: 1024,
+		Messages: []struct {
+			Role    string          `json:"role"`
+			Content json.RawMessage `json:"content"`
+		}{
+			{
+				Role:    "assistant",
+				Content: mustMarshalRaw(t, claudeResp.Content),
+			},
+		},
+	}
+	followUpBody, err := json.Marshal(followUpReq)
+	if err != nil {
+		t.Fatalf("marshal follow-up request: %v", err)
+	}
+
+	parsedFollowUp, err := in.TransformRequest(context.Background(), followUpBody)
+	if err != nil {
+		t.Fatalf("TransformRequest follow-up error: %v", err)
+	}
+
+	out := &ChatOutbound{}
+	_, err = out.TransformRequest(context.Background(), parsedFollowUp, "https://api.deepseek.com/v1", "key")
+	if err != nil {
+		t.Fatalf("ChatOutbound TransformRequest error: %v", err)
+	}
+
+	var replayed struct {
+		Messages []model.Message `json:"messages"`
+	}
+	if err := json.Unmarshal(parsedFollowUp.UpstreamRequestBody, &replayed); err != nil {
+		t.Fatalf("OpenAI Chat replay body is not valid JSON: %v", err)
+	}
+	if len(replayed.Messages) != 1 {
+		t.Fatalf("replayed messages len = %d, want 1", len(replayed.Messages))
+	}
+	replayedMsg := replayed.Messages[0]
+	if replayedMsg.ReasoningContent == nil || *replayedMsg.ReasoningContent != reasoning {
+		t.Fatalf("replayed reasoning_content = %v, want %q", replayedMsg.ReasoningContent, reasoning)
+	}
+	if replayedMsg.ReasoningSignature != nil {
+		t.Fatalf("replayed message must not retain Anthropic signature: %v", *replayedMsg.ReasoningSignature)
+	}
+	if len(replayedMsg.ToolCalls) != 1 || replayedMsg.ToolCalls[0].ID != "call_date" {
+		t.Fatalf("replayed tool_calls = %+v, want call_date", replayedMsg.ToolCalls)
+	}
+}
+
+func mustMarshalRaw(t *testing.T, v any) json.RawMessage {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("marshal raw: %v", err)
+	}
+	return b
+}
+
 func TestGeminiOutboundStreamKeepsRawChunkForPassthrough(t *testing.T) {
 	out := &gemini.MessagesOutbound{}
 	raw := []byte(`{"candidates":[{"content":{"role":"model","parts":[{"text":"hello"}]},"finishReason":"STOP","index":0}]}`)
