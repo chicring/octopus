@@ -438,6 +438,70 @@ func TestDeepSeekReasoningContentRoundTripForToolCalls(t *testing.T) {
 	}
 }
 
+func TestAnthropicStringThinkingWrapperPreservesReasoningContent(t *testing.T) {
+	reasoning := "Let me start by reading the macOS UI design principles document as requested."
+	body := []byte(`{
+		"model":"deepseek-v4-flash",
+		"max_tokens":1024,
+		"stream":true,
+		"messages":[
+			{
+				"role":"assistant",
+				"content":"<thinking>\nLet me start by reading the macOS UI design principles document as requested.\n</thinking>",
+				"tool_calls":[
+					{
+						"id":"call_00_S7C4wPEA3gZgX0SylKvs7524",
+						"type":"function",
+						"function":{
+							"name":"Read",
+							"arguments":"{\"file_path\":\"/Users/chenjh/Dev/stable/Themby-kmp/doc/design-docs/macos-ui-design-principles.md\"}"
+						},
+						"index":0
+					}
+				]
+			},
+			{
+				"role":"tool",
+				"tool_call_id":"call_00_S7C4wPEA3gZgX0SylKvs7524",
+				"content":"# macOS UI Design Principles"
+			}
+		]
+	}`)
+
+	var internalReq model.InternalLLMRequest
+	if err := json.Unmarshal(body, &internalReq); err != nil {
+		t.Fatalf("unmarshal raw chat request: %v", err)
+	}
+	internalReq.RawAPIFormat = model.APIFormatOpenAIChatCompletion
+	internalReq.RawRequest = body
+	out := &ChatOutbound{}
+	_, err := out.TransformRequest(context.Background(), &internalReq, "https://api.deepseek.com/v1", "key")
+	if err != nil {
+		t.Fatalf("ChatOutbound TransformRequest error: %v", err)
+	}
+
+	var upstream struct {
+		Messages []model.Message `json:"messages"`
+	}
+	if err := json.Unmarshal(internalReq.UpstreamRequestBody, &upstream); err != nil {
+		t.Fatalf("UpstreamRequestBody is not valid JSON: %v", err)
+	}
+	if len(upstream.Messages) != 2 {
+		t.Fatalf("messages len = %d, want 2", len(upstream.Messages))
+	}
+
+	assistant := upstream.Messages[0]
+	if assistant.ReasoningContent == nil || *assistant.ReasoningContent != reasoning {
+		t.Fatalf("reasoning_content = %v, want %q; body=%s", assistant.ReasoningContent, reasoning, internalReq.UpstreamRequestBody)
+	}
+	if assistant.Content.Content != nil {
+		t.Fatalf("thinking wrapper must not remain as content: %q", *assistant.Content.Content)
+	}
+	if len(assistant.ToolCalls) != 1 || assistant.ToolCalls[0].ID != "call_00_S7C4wPEA3gZgX0SylKvs7524" {
+		t.Fatalf("tool_calls = %+v, want call_00_S7C4wPEA3gZgX0SylKvs7524", assistant.ToolCalls)
+	}
+}
+
 func mustMarshalRaw(t *testing.T, v any) json.RawMessage {
 	t.Helper()
 	b, err := json.Marshal(v)

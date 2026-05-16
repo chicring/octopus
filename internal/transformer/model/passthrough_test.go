@@ -228,6 +228,37 @@ func TestPatchRawRequestPreservesImageResponseWhenReasoningMatches(t *testing.T)
 	}
 }
 
+func TestPatchRawRequestMovesThinkingWrapperToReasoningContent(t *testing.T) {
+	original := []byte(`{"model":"deepseek-v4-flash","stream":true,"messages":[{"role":"assistant","content":"<thinking>\nLet me start by reading the macOS UI design principles document as requested.\n</thinking>","tool_calls":[{"id":"call_00_S7C4wPEA3gZgX0SylKvs7524","type":"function","function":{"name":"Read","arguments":"{\"file_path\":\"/Users/chenjh/Dev/stable/Themby-kmp/doc/design-docs/macos-ui-design-principles.md\"}"},"index":0}]},{"role":"tool","tool_call_id":"call_00_S7C4wPEA3gZgX0SylKvs7524","content":"# macOS UI Design Principles"}]}`)
+	request := &InternalLLMRequest{
+		Model: "deepseek-v4-flash",
+	}
+
+	result := PatchRawRequest(original, request)
+
+	var got struct {
+		Messages []Message `json:"messages"`
+	}
+	if err := json.Unmarshal(result, &got); err != nil {
+		t.Fatalf("PatchRawRequest() result is not valid JSON: %v", err)
+	}
+	if len(got.Messages) != 2 {
+		t.Fatalf("messages len = %d, want 2", len(got.Messages))
+	}
+
+	assistant := got.Messages[0]
+	wantReasoning := "Let me start by reading the macOS UI design principles document as requested."
+	if assistant.ReasoningContent == nil || *assistant.ReasoningContent != wantReasoning {
+		t.Fatalf("reasoning_content = %v, want %q; body=%s", assistant.ReasoningContent, wantReasoning, result)
+	}
+	if assistant.Content.Content != nil {
+		t.Fatalf("thinking wrapper must not remain as content: %q", *assistant.Content.Content)
+	}
+	if len(assistant.ToolCalls) != 1 || assistant.ToolCalls[0].ID != "call_00_S7C4wPEA3gZgX0SylKvs7524" {
+		t.Fatalf("tool_calls = %+v, want call_00_S7C4wPEA3gZgX0SylKvs7524", assistant.ToolCalls)
+	}
+}
+
 func TestPatchRawRequestPreservesFieldOrder(t *testing.T) {
 	// 测试当需要 patch 时，其他字段的顺序和值保持不变
 	original := []byte(`{"stream":true,"model":"o3-mini","temperature":0.5,"messages":[{"role":"user","content":"hi"}]}`)
