@@ -2,6 +2,7 @@ package model
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -225,6 +226,64 @@ func TestPatchRawRequestPreservesImageResponseWhenReasoningMatches(t *testing.T)
 
 	if string(result) != string(original) {
 		t.Errorf("PatchRawRequest() should preserve raw image request when effective reasoning is unchanged.\ngot:  %s\nwant: %s", result, original)
+	}
+}
+
+func TestPatchRawRequestPatchesReasoningWithoutReserializingInputPrefix(t *testing.T) {
+	raw := []byte(`{"model":"gpt-4o","input":[{"id":"msg_1","role":"user","content":[{"id":"part_1","type":"input_text","text":"describe"},{"id":"part_2","type":"input_image","image_url":"data:image/png;base64,abc","detail":"low"}]}],"previous_response_id":"resp_123","reasoning":{ "summary":"auto", "effort" : "medium" },"stream":true}`)
+	wantPrefix := `{"model":"gpt-4o","input":[{"id":"msg_1","role":"user","content":[{"id":"part_1","type":"input_text","text":"describe"},{"id":"part_2","type":"input_image","image_url":"data:image/png;base64,abc","detail":"low"}]}],"previous_response_id":"resp_123","reasoning":{ "summary":"auto", "effort" : `
+
+	request := &InternalLLMRequest{
+		Model:           "gpt-4o",
+		ReasoningEffort: "high",
+	}
+
+	result := PatchRawRequest(raw, request)
+
+	if !strings.HasPrefix(string(result), wantPrefix) {
+		t.Fatalf("PatchRawRequest() changed cache-sensitive prefix.\ngot:  %s\nwant prefix: %s", result, wantPrefix)
+	}
+	if !strings.Contains(string(result), `"summary":"auto"`) {
+		t.Fatalf("PatchRawRequest() dropped existing reasoning fields: %s", result)
+	}
+	if !strings.Contains(string(result), `"effort" : "high"`) {
+		t.Fatalf("PatchRawRequest() did not patch reasoning effort in place: %s", result)
+	}
+}
+
+func TestPatchRawRequestAddsReasoningAtEndWhenMissing(t *testing.T) {
+	raw := []byte(`{"model":"gpt-4o","input":[{"role":"user","content":"hello"}],"stream":true}`)
+	wantPrefix := string(raw[:len(raw)-1])
+
+	request := &InternalLLMRequest{
+		Model:           "gpt-4o",
+		ReasoningEffort: "medium",
+	}
+
+	result := PatchRawRequest(raw, request)
+
+	if !strings.HasPrefix(string(result), wantPrefix) {
+		t.Fatalf("PatchRawRequest() should only append reasoning when missing.\ngot:  %s\nwant prefix: %s", result, wantPrefix)
+	}
+	if !strings.HasSuffix(string(result), `,"reasoning":{"effort":"medium"}}`) {
+		t.Fatalf("PatchRawRequest() appended unexpected reasoning: %s", result)
+	}
+}
+
+func TestPatchRawRequestPreservesReasoningMaxTokensWhenOverrideHasNoBudget(t *testing.T) {
+	raw := []byte(`{"model":"o3","input":"hello","reasoning":{"effort":"low","max_tokens":1234}}`)
+	request := &InternalLLMRequest{
+		Model:           "o3",
+		ReasoningEffort: "high",
+	}
+
+	result := PatchRawRequest(raw, request)
+
+	if !strings.Contains(string(result), `"max_tokens":1234`) {
+		t.Fatalf("PatchRawRequest() dropped max_tokens: %s", result)
+	}
+	if !strings.Contains(string(result), `"effort":"high"`) {
+		t.Fatalf("PatchRawRequest() did not patch effort: %s", result)
 	}
 }
 
