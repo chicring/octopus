@@ -141,15 +141,22 @@ func (i *MessagesInbound) TransformRequest(ctx context.Context, body []byte) (*m
 			for _, block := range msg.Content.MultipleContent {
 				switch block.Type {
 				case "thinking":
-					// Keep thinking content in MultipleContent to preserve order
-					if block.Thinking != nil && *block.Thinking != "" {
+					// Preserve explicit empty thinking blocks as reasoning_content=""
+					// so DeepSeek-compatible upstreams can replay them on tool turns.
+					if block.Thinking != nil {
 						reasoningContent = *block.Thinking
 						hasReasoningInContent = true
+						hasContent = true
 					}
 
 					if block.Signature != nil && *block.Signature != "" {
 						reasoningSignature = *block.Signature
 					}
+				case "redacted_thinking":
+					// Keep the presence of redacted thinking so follow-up requests can
+					// still replay an empty reasoning_content field when required.
+					hasReasoningInContent = true
+					hasContent = true
 				case "text":
 					contentParts = append(contentParts, model.MessageContentPart{
 						Type:         "text",
@@ -250,7 +257,7 @@ func (i *MessagesInbound) TransformRequest(ctx context.Context, body []byte) (*m
 			}
 
 			// Assign reasoning content and signature if present
-			if reasoningContent != "" && hasReasoningInContent {
+			if hasReasoningInContent {
 				chatMsg.ReasoningContent = &reasoningContent
 			}
 

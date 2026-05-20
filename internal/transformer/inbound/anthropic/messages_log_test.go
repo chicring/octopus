@@ -375,6 +375,53 @@ func TestMessagesInbound_StreamReasoningContentDoesNotSynthesizeSignature(t *tes
 	t.Fatalf("missing thinking content_block_start in events: %v", events)
 }
 
+func TestMessagesInbound_TransformRequestPreservesEmptyThinkingForToolUseReplay(t *testing.T) {
+	adapter := &MessagesInbound{}
+	body := []byte(`{
+		"model":"deepseek-v4-flash",
+		"max_tokens":1024,
+		"thinking":{"type":"enabled","budget_tokens":1024},
+		"messages":[
+			{
+				"role":"assistant",
+				"content":[
+					{"type":"thinking","thinking":""},
+					{"type":"tool_use","id":"call_date","name":"get_date","input":{}}
+				]
+			},
+			{
+				"role":"user",
+				"content":[
+					{"type":"tool_result","tool_use_id":"call_date","content":"2026-05-20"},
+					{"type":"text","text":"continue"}
+				]
+			}
+		]
+	}`)
+
+	internalReq, err := adapter.TransformRequest(context.Background(), body)
+	if err != nil {
+		t.Fatalf("TransformRequest error: %v", err)
+	}
+	if len(internalReq.Messages) < 2 {
+		t.Fatalf("messages len = %d, want at least 2", len(internalReq.Messages))
+	}
+
+	assistant := internalReq.Messages[0]
+	if assistant.Role != "assistant" {
+		t.Fatalf("message[0].role = %q, want assistant", assistant.Role)
+	}
+	if assistant.ReasoningContent == nil {
+		t.Fatalf("reasoning_content = nil, want explicit empty string")
+	}
+	if *assistant.ReasoningContent != "" {
+		t.Fatalf("reasoning_content = %q, want empty string", *assistant.ReasoningContent)
+	}
+	if len(assistant.ToolCalls) != 1 || assistant.ToolCalls[0].ID != "call_date" {
+		t.Fatalf("tool_calls = %+v, want call_date", assistant.ToolCalls)
+	}
+}
+
 func TestMessagesInbound_StreamDoneFinalizesWithoutUsageChunk(t *testing.T) {
 	adapter := &MessagesInbound{}
 	thinking := "Need the current date before calling weather."
