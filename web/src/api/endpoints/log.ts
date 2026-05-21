@@ -46,6 +46,7 @@ export interface RelayLog {
     cost: number;
     request_content?: string;
     response_content?: string;
+    debug_content?: string;
     error: string;
     attempts?: ChannelAttempt[];
     total_attempts?: number;

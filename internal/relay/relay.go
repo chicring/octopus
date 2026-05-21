@@ -26,6 +26,7 @@ import (
 )
 
 var errClientDisconnected = errors.New("client disconnected during stream")
+var errStreamTransformAfterWrite = errors.New("stream transform error after response started")
 
 // Handler 处理入站请求并转发到上游服务
 func Handler(inboundType inbound.InboundType, c *gin.Context) {
@@ -445,6 +446,7 @@ func (ra *relayAttempt) forward() (int, error) {
 
 	// 处理响应
 	if ra.internalRequest.Stream != nil && *ra.internalRequest.Stream {
+		ra.metrics.SetStreaming(true)
 		if err := ra.handleStreamResponse(ctx, response); err != nil {
 			return 0, err
 		}
@@ -552,6 +554,11 @@ func (ra *relayAttempt) handleStreamResponse(ctx context.Context, response *http
 			}
 			if r.err != nil {
 				log.Warnf("failed to read event: %v", r.err)
+				ra.metrics.AddDebugNote("stream_read_error")
+				ra.metrics.AddDebugNote(r.err.Error())
+				if ssb := ra.metrics.ClientResponseBody(); len(ssb) > 0 {
+					ra.metrics.SetDebugStreamWire(string(ssb))
+				}
 				return fmt.Errorf("failed to read stream event: %w", r.err)
 			}
 
@@ -562,8 +569,23 @@ func (ra *relayAttempt) handleStreamResponse(ctx context.Context, response *http
 					_ = response.Body.Close()
 					return fmt.Errorf("upstream stream error: %w", respErr)
 				}
-				log.Warnf("failed to transform stream: %v", err)
-				continue
+				// 非 ResponseError 的转换错误
+				if firstToken {
+					// 尚未写入任何数据给客户端 → 终止本次尝试，返回错误以触发重试
+					log.Warnf("stream transform error before first token: %v", err)
+					_ = response.Body.Close()
+					return fmt.Errorf("stream transform error: %w", err)
+				}
+				// 已经写入过客户端数据 → 停止流式传输，记录部分数据和调试信息
+				log.Warnf("stream transform error after data written, stopping stream: %v", err)
+				ra.metrics.AddDebugNote("stream_transform_error")
+				ra.metrics.AddDebugNote("partial")
+				ra.metrics.AddDebugNote(err.Error())
+				if ssb := ra.metrics.ClientResponseBody(); len(ssb) > 0 {
+					ra.metrics.SetDebugStreamWire(string(ssb))
+				}
+				_ = response.Body.Close()
+				return errStreamTransformAfterWrite
 			}
 			if len(data) == 0 {
 				continue
@@ -665,9 +687,18 @@ func (ra *relayAttempt) handleResponse(ctx context.Context, response *http.Respo
 		return nil
 	}
 
+	// 非透传 conversion 路径：解析时顺带捕获截断后的上游原始响应用于调试。
+	debugBody := newDebugBodyBuffer()
+	originalBody := response.Body
+	response.Body = &teeReadCloser{
+		Reader: io.TeeReader(originalBody, debugBody),
+		Closer: originalBody,
+	}
+
 	internalResponse, err := ra.outAdapter.TransformResponse(ctx, response)
 	if err != nil {
 		log.Warnf("failed to transform response: %v", err)
+		ra.metrics.SetDebugUpstreamResponseValue(debugBody.String(), debugBody.Truncated())
 		return fmt.Errorf("failed to transform outbound response: %w", err)
 	}
 
@@ -677,6 +708,7 @@ func (ra *relayAttempt) handleResponse(ctx context.Context, response *http.Respo
 		return fmt.Errorf("failed to transform inbound response: %w", err)
 	}
 
+	ra.metrics.SetDebugUpstreamResponseValue(debugBody.String(), debugBody.Truncated())
 	ra.metrics.SetClientResponseBody(inResponse)
 	ra.c.Data(http.StatusOK, "application/json", inResponse)
 	return nil

@@ -247,6 +247,7 @@ func (o *ResponseOutbound) TransformStream(ctx context.Context, eventData []byte
 					finishReason = lo.ToPtr("length")
 				}
 			}
+			// 仅追加 finish_reason 和 usage，不重复发送已由 delta 事件发出的 content/工具调用
 			resp.Choices = []model.Choice{
 				{
 					Index:        0,
@@ -255,18 +256,6 @@ func (o *ResponseOutbound) TransformStream(ctx context.Context, eventData []byte
 			}
 			if streamEvent.Response.Usage != nil {
 				resp.Usage = convertResponsesUsage(streamEvent.Response.Usage)
-			}
-			if len(streamEvent.Response.Output) > 0 {
-				completedResp, err := convertToLLMResponseFromResponses(streamEvent.Response)
-				if err != nil {
-					return nil, err
-				}
-				for idx := range completedResp.Choices {
-					if completedResp.Choices[idx].FinishReason == nil {
-						completedResp.Choices[idx].FinishReason = finishReason
-					}
-				}
-				resp.Choices = completedResp.Choices
 			}
 		}
 

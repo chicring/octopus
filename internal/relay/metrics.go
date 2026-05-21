@@ -1,9 +1,11 @@
 package relay
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -34,6 +36,12 @@ type RelayMetrics struct {
 	// inbound adapter，用于将 InternalResponse 转为客户端格式记录日志
 	inAdapter transformerModel.Inbound
 
+	// 调试信息（差异、错误、转换失败时记录）
+	debugContent *model.RelayLogDebugContent
+
+	// 是否流式响应
+	streaming bool
+
 	// 统计指标
 	ActualModel string
 	Stats       model.StatsMetrics
@@ -44,6 +52,44 @@ type RelayMetrics struct {
 }
 
 const maxLoggedResponseBodyBytes = 1 << 20
+const maxLoggedDebugBodyBytes = 256 << 10
+
+type debugBodyBuffer struct {
+	buf       bytes.Buffer
+	truncated bool
+}
+
+func newDebugBodyBuffer() *debugBodyBuffer {
+	return &debugBodyBuffer{}
+}
+
+func (b *debugBodyBuffer) Write(p []byte) (int, error) {
+	if b.buf.Len() < maxLoggedDebugBodyBytes {
+		remaining := maxLoggedDebugBodyBytes - b.buf.Len()
+		if len(p) <= remaining {
+			_, _ = b.buf.Write(p)
+		} else {
+			_, _ = b.buf.Write(p[:remaining])
+			b.truncated = true
+		}
+	} else if len(p) > 0 {
+		b.truncated = true
+	}
+	return len(p), nil
+}
+
+func (b *debugBodyBuffer) String() string {
+	return b.buf.String()
+}
+
+func (b *debugBodyBuffer) Truncated() bool {
+	return b.truncated
+}
+
+type teeReadCloser struct {
+	io.Reader
+	io.Closer
+}
 
 func NewRelayMetrics(apiKeyID int, requestModel string, req *transformerModel.InternalLLMRequest, userAgent string) *RelayMetrics {
 	m := &RelayMetrics{
@@ -57,11 +103,106 @@ func NewRelayMetrics(apiKeyID int, requestModel string, req *transformerModel.In
 	return m
 }
 
+func (m *RelayMetrics) SetStreaming(v bool) {
+	m.streaming = v
+}
+
 func (m *RelayMetrics) SetFirstTokenTime(t time.Time) {
 	m.FirstTokenTime = t
 	if m.activeRequestID > 0 {
 		op.ActiveRequestUpdateStatus(m.activeRequestID, op.ActiveRequestStreaming)
 	}
+}
+
+// EnsureDebugContent 确保 debugContent 已初始化
+func (m *RelayMetrics) EnsureDebugContent() *model.RelayLogDebugContent {
+	if m.debugContent == nil {
+		m.debugContent = &model.RelayLogDebugContent{}
+	}
+	return m.debugContent
+}
+
+// SetDebugClientRequest 记录原始客户端请求 body
+func (m *RelayMetrics) SetDebugClientRequest(raw string) {
+	value, truncated := truncateDebugContent(raw)
+	m.setDebugClientRequest(value, truncated)
+}
+
+func (m *RelayMetrics) SetDebugClientRequestBytes(raw []byte) {
+	value, truncated := truncateDebugBytes(raw)
+	m.setDebugClientRequest(value, truncated)
+}
+
+func (m *RelayMetrics) setDebugClientRequest(value string, truncated bool) {
+	m.EnsureDebugContent().ClientRequest = value
+	if truncated {
+		m.AddDebugNote("client_request_truncated")
+	}
+}
+
+// SetDebugUpstreamResponse 记录上游原始响应 body
+func (m *RelayMetrics) SetDebugUpstreamResponse(raw string) {
+	value, truncated := truncateDebugContent(raw)
+	m.SetDebugUpstreamResponseValue(value, truncated)
+}
+
+func (m *RelayMetrics) SetDebugUpstreamResponseValue(value string, truncated bool) {
+	m.EnsureDebugContent().UpstreamResponse = value
+	if truncated {
+		m.AddDebugNote("upstream_response_truncated")
+	}
+}
+
+// SetDebugStreamWire 记录流式失败时的截断 SSE
+func (m *RelayMetrics) SetDebugStreamWire(data string) {
+	value, truncated := truncateDebugContent(data)
+	m.EnsureDebugContent().StreamWire = value
+	if truncated {
+		m.AddDebugNote("stream_wire_truncated")
+	}
+}
+
+// AddDebugNote 添加调试说明
+func (m *RelayMetrics) AddDebugNote(note string) {
+	dc := m.EnsureDebugContent()
+	for _, existing := range dc.Notes {
+		if existing == note {
+			return
+		}
+	}
+	dc.Notes = append(dc.Notes, note)
+}
+
+// DebugContentJSON 返回 debugContent 的 JSON 字符串（仅在有内容时返回）
+func (m *RelayMetrics) DebugContentJSON() string {
+	if m.debugContent == nil {
+		return ""
+	}
+	if m.debugContent.ClientRequest == "" &&
+		m.debugContent.UpstreamResponse == "" &&
+		m.debugContent.StreamWire == "" &&
+		len(m.debugContent.Notes) == 0 {
+		return ""
+	}
+	data, err := json.Marshal(m.debugContent)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+func truncateDebugContent(raw string) (string, bool) {
+	if len(raw) <= maxLoggedDebugBodyBytes {
+		return raw, false
+	}
+	return raw[:maxLoggedDebugBodyBytes], true
+}
+
+func truncateDebugBytes(raw []byte) (string, bool) {
+	if len(raw) <= maxLoggedDebugBodyBytes {
+		return string(raw), false
+	}
+	return string(raw[:maxLoggedDebugBodyBytes]), true
 }
 
 func (m *RelayMetrics) SetActiveRequestID(id int64) {
@@ -307,33 +448,27 @@ func (m *RelayMetrics) saveLog(ctx context.Context, err error, duration time.Dur
 		}
 	}
 
-	// 响应内容：通过 inbound adapter 转为客户端实际格式记录
-	if len(m.clientResponseBody) > 0 {
+	// 响应内容
+	if m.streaming && m.InternalResponse != nil {
+		// 流式成功：使用聚合后的最终 JSON，而非 SSE 原始帧
+		relayLog.ResponseContent = m.renderInternalResponseContent("streaming")
+	} else if len(m.clientResponseBody) > 0 {
+		// 非流式（passthrough/conversion）或流式失败时：使用客户端实际收到的 body
 		relayLog.ResponseContent = strings.TrimSuffix(string(m.clientResponseBody), "\n\n")
 	} else if m.InternalResponse != nil {
-		if m.InternalRequest != nil && transformerModel.IsPassthrough(m.InternalRequest, m.InternalRequest.RawAPIFormat) {
-			respForLog := m.filterResponseForLog(m.InternalResponse)
-			if respJSON, jsonErr := json.Marshal(respForLog); jsonErr == nil {
-				relayLog.ResponseContent = string(respJSON)
-			}
-		} else if m.inAdapter != nil {
-			if clientBody, err := m.inAdapter.ConvertResponseToClientFormat(context.Background(), m.InternalResponse); err == nil && len(clientBody) > 0 {
-				relayLog.ResponseContent = string(clientBody)
-			} else {
-				respForLog := m.filterResponseForLog(m.InternalResponse)
-				if respJSON, jsonErr := json.Marshal(respForLog); jsonErr == nil {
-					relayLog.ResponseContent = string(respJSON)
-				}
-				if err != nil {
-					log.Warnf("failed to convert response content for log: %v", err)
-				}
-			}
-		} else {
-			// fallback: 记录内部格式
-			respForLog := m.filterResponseForLog(m.InternalResponse)
-			if respJSON, jsonErr := json.Marshal(respForLog); jsonErr == nil {
-				relayLog.ResponseContent = string(respJSON)
-			}
+		relayLog.ResponseContent = m.renderInternalResponseContent("")
+	}
+
+	// 调试信息：记录 passthrough patch 差异、conversion 上游原始响应、流式失败截断等
+	if dc := m.DebugContentJSON(); dc != "" {
+		relayLog.DebugContent = dc
+	} else if m.InternalRequest != nil {
+		// 自动检测 passthrough 差异：request_content 是 UpstreamRequestBody，如果 RawRequest 不同则记录
+		hasUpstream := len(m.InternalRequest.UpstreamRequestBody) > 0
+		hasRaw := m.InternalRequest.RawAPIFormat != "" && len(m.InternalRequest.RawRequest) > 0
+		if hasUpstream && hasRaw && !bytes.Equal(m.InternalRequest.UpstreamRequestBody, m.InternalRequest.RawRequest) {
+			m.SetDebugClientRequestBytes(m.InternalRequest.RawRequest)
+			relayLog.DebugContent = m.DebugContentJSON()
 		}
 	}
 
@@ -345,6 +480,28 @@ func (m *RelayMetrics) saveLog(ctx context.Context, err error, duration time.Dur
 	if logErr := op.RelayLogAdd(context.Background(), relayLog); logErr != nil {
 		log.Warnf("failed to save relay log: %v", logErr)
 	}
+}
+
+func (m *RelayMetrics) renderInternalResponseContent(contextName string) string {
+	if m.InternalResponse == nil {
+		return ""
+	}
+	if m.inAdapter != nil {
+		if clientBody, err := m.inAdapter.ConvertResponseToClientFormat(context.Background(), m.InternalResponse); err == nil && len(clientBody) > 0 {
+			return string(clientBody)
+		} else if err != nil {
+			if contextName != "" {
+				log.Warnf("failed to convert %s response content for log: %v", contextName, err)
+			} else {
+				log.Warnf("failed to convert response content for log: %v", err)
+			}
+		}
+	}
+	respForLog := m.filterResponseForLog(m.InternalResponse)
+	if respJSON, jsonErr := json.Marshal(respForLog); jsonErr == nil {
+		return string(respJSON)
+	}
+	return ""
 }
 
 // filterResponseForLog 创建响应的浅拷贝，过滤掉 images、MultipleContent 中的图片数据和 Audio.Data 以减少存储压力

@@ -27,8 +27,20 @@ func TestResponseOutboundCompletedWithoutStatusSetsFinishReason(t *testing.T) {
 	if resp.Choices[0].FinishReason == nil || *resp.Choices[0].FinishReason != "stop" {
 		t.Fatalf("finish_reason = %v, want stop", resp.Choices[0].FinishReason)
 	}
-	if resp.Choices[0].Message == nil || resp.Choices[0].Message.Content.Content == nil || *resp.Choices[0].Message.Content.Content != "hello" {
-		t.Fatalf("message content was not preserved: %+v", resp.Choices[0].Message)
+	// Content is NOT emitted from response.completed (dedup fix).
+	// Content is already emitted via response.output_text.delta events.
+	if resp.Choices[0].Message != nil {
+		t.Fatal("expected nil message (content already emitted via delta)")
+	}
+	// Verify usage is set
+	if resp.Usage == nil {
+		t.Fatal("usage should be set")
+	}
+	if resp.Usage.PromptTokens != 1 {
+		t.Fatalf("prompt_tokens = %d, want 1", resp.Usage.PromptTokens)
+	}
+	if resp.Usage.CompletionTokens != 2 {
+		t.Fatalf("completion_tokens = %d, want 2", resp.Usage.CompletionTokens)
 	}
 }
 
@@ -129,17 +141,26 @@ func TestResponseOutboundStreamCompletedOutputNonEmpty(t *testing.T) {
 	if resp == nil || len(resp.Choices) != 1 {
 		t.Fatalf("unexpected response: %+v", resp)
 	}
-	// Verify output content is preserved
+	// Verify content is NOT emitted from response.completed (dedup fix)
+	// content is already emitted via response.output_text.delta events,
+	// response.completed should only provide finish_reason and usage.
 	choice := resp.Choices[0]
-	if choice.Message == nil {
-		t.Fatal("expected non-nil message")
-	}
-	if choice.Message.Content.Content == nil || *choice.Message.Content.Content != "hi there" {
-		t.Fatalf("content = %v, want 'hi there'", choice.Message.Content.Content)
+	if choice.Message != nil {
+		t.Fatal("expected nil message (content already emitted via delta)")
 	}
 	// Verify finish_reason
 	if choice.FinishReason == nil || *choice.FinishReason != "stop" {
 		t.Fatalf("finish_reason = %v, want stop", choice.FinishReason)
+	}
+	// Verify usage is set
+	if resp.Usage == nil {
+		t.Fatal("usage should be set")
+	}
+	if resp.Usage.PromptTokens != 5 {
+		t.Fatalf("prompt_tokens = %d, want 5", resp.Usage.PromptTokens)
+	}
+	if resp.Usage.CompletionTokens != 3 {
+		t.Fatalf("completion_tokens = %d, want 3", resp.Usage.CompletionTokens)
 	}
 	// Verify RawChunk is set
 	if len(resp.RawChunk) == 0 {

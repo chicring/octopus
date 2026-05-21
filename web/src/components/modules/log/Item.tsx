@@ -455,6 +455,7 @@ function LogDetailPanels({ log }: { log: RelayLog }) {
     const { isOpen } = useMorphingDialog();
     const [detail, setDetail] = useState<RelayLog | null>(null);
     const [detailLoading, setDetailLoading] = useState(false);
+    const [debugExpanded, setDebugExpanded] = useState(false);
     const loadedLogId = useRef<number | null>(null);
 
     useEffect(() => {
@@ -490,32 +491,64 @@ function LogDetailPanels({ log }: { log: RelayLog }) {
         };
     }, [isOpen, log.id]);
 
+    const debugContent = detail?.debug_content;
+
     return (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 h-full min-h-0">
-            <div className="flex flex-col rounded-2xl border border-border bg-muted/30 overflow-hidden min-h-0">
-                <div className="flex items-center gap-2 px-3 md:px-4 py-2.5 md:py-3 border-b border-border bg-muted/50 shrink-0">
-                    <Send className="size-4 text-green-500" />
-                    <span className="text-sm font-medium text-card-foreground">{t('requestContent')}</span>
-                    <Badge variant="secondary" className="ml-auto text-xs">
-                        {log.input_tokens.toLocaleString()}{log.cached_tokens > 0 ? ` (${t('cachedTokens')}: ${log.cached_tokens.toLocaleString()})` : ''} {t('tokens')}
-                    </Badge>
+        <div className="flex flex-col gap-4 h-full min-h-0">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 min-h-0 flex-1">
+                <div className="flex flex-col rounded-2xl border border-border bg-muted/30 overflow-hidden min-h-0">
+                    <div className="flex items-center gap-2 px-3 md:px-4 py-2.5 md:py-3 border-b border-border bg-muted/50 shrink-0">
+                        <Send className="size-4 text-green-500" />
+                        <span className="text-sm font-medium text-card-foreground">{t('requestContent')}</span>
+                        <Badge variant="secondary" className="ml-auto text-xs">
+                            {log.input_tokens.toLocaleString()}{log.cached_tokens > 0 ? ` (${t('cachedTokens')}: ${log.cached_tokens.toLocaleString()})` : ''} {t('tokens')}
+                        </Badge>
+                    </div>
+                    <div className="flex-1 overflow-auto min-h-0">
+                        <DeferredJsonContent content={detail?.request_content} fallbackText={detailLoading ? '' : t('noRequestContent')} loading={detailLoading} />
+                    </div>
                 </div>
-                <div className="flex-1 overflow-auto min-h-0">
-                    <DeferredJsonContent content={detail?.request_content} fallbackText={detailLoading ? '' : t('noRequestContent')} loading={detailLoading} />
+                <div className="flex flex-col rounded-2xl border border-border bg-muted/30 overflow-hidden min-h-0">
+                    <div className="flex items-center gap-2 px-3 md:px-4 py-2.5 md:py-3 border-b border-border bg-muted/50 shrink-0">
+                        <MessageSquare className="size-4 text-purple-500" />
+                        <span className="text-sm font-medium text-card-foreground">{t('responseContent')}</span>
+                        <Badge variant="secondary" className="ml-auto text-xs">
+                            {log.output_tokens.toLocaleString()} {t('tokens')}
+                        </Badge>
+                    </div>
+                    <div className="flex-1 overflow-auto min-h-0">
+                        <ResponseLogContent content={detail?.response_content} fallbackText={detailLoading ? '' : t('noResponseContent')} loading={detailLoading} />
+                    </div>
                 </div>
             </div>
-            <div className="flex flex-col rounded-2xl border border-border bg-muted/30 overflow-hidden min-h-0">
-                <div className="flex items-center gap-2 px-3 md:px-4 py-2.5 md:py-3 border-b border-border bg-muted/50 shrink-0">
-                    <MessageSquare className="size-4 text-purple-500" />
-                    <span className="text-sm font-medium text-card-foreground">{t('responseContent')}</span>
-                    <Badge variant="secondary" className="ml-auto text-xs">
-                        {log.output_tokens.toLocaleString()} {t('tokens')}
-                    </Badge>
+            {debugContent && (
+                <div className="flex flex-col shrink-0 rounded-2xl border border-border bg-muted/30 overflow-hidden max-h-[200px]">
+                    <div
+                        className="flex items-center gap-2 px-3 md:px-4 py-2.5 md:py-3 border-b border-border bg-muted/50 shrink-0 cursor-pointer select-none hover:bg-muted/70 transition-colors"
+                        onClick={() => setDebugExpanded(!debugExpanded)}
+                    >
+                        <AlertCircle className="size-4 text-amber-500" />
+                        <span className="text-sm font-medium text-card-foreground">调试信息</span>
+                        <ChevronDown className={cn(
+                            "size-4 ml-auto text-muted-foreground transition-transform duration-200",
+                            debugExpanded && "rotate-180"
+                        )} />
+                    </div>
+                    <AnimatePresence initial={false}>
+                        {debugExpanded && (
+                            <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: "auto", opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                transition={{ duration: 0.2, ease: "easeInOut" }}
+                                className="overflow-auto"
+                            >
+                                <DeferredJsonContent content={debugContent} fallbackText="" />
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
                 </div>
-                <div className="flex-1 overflow-auto min-h-0">
-                    <ResponseLogContent content={detail?.response_content} fallbackText={detailLoading ? '' : t('noResponseContent')} loading={detailLoading} />
-                </div>
-            </div>
+            )}
         </div>
     );
 }

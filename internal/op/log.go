@@ -74,6 +74,9 @@ func notifySubscribers(relayLog model.RelayLog) {
 	relayLogSubscribersLock.RLock()
 	defer relayLogSubscribersLock.RUnlock()
 
+	relayLog.RequestContent = ""
+	relayLog.ResponseContent = ""
+	relayLog.DebugContent = ""
 	for ch := range relayLogSubscribers {
 		select {
 		case ch <- relayLog:
@@ -239,6 +242,7 @@ func RelayLogList(ctx context.Context, startTime, endTime *int, page, pageSize i
 		}
 		log.RequestContent = ""
 		log.ResponseContent = ""
+		log.DebugContent = ""
 		cachedLogs = append(cachedLogs, log)
 	}
 	relayLogCacheLock.Unlock()
@@ -271,7 +275,7 @@ func RelayLogList(ctx context.Context, startTime, endTime *int, page, pageSize i
 				dbOffset = offset - cacheCount
 			}
 
-			query := db.GetDB().WithContext(ctx).Omit("request_content", "response_content")
+			query := db.GetDB().WithContext(ctx).Omit("request_content", "response_content", "debug_content")
 			if hasTimeFilter {
 				query = query.Where("time >= ? AND time <= ?", *startTime, *endTime)
 			}
