@@ -17,7 +17,7 @@ readonly OUTPUT_DIR="build"
 
 # Build metadata
 readonly BUILD_TIME="$(TZ='Asia/Shanghai' date +'%F %T %z')"
-readonly GIT_AUTHOR="chicring"
+readonly GIT_AUTHOR="Ying Xinyao"
 readonly GIT_VERSION="${OCTOPUS_VERSION:-$(git describe --tags --abbrev=0 2>/dev/null || echo 'dev')}"
 readonly COMMIT_ID="$(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
 

@@ -4,54 +4,35 @@ on:
   push:
     branches:
       - dev
+      - yingxinyao/gemini-native-release
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version, for example v0.1.1'
+        required: true
+        default: 'v0.1.1'
+      prerelease:
+        description: 'Mark GitHub Release as prerelease'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 
 permissions:
   contents: write
+  packages: write
 
 env:
-  DOCKER_IMAGE: chruxc/octopus
+  DOCKER_IMAGE: ghcr.io/${{ github.repository }}
 
 jobs:
-  # tag push 时：生成 changelog + 合并 dev → master
-  changelog:
-    name: changelog
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.ACTION_TOKEN }}
-
-      - name: Generate changelog
-        run: npx changelogithub
-        env:
-          GITHUB_TOKEN: ${{ secrets.ACTION_TOKEN }}
-
-      - name: Merge dev to master
-        run: |
-          git config --global user.name 'GitHub Actions'
-          git config --global user.email 'github-actions@github.com'
-          if ! git show-ref --verify --quiet refs/heads/master; then
-            git checkout -b master
-          else
-            git checkout master
-          fi
-          git fetch origin dev
-          git merge origin/dev
-          git remote set-url origin https://x-access-token:${{ secrets.ACTION_TOKEN }}@github.com/${{ github.repository }}
-          git push origin master --force
-
-  # tag push 时：构建 + 发布 Release + Docker latest
-  # dev push 时：只构建 Docker dev 镜像
   build:
     name: build
     runs-on: ubuntu-latest
-    needs: [changelog]
-    if: always()  # dev push 时 changelog 被跳过，但 build 仍需运行
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -81,55 +62,46 @@ jobs:
           cache-dependency-path: web/pnpm-lock.yaml
 
       - name: Get version info
-        id: tag
+        id: version
         run: |
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            LATEST_TAG="${GITHUB_REF_NAME}"
+            RELEASE_VERSION="${GITHUB_REF_NAME}"
+          elif [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            RELEASE_VERSION="${{ inputs.version }}"
           else
-            CURRENT_TAGS=$(git tag --points-at HEAD 2>/dev/null | sort -V | tail -1)
-            if [ -n "$CURRENT_TAGS" ]; then
-              LATEST_TAG="$CURRENT_TAGS"
-            else
-              LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo 'dev')
-            fi
+            RELEASE_VERSION="dev-${GITHUB_REF_NAME//\//-}"
           fi
           SHORT_SHA=$(git rev-parse --short HEAD)
-          echo "tag_name=$LATEST_TAG" >> $GITHUB_OUTPUT
-          echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
-          echo "OCTOPUS_VERSION=$LATEST_TAG" >> $GITHUB_ENV
+          echo "release_version=${RELEASE_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "OCTOPUS_VERSION=${RELEASE_VERSION}" >> "$GITHUB_ENV"
 
-      - name: Build
+      - name: Build release artifacts
         run: bash scripts/build.sh release
 
-      - name: Upload Release
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Upload GitHub Release
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
-          files: build/archives/*
-          prerelease: false
-          tag_name: ${{ steps.tag.outputs.tag_name }}
+          files: |
+            build/archives/octopus-linux-x86_64.zip
+            build/archives/octopus-linux-arm64.zip
+            build/bin/md5.txt
+          prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease == 'true' }}
+          tag_name: ${{ steps.version.outputs.release_version }}
+          target_commitish: ${{ github.sha }}
+          name: Octopus ${{ steps.version.outputs.release_version }}
+          body_path: CHANGELOG.md
 
-      - name: Docker meta (Debian)
-        id: meta-debian
+      - name: Docker metadata
+        id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.DOCKER_IMAGE }}
           tags: |
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
-            type=raw,value=${{ steps.tag.outputs.tag_name }},enable=${{ startsWith(github.ref, 'refs/tags/') }}
-            type=raw,value=${{ steps.tag.outputs.short_sha }}
-            type=raw,value=dev,enable=${{ github.ref == 'refs/heads/dev' }}
-
-      - name: Docker meta (Alpine)
-        id: meta-alpine
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.DOCKER_IMAGE }}
-          tags: |
-            type=raw,value=latest-alpine,enable=${{ startsWith(github.ref, 'refs/tags/') }}
-            type=raw,value=${{ steps.tag.outputs.tag_name }}-alpine,enable=${{ startsWith(github.ref, 'refs/tags/') }}
-            type=raw,value=${{ steps.tag.outputs.short_sha }}-alpine
-            type=raw,value=dev-alpine,enable=${{ github.ref == 'refs/heads/dev' }}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' }}
+            type=raw,value=${{ steps.version.outputs.release_version }}
+            type=raw,value=${{ steps.version.outputs.short_sha }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -137,32 +109,21 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to Docker Hub
+      - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push (Alpine)
+      - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./scripts/dockerfiles/Dockerfile.alpine
           push: true
-          platforms: linux/amd64,linux/i386,linux/arm64,linux/arm/v7
-          tags: ${{ steps.meta-alpine.outputs.tags }}
-          labels: ${{ steps.meta-alpine.outputs.labels }}
-          build-args: |
-            TARGETPLATFORM
-
-      - name: Build and push (Debian)
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./scripts/dockerfiles/Dockerfile.debian
-          push: true
-          platforms: linux/amd64,linux/i386,linux/arm64,linux/arm/v7
-          tags: ${{ steps.meta-debian.outputs.tags }}
-          labels: ${{ steps.meta-debian.outputs.labels }}
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             TARGETPLATFORM

@@ -78,10 +78,12 @@ bash scripts/build.sh release                 # All platforms + Docker images
 
 | 触发条件 | Docker 镜像 | GitHub Release |
 |----------|-------------|----------------|
-| push `dev` | `dev`, `<short_sha>` | **不创建** |
+| push `dev` | `dev-dev`, `<short_sha>` | **不创建** |
+| push `yingxinyao/gemini-native-release` | `dev-yingxinyao-gemini-native-release`, `<short_sha>` | **不创建** |
 | push tag `v*` | `latest`, `<tag>`, `<short_sha>` | **创建**（tag_name = tag 名） |
+| workflow_dispatch | `latest`, `<version>`, `<short_sha>` | **创建**（tag_name = 输入版本） |
 
-**关键**：CI 由 **tag push** 触发完整发布，一条流水线内按顺序执行：changelog → 合并 dev→master → 构建 → 上传 Release → Docker latest。push dev 只出 Docker dev 镜像。版本号直接取 `GITHUB_REF_NAME`（即 tag 名）。
+**关键**：自用分支 `yingxinyao/gemini-native-release` 可直接 push 验证 Docker 构建；正式发布使用 tag push 或 workflow_dispatch。Release 只上传 Linux x86_64 与 arm64 压缩包，Docker 多架构镜像推送到 `ghcr.io/loserrc/octopus`。
 
 ### 发布步骤（只需两步）
 
@@ -89,18 +91,18 @@ bash scripts/build.sh release                 # All platforms + Docker images
 # 1. 查看最新 tag，确定新版本号（当前最新 +1，绝不重复）
 git tag --sort=-v:refname | head -5
 
-# 2. 打 tag 并推送（CI 自动完成全部发布流程）
+# 2. 打 tag 并推送（CI 自动完成 Release 与 Docker 多架构镜像）
 git tag v1.x.x && git push origin v1.x.x
 ```
 
-CI 自动执行：生成 changelog → 合并 dev→master → 构建 8 平台产物 → 上传 GitHub Release → 推 Docker latest 镜像。
+CI 自动执行：构建产物 → 上传 GitHub Release → 推送 `linux/amd64` 与 `linux/arm64` Docker 镜像。
 
 ### 禁止事项
 
 - **禁止重复打已有 tag**：`git tag` 前必须 `git tag --sort=-v:refname | head -5` 确认版本号
 - **禁止 `gh release create`**：会跟 CI 冲突产生 Draft
 - **禁止 `git tag -d` + 重建同名 tag**：已推送的 tag 不可变，只能打新版本号
-- **禁止手动 push master**：CI changelog job 自动合并 dev→master，不需要手动操作
+- **禁止手动 push master/main**：自用发布在独立分支或 tag 上完成
 
 ## Architecture Overview
 

@@ -1,9 +1,9 @@
 package conf
 
 var (
-	Version   = "dev"
+	Version   = "v0.1.1"
 	Commit    = "unknown"
 	BuildTime = "unknown"
-	Author    = "chicring"
-	Repo      = "https://github.com/chicring/octopus"
+	Author    = "Ying Xinyao"
+	Repo      = "https://github.com/loserrc/octopus"
 )

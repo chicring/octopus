@@ -397,6 +397,15 @@ func parseRequest(inboundType inbound.InboundType, c *gin.Context) (*model.Inter
 	case inbound.InboundTypeOpenAIEmbedding:
 		internalRequest.RawAPIFormat = model.APIFormatOpenAIEmbedding
 	}
+	if inboundType == inbound.InboundTypeGemini {
+		if routeModel := strings.TrimSpace(c.GetString("gemini_model")); routeModel != "" {
+			internalRequest.Model = routeModel
+		}
+		if stream, exists := c.Get("gemini_stream"); exists {
+			streamValue := stream.(bool)
+			internalRequest.Stream = &streamValue
+		}
+	}
 
 	// Pass through the original query parameters
 	internalRequest.Query = c.Request.URL.Query()

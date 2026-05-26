@@ -4,6 +4,10 @@
 
 ### Octopus
 
+![Author](https://img.shields.io/badge/Author-Ying%20Xinyao-blue)
+![Version](https://img.shields.io/badge/Version-v0.1.1-brightgreen)
+![Build](https://img.shields.io/badge/Build-GitHub%20Actions-black)
+
 **A Simple, Beautiful, and Elegant LLM API Aggregation & Load Balancing Service for Individuals**
 
  English | [简体中文](README_zh.md)
@@ -17,7 +21,7 @@
 - 🔑 **Multi-Key Support** - Support multiple API keys for a single channel
 - ⚡ **Smart Selection** - Multiple endpoints per channel, smart selection of the endpoint with the shortest delay
 - ⚖️ **Load Balancing** - Automatic request distribution for stable and efficient service
-- 🔄 **Protocol Conversion** - Seamless conversion between OpenAI Chat / OpenAI Responses / Anthropic API formats
+- 🔄 **Protocol Conversion** - Seamless conversion between OpenAI Chat / OpenAI Responses / Anthropic / Gemini API formats
 - 💰 **Price Sync** - Automatic model pricing updates
 - 🔃 **Model Sync** - Automatic synchronization of available model lists with channels
 - 📊 **Analytics** - Comprehensive request statistics, token consumption, and cost tracking
@@ -32,20 +36,20 @@
 Run directly:
 
 ```bash
-docker run -d --name octopus -v /path/to/data:/app/data -p 8080:8080 chruxc/octopus
+docker run -d --name octopus -v /path/to/data:/app/data -p 8080:8080 ghcr.io/loserrc/octopus:v0.1.1
 ```
 
 Or use docker compose:
 
 ```bash
-wget https://raw.githubusercontent.com/chicring/octopus/refs/heads/dev/docker-compose.yml
+wget https://raw.githubusercontent.com/loserrc/octopus/refs/heads/yingxinyao/gemini-native-release/docker-compose.yml
 docker compose up -d
 ```
 
 
 ### 📦 Download from Release
 
-Download the binary for your platform from [Releases](https://github.com/chicring/octopus/releases), then run:
+Download the binary for your platform from [Releases](https://github.com/loserrc/octopus/releases), then run:
 
 ```bash
 ./octopus start
@@ -60,7 +64,7 @@ Download the binary for your platform from [Releases](https://github.com/chicrin
 
 ```bash
 # Clone the repository
-git clone https://github.com/chicring/octopus.git
+git clone https://github.com/loserrc/octopus.git
 cd octopus
 # Build frontend
 cd web && pnpm install && pnpm run build && cd ..
@@ -240,6 +244,7 @@ The program automatically appends API paths based on channel type. You only need
 | OpenAI Responses | `/responses` | `https://api.openai.com/v1` | `https://api.openai.com/v1/responses` |
 | Anthropic | `/messages` | `https://api.anthropic.com/v1` | `https://api.anthropic.com/v1/messages` |
 | Gemini | `/models/:model:generateContent` | `https://generativelanguage.googleapis.com/v1beta` | `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent` |
+| Gemini Native via Octopus | `/models/:model:generateContent` | `http://127.0.0.1:8080/v1beta` | `http://127.0.0.1:8080/v1beta/models/gemini-2.5-flash:generateContent?key=<octopus-api-key>` |
 
 > 💡 **Tip**: No need to include specific API endpoint paths in the Base URL - the program handles this automatically.
 
@@ -324,6 +329,22 @@ completion = client.chat.completions.create(
 print(completion.choices[0].message.content)
 ```
 
+### Gemini Native API
+
+Use the Gemini-compatible base URL:
+
+```bash
+curl "http://127.0.0.1:8080/v1beta/models?key=$OCTOPUS_API_KEY"
+
+curl -X POST "http://127.0.0.1:8080/v1beta/models/gemini-2.5-flash:generateContent?key=$OCTOPUS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"contents":[{"role":"user","parts":[{"text":"Hello"}]}]}'
+```
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for the RCA-formatted release history.
+
 ### Claude Code
 
 Edit `~/.claude/settings.json`
@@ -372,4 +393,3 @@ Edit `~/.codex/auth.json`
 
 - 🙏 [looplj/axonhub](https://github.com/looplj/axonhub) - The LLM API adaptation module in this project is directly derived from this repository
 - 📊 [sst/models.dev](https://github.com/sst/models.dev) - AI model database providing model pricing data
-

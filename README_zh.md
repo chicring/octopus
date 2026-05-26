@@ -4,6 +4,10 @@
 
 ### Octopus
 
+![Author](https://img.shields.io/badge/Author-Ying%20Xinyao-blue)
+![Version](https://img.shields.io/badge/Version-v0.1.1-brightgreen)
+![Build](https://img.shields.io/badge/Build-GitHub%20Actions-black)
+
 **为个人打造的简单、美观、优雅的 LLM API 聚合与负载均衡服务**
 
 简体中文 | [English](README.md)
@@ -17,7 +21,7 @@
 - 🔑 **多Key支持** - 单渠道支持配置多 Key
 - ⚡ **智能优选** - 单渠道多端点，智能选择延迟最小的端点请求
 - ⚖️ **负载均衡** - 自动分配请求，确保服务稳定高效
-- 🔄 **协议互转** - 支持 OpenAI Chat / OpenAI Responses / Anthropic 三种 API 格式互相转换
+- 🔄 **协议互转** - 支持 OpenAI Chat / OpenAI Responses / Anthropic / Gemini API 格式互相转换
 - 💰 **价格同步** - 自动更新模型价格
 - 🔃 **模型同步** - 自动与渠道同步可用模型列表，省心省力
 - 📊 **数据统计** - 全面的请求统计、Token 消耗、费用追踪
@@ -32,20 +36,20 @@
 直接运行
 
 ```bash
-docker run -d --name octopus -v /path/to/data:/app/data -p 8080:8080 chruxc/octopus
+docker run -d --name octopus -v /path/to/data:/app/data -p 8080:8080 ghcr.io/loserrc/octopus:v0.1.1
 ```
 
 或者使用 docker compose 运行
 
 ```bash
-wget https://raw.githubusercontent.com/chicring/octopus/refs/heads/dev/docker-compose.yml
+wget https://raw.githubusercontent.com/loserrc/octopus/refs/heads/yingxinyao/gemini-native-release/docker-compose.yml
 docker compose up -d
 ```
 
 
 ### 📦 从 Release 下载
 
-从 [Releases](https://github.com/chicring/octopus/releases) 下载对应平台的二进制文件，然后运行：
+从 [Releases](https://github.com/loserrc/octopus/releases) 下载对应平台的二进制文件，然后运行：
 
 ```bash
 ./octopus start
@@ -60,7 +64,7 @@ docker compose up -d
 
 ```bash
 # 克隆项目
-git clone https://github.com/chicring/octopus.git
+git clone https://github.com/loserrc/octopus.git
 cd octopus
 # 构建前端
 cd web && pnpm install && pnpm run build && cd ..
@@ -241,6 +245,7 @@ http://localhost:3000
 | OpenAI Responses | `/responses` | `https://api.openai.com/v1` | `https://api.openai.com/v1/responses` |
 | Anthropic | `/messages` | `https://api.anthropic.com/v1` | `https://api.anthropic.com/v1/messages` |
 | Gemini | `/models/:model:generateContent` | `https://generativelanguage.googleapis.com/v1beta` | `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent` |
+| Gemini Native via Octopus | `/models/:model:generateContent` | `http://127.0.0.1:8080/v1beta` | `http://127.0.0.1:8080/v1beta/models/gemini-2.5-flash:generateContent?key=<octopus-api-key>` |
 
 > 💡 **提示**：填写 Base URL 时无需包含具体的 API 端点路径，程序会自动处理。
 
@@ -325,6 +330,22 @@ completion = client.chat.completions.create(
 )
 print(completion.choices[0].message.content)
 ```
+
+### Gemini 原生 API
+
+使用 Gemini 兼容 Base URL：
+
+```bash
+curl "http://127.0.0.1:8080/v1beta/models?key=$OCTOPUS_API_KEY"
+
+curl -X POST "http://127.0.0.1:8080/v1beta/models/gemini-2.5-flash:generateContent?key=$OCTOPUS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"contents":[{"role":"user","parts":[{"text":"Hello"}]}]}'
+```
+
+## 更新日志
+
+详见 [CHANGELOG.md](CHANGELOG.md)，其中包含 RCA 格式的发布记录。
 
 ### Claude Code
 

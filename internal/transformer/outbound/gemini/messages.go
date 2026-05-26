@@ -25,7 +25,7 @@ func (o *MessagesOutbound) TransformRequest(ctx context.Context, request *model.
 	// 避免 round-trip 转换破坏上游 prompt cache 的前缀匹配。
 	if model.ShouldPassthrough(request, model.APIFormatGeminiContents) {
 		model.MarkPassthrough(request, model.APIFormatGeminiContents)
-		body = model.PatchRawRequest(request.RawRequest, request)
+		body = append([]byte(nil), request.RawRequest...)
 	} else {
 		// 不同格式间转换，走完整转换
 		geminiReq := convertLLMToGeminiRequest(request)

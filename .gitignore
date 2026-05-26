@@ -1,5 +1,15 @@
 data
 build
+logs
+test
+.env
+node_modules
+*.log
+dist
+/out
+web/.next
+web/out
+web/node_modules
 static/out/*
 !static/out/README.md
 .vscode
