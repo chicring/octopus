@@ -310,14 +310,14 @@ func testModelsByKey(c *gin.Context) {
 	}
 
 	// 查找指定的 Key
-	var targetKey string
+	var targetKey model.ChannelKey
 	for _, k := range channel.Keys {
 		if k.ID == req.KeyID {
-			targetKey = k.ChannelKey
+			targetKey = k
 			break
 		}
 	}
-	if targetKey == "" {
+	if targetKey.ChannelKey == "" {
 		resp.Error(c, http.StatusNotFound, "key not found")
 		return
 	}

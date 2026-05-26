@@ -1,4 +1,4 @@
-import { AutoGroupType, ChannelType, type Channel, useFetchModel, useTestChannelModelsByConfig, type TestModelResult, useChannelList } from '@/api/endpoints/channel';
+import { AutoGroupType, ChannelType, DEFAULT_USAGE_QUERY, type Channel, type UsageQueryConfig, useFetchModel, useTestChannelModelsByConfig, type TestModelResult } from '@/api/endpoints/channel';
 import { useProviderList, type ProviderInfo, type AuthResult } from '@/api/endpoints/provider';
 import { OAuthPanel } from './OAuthPanel';
 import { AuthFileImportPanel } from './AuthFileImportPanel';
@@ -38,6 +38,9 @@ export interface ChannelKeyFormItem {
     total_requests?: number;
     total_input_token?: number;
     total_output_token?: number;
+    is_cli?: boolean;
+    multiplier?: number;
+    models?: string;
     remark?: string;
 }
 
@@ -45,10 +48,12 @@ export interface ChannelFormData {
     name: string;
     type: ChannelType;
     provider_id: string;
+    official_url: string;
     base_urls: Channel['base_urls'];
     custom_header: Channel['custom_header'];
     channel_proxy: string;
     param_override: string;
+    usage_query: UsageQueryConfig;
     keys: ChannelKeyFormItem[];
     model: string;
     custom_model: string;
@@ -111,13 +116,13 @@ export function ChannelForm({
             return;
         }
         if (!formData.keys || formData.keys.length === 0) {
-            onFormDataChange({ ...formData, keys: [{ enabled: true, channel_key: '' }] });
+            onFormDataChange({ ...formData, keys: [{ enabled: true, channel_key: '', is_cli: selectedProvider?.id === 'codex', multiplier: 1, models: '' }] });
             return;
         }
         if (!formData.custom_header || formData.custom_header.length === 0) {
             onFormDataChange({ ...formData, custom_header: [{ header_key: '', header_value: '' }] });
         }
-    }, [formData, onFormDataChange]);
+    }, [formData, onFormDataChange, selectedProvider?.id]);
 
     const autoModels = useMemo(() => formData.model
         ? formData.model.split(',').map((m) => m.trim()).filter(Boolean)
@@ -155,10 +160,17 @@ export function ChannelForm({
         fetchModel.mutate(
             {
                 type: formData.type,
+                provider_id: formData.provider_id || undefined,
                 base_urls: formData.base_urls,
                 keys: formData.keys
                     .filter((k) => k.channel_key.trim())
-                    .map((k) => ({ enabled: k.enabled, channel_key: k.channel_key.trim() })),
+                    .map((k) => ({
+                        enabled: k.enabled,
+                        channel_key: k.channel_key.trim(),
+                        is_cli: !!k.is_cli,
+                        multiplier: Number(k.multiplier || 1),
+                        models: k.models?.trim() || '',
+                    })),
                 proxy: formData.proxy,
                 channel_proxy: formData.channel_proxy?.trim() || null,
                 match_regex: formData.match_regex.trim() || null,
@@ -225,10 +237,17 @@ export function ChannelForm({
 
     const getTestConfig = () => ({
         type: formData.type,
+        provider_id: formData.provider_id || undefined,
         base_urls: formData.base_urls,
         keys: formData.keys
             .filter((k) => k.channel_key.trim())
-            .map((k) => ({ enabled: k.enabled, channel_key: k.channel_key.trim() })),
+            .map((k) => ({
+                enabled: k.enabled,
+                channel_key: k.channel_key.trim(),
+                is_cli: !!k.is_cli,
+                multiplier: Number(k.multiplier || 1),
+                models: k.models?.trim() || '',
+            })),
         proxy: formData.proxy,
         channel_proxy: formData.channel_proxy?.trim() || null,
         match_regex: formData.match_regex.trim() || null,
@@ -283,7 +302,7 @@ export function ChannelForm({
     const handleAddKey = () => {
         onFormDataChange({
             ...formData,
-            keys: [...formData.keys, { enabled: true, channel_key: '' }],
+            keys: [...formData.keys, { enabled: true, channel_key: '', is_cli: selectedProvider?.id === 'codex', multiplier: 1, models: '' }],
         });
     };
 
@@ -335,6 +354,12 @@ export function ChannelForm({
         onFormDataChange({ ...formData, custom_header: curr.filter((_, i) => i !== idx) });
     };
 
+    const usageQuery = { ...DEFAULT_USAGE_QUERY, ...(formData.usage_query ?? {}) };
+    const updateUsageQuery = (patch: Partial<UsageQueryConfig>) => {
+        onFormDataChange({ ...formData, usage_query: { ...usageQuery, ...patch } });
+    };
+    const usageVariableHint = '{{baseUrl}} {{apiKey}} {{accessToken}} {{userId}}';
+
     const handleOAuthSuccess = (result: NonNullable<AuthResult['result']>) => {
         let channelKey: string;
         if (selectedProvider?.id === 'codex') {
@@ -358,7 +383,7 @@ export function ChannelForm({
         const oauthEmail = result.extra?.email || result.extra?.account_id || '';
         onFormDataChange({
             ...formData,
-            keys: [...formData.keys.filter(k => k.channel_key.trim()), { enabled: true, channel_key: channelKey, remark: oauthEmail }],
+            keys: [...formData.keys.filter(k => k.channel_key.trim()), { enabled: true, channel_key: channelKey, remark: oauthEmail, is_cli: selectedProvider?.id === 'codex', multiplier: 1, models: '' }],
         });
     };
 
@@ -447,6 +472,20 @@ export function ChannelForm({
                         </SelectContent>
                     </Select>
                 </div>
+            </div>
+
+            <div className="space-y-2">
+                <label htmlFor={`${idPrefix}-official-url`} className="text-sm font-medium text-card-foreground">
+                    {t('officialUrl')}
+                </label>
+                <Input
+                    className='rounded-xl'
+                    id={`${idPrefix}-official-url`}
+                    type="url"
+                    value={formData.official_url}
+                    onChange={(event) => onFormDataChange({ ...formData, official_url: event.target.value })}
+                    placeholder={t('officialUrlPlaceholder')}
+                />
             </div>
 
             <div className="space-y-2">
@@ -539,7 +578,6 @@ export function ChannelForm({
                                         <Switch
                                             checked={key.enabled}
                                             onCheckedChange={(checked) => {
-                                                const filled = formData.keys.filter(k => k.channel_key.trim());
                                                 const realIdx = formData.keys.indexOf(key);
                                                 if (realIdx >= 0) {
                                                     handleUpdateKey(realIdx, { enabled: checked });
@@ -547,7 +585,7 @@ export function ChannelForm({
                                             }}
                                             className="shrink-0 scale-75"
                                         />
-                                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0">Codex</Badge>
+                                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0">{key.is_cli ? t('cliKey') : 'Codex'}</Badge>
                                         <div className="min-w-0">
                                             <span className="text-sm text-muted-foreground truncate block">{key.remark || label || `${t('oauthAuthorized')} #${idx + 1}`}</span>
                                             {secondaryParts.length > 0 && (
@@ -583,7 +621,7 @@ export function ChannelForm({
                                     // 导入完成后从服务器重新获取渠道数据，更新表单中的 keys
                                     try {
                                         const { apiClient } = await import('@/api/client');
-                                        type ChannelKeyBrief = { id: number; channel_key: string; remark: string; enabled: boolean };
+                                        type ChannelKeyBrief = { id: number; channel_key: string; remark: string; enabled: boolean; is_cli?: boolean; multiplier?: number; models?: string };
                                         type ChannelBrief = { id: number; keys: ChannelKeyBrief[] };
                                         const channels = await apiClient.get<ChannelBrief[]>('/api/v1/channel/list');
                                         const updated = channels.find((c) => c.id === channelId);
@@ -593,9 +631,12 @@ export function ChannelForm({
                                                     id: k.id,
                                                     enabled: k.enabled,
                                                     channel_key: k.channel_key,
+                                                    is_cli: k.is_cli ?? true,
+                                                    multiplier: k.multiplier && k.multiplier > 0 ? k.multiplier : 1,
+                                                    models: k.models ?? '',
                                                     remark: k.remark ?? '',
                                                 }))
-                                                : [{ enabled: true, channel_key: '', remark: '' }];
+                                                : [{ enabled: true, channel_key: '', remark: '', is_cli: true, multiplier: 1, models: '' }];
                                             onFormDataChange({ ...formData, keys: newKeys });
                                         }
                                     } catch { /* 静默失败，用户可手动刷新 */ }
@@ -606,37 +647,65 @@ export function ChannelForm({
                 ) : (
                     <div className="space-y-2">
                         {(formData.keys ?? []).map((k, idx) => (
-                            <div key={k.id ?? `new-${idx}`} className="flex items-center gap-2">
+                            <div key={k.id ?? `new-${idx}`} className="rounded-xl border border-border p-2 space-y-2">
+                                <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_8rem_4rem_auto_auto] gap-2 items-center">
+                                    <Input
+                                        type="text"
+                                        value={k.channel_key}
+                                        onChange={(e) => handleUpdateKey(idx, { channel_key: e.target.value })}
+                                        placeholder={t('apiKey')}
+                                        required={idx === 0}
+                                        className="rounded-xl"
+                                    />
+                                    <Input
+                                        type="text"
+                                        value={k.remark ?? ''}
+                                        onChange={(e) => handleUpdateKey(idx, { remark: e.target.value })}
+                                        placeholder={t('remark')}
+                                        className="rounded-xl"
+                                    />
+                                    <Input
+                                        type="number"
+                                        min="0.01"
+                                        step="0.01"
+                                        value={k.multiplier ?? 1}
+                                        onChange={(e) => handleUpdateKey(idx, { multiplier: Number(e.target.value || 1) })}
+                                        placeholder={t('keyMultiplier')}
+                                        className="rounded-xl"
+                                    />
+                                    <label className="flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap">
+                                        <Switch
+                                            checked={!!k.is_cli}
+                                            onCheckedChange={(checked) => handleUpdateKey(idx, { is_cli: checked })}
+                                            className="scale-75"
+                                        />
+                                        {t('cliKey')}
+                                    </label>
+                                    <div className="flex items-center gap-2 justify-end">
+                                        <Switch
+                                            checked={k.enabled}
+                                            onCheckedChange={(checked) => handleUpdateKey(idx, { enabled: checked })}
+                                        />
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => handleRemoveKey(idx)}
+                                            disabled={(formData.keys ?? []).length <= 1}
+                                            className="h-8 w-8 p-0 rounded-xl text-muted-foreground hover:text-destructive hover:bg-transparent disabled:opacity-40"
+                                            title="Remove"
+                                        >
+                                            <X className="h-4 w-4" />
+                                        </Button>
+                                    </div>
+                                </div>
                                 <Input
                                     type="text"
-                                    value={k.channel_key}
-                                    onChange={(e) => handleUpdateKey(idx, { channel_key: e.target.value })}
-                                    placeholder={t('apiKey')}
-                                    required={idx === 0}
-                                    className="rounded-xl flex-1"
+                                    value={k.models ?? ''}
+                                    onChange={(e) => handleUpdateKey(idx, { models: e.target.value })}
+                                    placeholder={t('keyModelsPlaceholder')}
+                                    className="rounded-xl"
                                 />
-                                <Input
-                                    type="text"
-                                    value={k.remark ?? ''}
-                                    onChange={(e) => handleUpdateKey(idx, { remark: e.target.value })}
-                                    placeholder={t('remark')}
-                                    className="rounded-xl w-32"
-                                />
-                                <Switch
-                                    checked={k.enabled}
-                                    onCheckedChange={(checked) => handleUpdateKey(idx, { enabled: checked })}
-                                />
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleRemoveKey(idx)}
-                                    disabled={(formData.keys ?? []).length <= 1}
-                                    className="h-8 w-8 p-0 rounded-xl text-muted-foreground hover:text-destructive hover:bg-transparent disabled:opacity-40"
-                                    title="Remove"
-                                >
-                                    <X className="h-4 w-4" />
-                                </Button>
                             </div>
                         ))}
                     </div>
@@ -985,6 +1054,108 @@ export function ChannelForm({
                                 onChange={(e) => onFormDataChange({ ...formData, param_override: e.target.value })}
                                 placeholder={t('paramOverridePlaceholder')}
                                 className="min-h-28 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            />
+                        </div>
+
+                        <div className="space-y-3 rounded-xl border border-border p-3">
+                            <div className="flex items-center justify-between gap-3">
+                                <div>
+                                    <label className="text-sm font-medium text-card-foreground">{t('usageQuery')}</label>
+                                    <p className="text-xs text-muted-foreground">{t('usageVariables')}: {usageVariableHint}</p>
+                                </div>
+                                <Switch
+                                    checked={usageQuery.enabled}
+                                    onCheckedChange={(checked) => updateUsageQuery({ enabled: checked })}
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                                <Select
+                                    value={usageQuery.preset}
+                                    onValueChange={(value) => updateUsageQuery({ preset: value as UsageQueryConfig['preset'] })}
+                                >
+                                    <SelectTrigger className="rounded-xl">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent className='rounded-xl'>
+                                        <SelectItem className='rounded-xl' value="custom">{t('usagePresetCustom')}</SelectItem>
+                                        <SelectItem className='rounded-xl' value="generic">{t('usagePresetGeneric')}</SelectItem>
+                                        <SelectItem className='rounded-xl' value="newapi">{t('usagePresetNewAPI')}</SelectItem>
+                                        <SelectItem className='rounded-xl' value="tokenplan_official">{t('usagePresetTokenPlan')}</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <Input
+                                    type="number"
+                                    min="1"
+                                    value={usageQuery.timeout_sec}
+                                    onChange={(e) => updateUsageQuery({ timeout_sec: Number(e.target.value || 30) })}
+                                    placeholder={t('usageTimeout')}
+                                    className="rounded-xl"
+                                />
+                                <Input
+                                    type="number"
+                                    min="0"
+                                    value={usageQuery.interval_min}
+                                    onChange={(e) => updateUsageQuery({ interval_min: Number(e.target.value || 0) })}
+                                    placeholder={t('usageInterval')}
+                                    className="rounded-xl"
+                                />
+                                <Input
+                                    value={usageQuery.method}
+                                    onChange={(e) => updateUsageQuery({ method: e.target.value.toUpperCase() })}
+                                    placeholder="GET"
+                                    className="rounded-xl"
+                                />
+                            </div>
+
+                            {usageQuery.preset !== 'tokenplan_official' && (
+                                <Input
+                                    value={usageQuery.request_url}
+                                    onChange={(e) => updateUsageQuery({ request_url: e.target.value })}
+                                    placeholder={t('usageRequestUrl')}
+                                    className="rounded-xl"
+                                />
+                            )}
+
+                            {(usageQuery.preset === 'generic' || usageQuery.preset === 'newapi') && (
+                                <Input
+                                    value={usageQuery.api_key}
+                                    onChange={(e) => updateUsageQuery({ api_key: e.target.value })}
+                                    placeholder={t('usageApiKey')}
+                                    className="rounded-xl"
+                                />
+                            )}
+
+                            {(usageQuery.preset === 'custom' || usageQuery.preset === 'newapi') && (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                    <Input
+                                        value={usageQuery.access_token}
+                                        onChange={(e) => updateUsageQuery({ access_token: e.target.value })}
+                                        placeholder={t('usageAccessToken')}
+                                        className="rounded-xl"
+                                    />
+                                    {usageQuery.preset === 'newapi' && (
+                                        <Input
+                                            value={usageQuery.user_id}
+                                            onChange={(e) => updateUsageQuery({ user_id: e.target.value })}
+                                            placeholder={t('usageUserId')}
+                                            className="rounded-xl"
+                                        />
+                                    )}
+                                </div>
+                            )}
+
+                            <textarea
+                                value={usageQuery.template_code}
+                                onChange={(e) => updateUsageQuery({ template_code: e.target.value })}
+                                placeholder={t('usageTemplateCode')}
+                                className="min-h-24 w-full rounded-xl border border-border bg-background px-3 py-2 text-xs font-mono text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            />
+                            <textarea
+                                value={usageQuery.extractor_code}
+                                onChange={(e) => updateUsageQuery({ extractor_code: e.target.value })}
+                                placeholder={t('usageExtractorCode')}
+                                className="min-h-32 w-full rounded-xl border border-border bg-background px-3 py-2 text-xs font-mono text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             />
                         </div>
                     </AccordionContent>

@@ -35,11 +35,31 @@ export type CustomHeader = {
     header_value: string;
 };
 
+export type UsageQueryPreset = 'custom' | 'generic' | 'newapi' | 'tokenplan_official';
+
+export type UsageQueryConfig = {
+    enabled: boolean;
+    preset: UsageQueryPreset;
+    request_url: string;
+    method: string;
+    headers: CustomHeader[];
+    timeout_sec: number;
+    interval_min: number;
+    api_key: string;
+    access_token: string;
+    user_id: string;
+    template_code: string;
+    extractor_code: string;
+};
+
 export type ChannelKey = {
     id: number;
     channel_id: number;
     enabled: boolean;
     channel_key: string;
+    is_cli: boolean;
+    multiplier: number;
+    models: string;
     status_code: number;
     last_use_time_stamp: number;
     total_cost: number;
@@ -57,6 +77,7 @@ export type Channel = {
     name: string;
     type: ChannelType;
     provider_id: string;
+    official_url: string;
     enabled: boolean;
     base_urls: BaseUrl[];
     keys: ChannelKey[];
@@ -68,6 +89,7 @@ export type Channel = {
     custom_header: CustomHeader[];
     param_override?: string | null;
     channel_proxy?: string | null;
+    usage_query: UsageQueryConfig;
     match_regex?: string | null;
     stats: StatsChannel;
 };
@@ -77,6 +99,22 @@ type ChannelServer = Omit<Channel, 'base_urls' | 'custom_header' | 'keys'> & {
     base_urls: BaseUrl[] | null;
     custom_header: CustomHeader[] | null;
     keys: ChannelKey[] | null;
+    usage_query?: UsageQueryConfig | null;
+};
+
+export const DEFAULT_USAGE_QUERY: UsageQueryConfig = {
+    enabled: false,
+    preset: 'custom',
+    request_url: '',
+    method: 'GET',
+    headers: [],
+    timeout_sec: 30,
+    interval_min: 0,
+    api_key: '',
+    access_token: '',
+    user_id: '',
+    template_code: '',
+    extractor_code: '',
 };
 
 /**
@@ -86,9 +124,10 @@ export type CreateChannelRequest = {
     name: string;
     type: ChannelType;
     provider_id?: string;
+    official_url?: string;
     enabled?: boolean;
     base_urls: BaseUrl[];
-    keys: Array<Pick<ChannelKey, 'enabled' | 'channel_key' | 'remark'>>;
+    keys: Array<Pick<ChannelKey, 'enabled' | 'channel_key' | 'is_cli' | 'multiplier' | 'models' | 'remark'>>;
     model: string;
     custom_model?: string;
     proxy?: boolean;
@@ -97,6 +136,7 @@ export type CreateChannelRequest = {
     custom_header?: CustomHeader[];
     channel_proxy?: string | null;
     param_override?: string | null;
+    usage_query?: UsageQueryConfig;
     match_regex?: string | null;
 };
 
@@ -108,6 +148,7 @@ export type UpdateChannelRequest = {
     provider_id?: string;
     name?: string;
     type?: ChannelType;
+    official_url?: string;
     enabled?: boolean;
     base_urls?: BaseUrl[];
     model?: string;
@@ -118,17 +159,19 @@ export type UpdateChannelRequest = {
     custom_header?: CustomHeader[];
     channel_proxy?: string | null;
     param_override?: string | null;
+    usage_query?: UsageQueryConfig;
     match_regex?: string | null;
     // keys diff
-    keys_to_add?: Array<Pick<ChannelKey, 'enabled' | 'channel_key' | 'remark'>>;
-    keys_to_update?: Array<{ id: number; enabled?: boolean; channel_key?: string; remark?: string }>;
+    keys_to_add?: Array<Pick<ChannelKey, 'enabled' | 'channel_key' | 'is_cli' | 'multiplier' | 'models' | 'remark'>>;
+    keys_to_update?: Array<{ id: number; enabled?: boolean; channel_key?: string; is_cli?: boolean; multiplier?: number; models?: string; remark?: string }>;
     keys_to_delete?: number[];
 };
 
 export type FetchModelRequest = {
     type: ChannelType;
+    provider_id?: string;
     base_urls: BaseUrl[];
-    keys: Array<Pick<ChannelKey, 'enabled' | 'channel_key'>>;
+    keys: Array<Pick<ChannelKey, 'enabled' | 'channel_key' | 'is_cli' | 'multiplier' | 'models'>>;
     proxy?: boolean;
     channel_proxy?: string | null;
     match_regex?: string | null;
@@ -155,9 +198,16 @@ export function useChannelList() {
         select: (data) => data.map((item) => ({
             raw: ({
                 ...item,
+                official_url: item.official_url ?? '',
                 base_urls: item.base_urls ?? [],
                 custom_header: item.custom_header ?? [],
-                keys: item.keys ?? [],
+                keys: (item.keys ?? []).map((key) => ({
+                    ...key,
+                    is_cli: key.is_cli ?? false,
+                    multiplier: key.multiplier && key.multiplier > 0 ? key.multiplier : 1,
+                    models: key.models ?? '',
+                })),
+                usage_query: { ...DEFAULT_USAGE_QUERY, ...(item.usage_query ?? {}) },
             }) satisfies Channel,
             formatted: {
                 input_token: formatCount(item.stats.input_token),

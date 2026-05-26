@@ -131,10 +131,10 @@ func Handler(inboundType inbound.InboundType, c *gin.Context) {
 			continue
 		}
 
-		usedKey := op.ChannelGetKey(channel.ID)
+		usedKey := op.ChannelGetKeyForModel(channel.ID, requestModel)
 		if usedKey.ChannelKey == "" {
-			iter.Skip(channel.ID, 0, channel.Name, "no available key")
-			lastErr = fmt.Errorf("channel %s: no available key", channel.Name)
+			iter.Skip(channel.ID, 0, channel.Name, "no available key for model")
+			lastErr = fmt.Errorf("channel %s: no available key for model %s", channel.Name, requestModel)
 			continue
 		}
 

@@ -30,6 +30,10 @@ func init() {
 				Handle(updateGroup),
 		).
 		AddRoute(
+			router.NewRoute("/first-token-timeout/recommend", http.MethodPost).
+				Handle(recommendFirstTokenTimeout),
+		).
+		AddRoute(
 			router.NewRoute("/delete/:id", http.MethodDelete).
 				Handle(deleteGroup),
 		)
@@ -87,6 +91,20 @@ func updateGroup(c *gin.Context) {
 		return
 	}
 	resp.Success(c, group)
+}
+
+func recommendFirstTokenTimeout(c *gin.Context) {
+	var req model.GroupFirstTokenTimeoutRecommendRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	recommendation, err := op.GroupFirstTokenTimeoutRecommend(c.Request.Context(), req)
+	if err != nil {
+		resp.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	resp.Success(c, recommendation)
 }
 
 func deleteGroup(c *gin.Context) {

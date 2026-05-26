@@ -10,9 +10,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version, for example v0.1.1'
+        description: 'Release version, for example v0.1.2'
         required: true
-        default: 'v0.1.1'
+        default: 'v0.1.2'
       prerelease:
         description: 'Mark GitHub Release as prerelease'
         required: true

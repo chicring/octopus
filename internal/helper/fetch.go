@@ -3,6 +3,7 @@ package helper
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -13,6 +14,9 @@ import (
 )
 
 func FetchModels(ctx context.Context, request model.Channel) ([]string, error) {
+	if request.GetModelFetchKey().ChannelKey == "" {
+		return nil, fmt.Errorf("no non-CLI key available for model list fetch; add models manually or configure a normal API key")
+	}
 	client, err := ChannelHttpClient(&request)
 	if err != nil {
 		return nil, err
@@ -66,7 +70,7 @@ func fetchOpenAIModels(client *http.Client, ctx context.Context, request model.C
 		request.GetBaseUrl()+"/models",
 		nil,
 	)
-	req.Header.Set("Authorization", "Bearer "+request.GetChannelKey().ChannelKey)
+	req.Header.Set("Authorization", "Bearer "+request.GetModelFetchKey().ChannelKey)
 	for _, header := range request.CustomHeader {
 		if header.HeaderKey != "" {
 			req.Header.Set(header.HeaderKey, header.HeaderValue)
@@ -104,7 +108,7 @@ func fetchGeminiModels(client *http.Client, ctx context.Context, request model.C
 			request.GetBaseUrl()+"/models",
 			nil,
 		)
-		req.Header.Set("X-Goog-Api-Key", request.GetChannelKey().ChannelKey)
+		req.Header.Set("X-Goog-Api-Key", request.GetModelFetchKey().ChannelKey)
 		for _, header := range request.CustomHeader {
 			if header.HeaderKey != "" {
 				req.Header.Set(header.HeaderKey, header.HeaderValue)
@@ -157,7 +161,7 @@ func fetchAnthropicModels(client *http.Client, ctx context.Context, request mode
 			request.GetBaseUrl()+"/models",
 			nil,
 		)
-		req.Header.Set("X-Api-Key", request.GetChannelKey().ChannelKey)
+		req.Header.Set("X-Api-Key", request.GetModelFetchKey().ChannelKey)
 		req.Header.Set("Anthropic-Version", "2023-06-01")
 		for _, header := range request.CustomHeader {
 			if header.HeaderKey != "" {

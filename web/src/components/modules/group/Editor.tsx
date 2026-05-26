@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useMemo, useState, type FormEvent } from 'react';
-import { Check, ChevronDownIcon, Plus, Search, Sparkles, Trash2 } from 'lucide-react';
+import { Check, ChevronDownIcon, Loader2, Plus, Search, Sparkles, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import * as AccordionPrimitive from '@radix-ui/react-accordion';
 import { useModelChannelList, type LLMChannel } from '@/api/endpoints/model';
@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Accordion, AccordionContent, AccordionItem } from '@/components/ui/accordion';
 import { cn } from '@/lib/utils';
 import { getModelIcon } from '@/lib/model-icons';
-import type { GroupMode } from '@/api/endpoints/group';
+import { useRecommendFirstTokenTimeout, type GroupMode } from '@/api/endpoints/group';
 import type { SelectedMember } from './ItemList';
 import { MemberList } from './ItemList';
 import { matchesGroupName, memberKey, normalizeKey, MODE_LABELS } from './utils';
@@ -263,6 +263,7 @@ export function GroupEditor({
     const [reasoningEffortOverride, setReasoningEffortOverride] = useState<string>(initial?.reasoning_effort_override ?? '');
     const [selectedMembers, setSelectedMembers] = useState<SelectedMember[]>(initial?.members ?? []);
     const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
+    const recommendFirstTokenTimeout = useRecommendFirstTokenTimeout();
 
     const groupKey = normalizeKey(groupName);
     const regexKey = matchRegex.trim();
@@ -334,6 +335,13 @@ export function GroupEditor({
     }, []);
 
     const isValid = groupKey.length > 0 && selectedMembers.length > 0 && !regexError;
+    const recommendedTimeout = recommendFirstTokenTimeout.data;
+    const recommendableModelNames = useMemo(() => Array.from(new Set(selectedMembers.map((m) => m.name).filter(Boolean))), [selectedMembers]);
+
+    const handleRecommendTimeout = useCallback(() => {
+        if (recommendableModelNames.length === 0) return;
+        recommendFirstTokenTimeout.mutate({ model_names: recommendableModelNames, days: 3 });
+    }, [recommendFirstTokenTimeout, recommendableModelNames]);
 
     const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
@@ -412,6 +420,38 @@ export function GroupEditor({
                                 }}
                                 className="rounded-xl"
                             />
+                            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 rounded-xl px-2 text-xs"
+                                    disabled={recommendFirstTokenTimeout.isPending || recommendableModelNames.length === 0}
+                                    onClick={handleRecommendTimeout}
+                                >
+                                    {recommendFirstTokenTimeout.isPending ? <Loader2 className="mr-1 size-3 animate-spin" /> : <Sparkles className="mr-1 size-3" />}
+                                    {t('form.firstTokenRecommend')}
+                                </Button>
+                                {recommendedTimeout?.recommended_seconds ? (
+                                    <>
+                                        <button
+                                            type="button"
+                                            className="rounded-md bg-primary/10 px-2 py-1 text-primary hover:bg-primary/15"
+                                            onClick={() => setFirstTokenTimeOut(recommendedTimeout.recommended_seconds)}
+                                        >
+                                            {t('form.firstTokenRecommendedValue', { seconds: recommendedTimeout.recommended_seconds })}
+                                        </button>
+                                        <span>
+                                            {t('form.firstTokenRecommendMeta', {
+                                                count: recommendedTimeout.sample_count,
+                                                p95: Math.round(recommendedTimeout.p95_ms / 1000),
+                                            })}
+                                        </span>
+                                    </>
+                                ) : recommendFirstTokenTimeout.isSuccess ? (
+                                    <span>{t('form.firstTokenRecommendEmpty')}</span>
+                                ) : null}
+                            </div>
                         </Field>
 
                         <Field>

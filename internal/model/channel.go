@@ -1,6 +1,8 @@
 package model
 
 import (
+	"math"
+	"strings"
 	"time"
 
 	"github.com/bestruirui/octopus/internal/transformer/outbound"
@@ -20,6 +22,7 @@ type Channel struct {
 	Name          string                `json:"name" gorm:"unique;not null"`
 	Type          outbound.OutboundType `json:"type"`
 	ProviderID    string                `json:"provider_id" gorm:"size:64;index"`
+	OfficialURL   string                `json:"official_url" gorm:"size:512"`
 	Enabled       bool                  `json:"enabled" gorm:"default:true"`
 	BaseUrls      []BaseUrl             `json:"base_urls" gorm:"serializer:json"`
 	Keys          []ChannelKey          `json:"keys" gorm:"foreignKey:ChannelID"`
@@ -31,6 +34,7 @@ type Channel struct {
 	CustomHeader  []CustomHeader        `json:"custom_header" gorm:"serializer:json"`
 	ParamOverride *string               `json:"param_override"`
 	ChannelProxy  *string               `json:"channel_proxy"`
+	UsageQuery    UsageQueryConfig      `json:"usage_query" gorm:"serializer:json"`
 	Stats         *StatsChannel         `json:"stats,omitempty" gorm:"foreignKey:ChannelID"`
 	MatchRegex    *string               `json:"match_regex"`
 }
@@ -45,11 +49,38 @@ type CustomHeader struct {
 	HeaderValue string `json:"header_value"`
 }
 
+type UsageQueryPreset string
+
+const (
+	UsageQueryPresetCustom            UsageQueryPreset = "custom"
+	UsageQueryPresetGeneric           UsageQueryPreset = "generic"
+	UsageQueryPresetNewAPI            UsageQueryPreset = "newapi"
+	UsageQueryPresetTokenPlanOfficial UsageQueryPreset = "tokenplan_official"
+)
+
+type UsageQueryConfig struct {
+	Enabled       bool             `json:"enabled"`
+	Preset        UsageQueryPreset `json:"preset"`
+	RequestURL    string           `json:"request_url"`
+	Method        string           `json:"method"`
+	Headers       []CustomHeader   `json:"headers"`
+	TimeoutSec    int              `json:"timeout_sec"`
+	IntervalMin   int              `json:"interval_min"`
+	APIKey        string           `json:"api_key"`
+	AccessToken   string           `json:"access_token"`
+	UserID        string           `json:"user_id"`
+	TemplateCode  string           `json:"template_code"`
+	ExtractorCode string           `json:"extractor_code"`
+}
+
 type ChannelKey struct {
 	ID               int     `json:"id" gorm:"primaryKey"`
 	ChannelID        int     `json:"channel_id"`
 	Enabled          bool    `json:"enabled" gorm:"default:true"`
 	ChannelKey       string  `json:"channel_key"`
+	IsCLI            bool    `json:"is_cli" gorm:"default:false"`
+	Multiplier       float64 `json:"multiplier" gorm:"default:1"`
+	Models           string  `json:"models"`
 	StatusCode       int     `json:"status_code"`
 	LastUseTimeStamp int64   `json:"last_use_time_stamp"`
 	TotalCost        float64 `json:"total_cost"`
@@ -65,6 +96,7 @@ type ChannelUpdateRequest struct {
 	Name          *string                `json:"name,omitempty"`
 	Type          *outbound.OutboundType `json:"type,omitempty"`
 	ProviderID    *string                `json:"provider_id,omitempty"`
+	OfficialURL   *string                `json:"official_url,omitempty"`
 	Enabled       *bool                  `json:"enabled,omitempty"`
 	BaseUrls      *[]BaseUrl             `json:"base_urls,omitempty"`
 	Model         *string                `json:"model,omitempty"`
@@ -75,6 +107,7 @@ type ChannelUpdateRequest struct {
 	CustomHeader  *[]CustomHeader        `json:"custom_header,omitempty"`
 	ChannelProxy  *string                `json:"channel_proxy,omitempty"`
 	ParamOverride *string                `json:"param_override,omitempty"`
+	UsageQuery    *UsageQueryConfig      `json:"usage_query,omitempty"`
 	MatchRegex    *string                `json:"match_regex,omitempty"`
 
 	KeysToAdd    []ChannelKeyAddRequest    `json:"keys_to_add,omitempty"`
@@ -83,16 +116,22 @@ type ChannelUpdateRequest struct {
 }
 
 type ChannelKeyAddRequest struct {
-	Enabled    bool   `json:"enabled"`
-	ChannelKey string `json:"channel_key" binding:"required"`
-	Remark     string `json:"remark"`
+	Enabled    bool    `json:"enabled"`
+	ChannelKey string  `json:"channel_key" binding:"required"`
+	IsCLI      bool    `json:"is_cli"`
+	Multiplier float64 `json:"multiplier"`
+	Models     string  `json:"models"`
+	Remark     string  `json:"remark"`
 }
 
 type ChannelKeyUpdateRequest struct {
-	ID         int     `json:"id" binding:"required"`
-	Enabled    *bool   `json:"enabled,omitempty"`
-	ChannelKey *string `json:"channel_key,omitempty"`
-	Remark     *string `json:"remark,omitempty"`
+	ID         int      `json:"id" binding:"required"`
+	Enabled    *bool    `json:"enabled,omitempty"`
+	ChannelKey *string  `json:"channel_key,omitempty"`
+	IsCLI      *bool    `json:"is_cli,omitempty"`
+	Multiplier *float64 `json:"multiplier,omitempty"`
+	Models     *string  `json:"models,omitempty"`
+	Remark     *string  `json:"remark,omitempty"`
 }
 
 // ChannelFetchModelRequest is used by /channel/fetch-model (not persisted).
@@ -127,6 +166,10 @@ func (c *Channel) GetBaseUrl() string {
 }
 
 func (c *Channel) GetChannelKey() ChannelKey {
+	return c.GetChannelKeyForModel("")
+}
+
+func (c *Channel) GetChannelKeyForModel(modelName string) ChannelKey {
 	if c == nil || len(c.Keys) == 0 {
 		return ChannelKey{}
 	}
@@ -134,11 +177,14 @@ func (c *Channel) GetChannelKey() ChannelKey {
 	nowSec := time.Now().Unix()
 
 	best := ChannelKey{}
-	bestCost := 0.0
+	bestScore := 0.0
 	bestSet := false
 
 	for _, k := range c.Keys {
 		if !k.Enabled || k.ChannelKey == "" {
+			continue
+		}
+		if !k.SupportsModel(modelName) {
 			continue
 		}
 		if k.StatusCode == 429 && k.LastUseTimeStamp > 0 {
@@ -146,9 +192,10 @@ func (c *Channel) GetChannelKey() ChannelKey {
 				continue
 			}
 		}
-		if !bestSet || k.TotalCost < bestCost {
+		score := k.SelectionScore()
+		if !bestSet || score < bestScore {
 			best = k
-			bestCost = k.TotalCost
+			bestScore = score
 			bestSet = true
 		}
 	}
@@ -157,4 +204,43 @@ func (c *Channel) GetChannelKey() ChannelKey {
 		return ChannelKey{}
 	}
 	return best
+}
+
+func (c *Channel) GetModelFetchKey() ChannelKey {
+	if c == nil || len(c.Keys) == 0 {
+		return ChannelKey{}
+	}
+	probe := *c
+	probe.Keys = make([]ChannelKey, 0, len(c.Keys))
+	for _, k := range c.Keys {
+		if k.IsCLI {
+			continue
+		}
+		probe.Keys = append(probe.Keys, k)
+	}
+	return probe.GetChannelKey()
+}
+
+func (k ChannelKey) SupportsModel(modelName string) bool {
+	modelName = strings.TrimSpace(modelName)
+	if modelName == "" || strings.TrimSpace(k.Models) == "" {
+		return true
+	}
+	for _, candidate := range strings.Split(k.Models, ",") {
+		if strings.TrimSpace(candidate) == modelName {
+			return true
+		}
+	}
+	return false
+}
+
+func (k ChannelKey) NormalizedMultiplier() float64 {
+	if k.Multiplier <= 0 || math.IsNaN(k.Multiplier) || math.IsInf(k.Multiplier, 0) {
+		return 1
+	}
+	return k.Multiplier
+}
+
+func (k ChannelKey) SelectionScore() float64 {
+	return k.TotalCost * k.NormalizedMultiplier()
 }

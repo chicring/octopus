@@ -13,7 +13,7 @@ import {
     FlaskConical,
     Loader2
 } from 'lucide-react';
-import { useUpdateChannel, useDeleteChannel, useTestChannelModelsByKey, type Channel, type UpdateChannelRequest } from '@/api/endpoints/channel';
+import { DEFAULT_USAGE_QUERY, useUpdateChannel, useDeleteChannel, useTestChannelModelsByKey, type Channel, type UpdateChannelRequest } from '@/api/endpoints/channel';
 import {
     MorphingDialogTitle,
     MorphingDialogDescription,
@@ -48,6 +48,7 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
         name: channel.name,
         type: channel.type,
         provider_id: channel.provider_id ?? '',
+        official_url: channel.official_url ?? '',
         enabled: channel.enabled,
         base_urls: channel.base_urls?.length ? channel.base_urls : [{ url: '', delay: 0 }],
         custom_header: channel.custom_header ?? [],
@@ -64,14 +65,18 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
                 total_requests: k.total_requests,
                 total_input_token: k.total_input_token,
                 total_output_token: k.total_output_token,
+                is_cli: k.is_cli ?? false,
+                multiplier: k.multiplier && k.multiplier > 0 ? k.multiplier : 1,
+                models: k.models ?? '',
                 remark: k.remark,
             }))
-            : [{ enabled: true, channel_key: '', remark: '' }],
+            : [{ enabled: true, channel_key: '', remark: '', is_cli: false, multiplier: 1, models: '' }],
         model: channel.model,
         custom_model: channel.custom_model,
         proxy: channel.proxy,
         auto_sync: channel.auto_sync,
         auto_group: channel.auto_group,
+        usage_query: { ...DEFAULT_USAGE_QUERY, ...(channel.usage_query ?? {}) },
         match_regex: channel.match_regex ?? '',
     });
 
@@ -91,6 +96,14 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
             .filter(Boolean),
         [channel.model, channel.custom_model]
     );
+
+    const getModelsForKey = useCallback((key: Channel['keys'][number]) => {
+        const keyModels = (key.models ?? '')
+            .split(',')
+            .map(m => m.trim())
+            .filter(Boolean);
+        return keyModels.length > 0 ? keyModels : getModels();
+    }, [getModels]);
 
     const disableKeys = useCallback(async (keyIds: number[]) => {
         if (keyIds.length === 0) return;
@@ -130,8 +143,9 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
         for (const key of enabledKeys) {
             setTestingKeyId(key.id);
             try {
+                const modelsForKey = getModelsForKey(key);
                 const results = await testByKey.mutateAsync(
-                    { channel_id: channel.id, key_id: key.id, models }
+                    { channel_id: channel.id, key_id: key.id, models: modelsForKey }
                 );
                 const failed = results.filter(r => !r.passed);
                 const passed = results.filter(r => r.passed);
@@ -160,7 +174,7 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
         } else {
             toast.warning(t('test.allKeysResult', { keyCount: enabledKeys.length, passed: totalPassed, failed: totalFailed }));
         }
-    }, [getModels, channel.id, channel.keys, testByKey, t, disableKeys]);
+    }, [getModels, getModelsForKey, channel.id, channel.keys, testByKey, t, disableKeys]);
 
     const baseUrlsEqual = (a: Channel['base_urls'] | undefined, b: Channel['base_urls'] | undefined) =>
         JSON.stringify(a ?? []) === JSON.stringify(b ?? []);
@@ -175,6 +189,7 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
         if (formData.name !== channel.name) req.name = formData.name;
         if (formData.type !== channel.type) req.type = formData.type;
         if (formData.provider_id !== (channel.provider_id ?? '')) req.provider_id = formData.provider_id || undefined;
+        if (formData.official_url.trim() !== (channel.official_url ?? '')) req.official_url = formData.official_url.trim();
         if (formData.enabled !== channel.enabled) req.enabled = formData.enabled;
         if (!baseUrlsEqual(formData.base_urls, channel.base_urls)) {
             req.base_urls = (formData.base_urls ?? []).filter((u) => u.url.trim()).map((u) => ({
@@ -187,6 +202,9 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
         if (formData.proxy !== channel.proxy) req.proxy = formData.proxy;
         if (formData.auto_sync !== channel.auto_sync) req.auto_sync = formData.auto_sync;
         if (formData.auto_group !== channel.auto_group) req.auto_group = formData.auto_group;
+        if (JSON.stringify(formData.usage_query ?? DEFAULT_USAGE_QUERY) !== JSON.stringify(channel.usage_query ?? DEFAULT_USAGE_QUERY)) {
+            req.usage_query = formData.usage_query;
+        }
 
         if (!headersEqual(formData.custom_header, channel.custom_header)) {
             req.custom_header = (formData.custom_header ?? [])
@@ -224,19 +242,29 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
 
         const keys_to_add = nextKeys
             .filter((k) => !k.id && k.channel_key.trim())
-            .map((k) => ({ enabled: k.enabled, channel_key: k.channel_key, remark: k.remark ?? '' }));
+            .map((k) => ({
+                enabled: k.enabled,
+                channel_key: k.channel_key,
+                is_cli: !!k.is_cli,
+                multiplier: Number(k.multiplier || 1),
+                models: k.models?.trim() || '',
+                remark: k.remark ?? '',
+            }));
 
         const keys_to_update = nextKeys
             .filter((k) => typeof k.id === 'number' && originalByID.has(k.id as number))
             .map((k) => {
                 const orig = originalByID.get(k.id as number)!;
-                const u: { id: number; enabled?: boolean; channel_key?: string; remark?: string } = { id: k.id as number };
+                const u: { id: number; enabled?: boolean; channel_key?: string; is_cli?: boolean; multiplier?: number; models?: string; remark?: string } = { id: k.id as number };
                 if (k.enabled !== orig.enabled) u.enabled = k.enabled;
                 if (k.channel_key !== orig.channel_key) u.channel_key = k.channel_key;
+                if (!!k.is_cli !== !!orig.is_cli) u.is_cli = !!k.is_cli;
+                if (Number(k.multiplier || 1) !== (orig.multiplier || 1)) u.multiplier = Number(k.multiplier || 1);
+                if ((k.models ?? '').trim() !== (orig.models ?? '')) u.models = (k.models ?? '').trim();
                 if ((k.remark ?? '') !== orig.remark) u.remark = k.remark ?? '';
                 return Object.keys(u).length > 1 ? u : null;
             })
-            .filter((u) => u !== null) as Array<{ id: number; enabled?: boolean; channel_key?: string; remark?: string }>;
+            .filter((u) => u !== null) as Array<{ id: number; enabled?: boolean; channel_key?: string; is_cli?: boolean; multiplier?: number; models?: string; remark?: string }>;
 
         if (keys_to_add.length > 0) req.keys_to_add = keys_to_add;
         if (keys_to_update.length > 0) req.keys_to_update = keys_to_update;
@@ -515,6 +543,22 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
                                                         </Badge>
                                                     )}
 
+                                                    {key.is_cli && (
+                                                        <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
+                                                            CLI
+                                                        </Badge>
+                                                    )}
+
+                                                    <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+                                                        x{key.multiplier && key.multiplier > 0 ? key.multiplier : 1}
+                                                    </Badge>
+
+                                                    {key.models && (
+                                                        <Badge variant="outline" className="h-5 px-1.5 text-[10px] max-w-32 truncate" title={key.models}>
+                                                            {key.models}
+                                                        </Badge>
+                                                    )}
+
                                                     <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
                                                         {formatCount(key.total_requests).formatted.value}
                                                         {formatCount(key.total_requests).formatted.unit} {t('metrics.requests')}
@@ -537,7 +581,7 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
                                                         className="h-6 w-6 p-0 shrink-0"
                                                         disabled={(testByKey.isPending && testingKeyId === key.id) || testingAllKeys}
                                                         onClick={() => {
-                                                            const models = getModels();
+                                                            const models = getModelsForKey(key);
                                                             if (models.length === 0) {
                                                                 toast.error(t('errors.noModels'));
                                                                 return;

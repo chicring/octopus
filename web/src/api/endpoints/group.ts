@@ -73,6 +73,14 @@ export interface GroupUpdateRequest {
     items_to_delete?: number[];              // 删除的 item IDs
 }
 
+export interface FirstTokenTimeoutRecommendation {
+    recommended_seconds: number;
+    sample_count: number;
+    p95_ms: number;
+    buffer_ratio: number;
+    days: number;
+}
+
 /**
  * 获取分组列表 Hook
  * 
@@ -121,6 +129,17 @@ export function useCreateGroup() {
         },
         onError: (error) => {
             logger.error('分组创建失败:', error);
+        },
+    });
+}
+
+export function useRecommendFirstTokenTimeout() {
+    return useMutation({
+        mutationFn: async (data: { model_names: string[]; days?: number }) => {
+            return apiClient.post<FirstTokenTimeoutRecommendation>('/api/v1/group/first-token-timeout/recommend', {
+                model_names: data.model_names,
+                days: data.days ?? 3,
+            });
         },
     });
 }
@@ -207,4 +226,3 @@ export function useDeleteGroup() {
 //         },
 //     });
 // }
-

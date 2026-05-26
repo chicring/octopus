@@ -52,20 +52,10 @@ func TestModels(ctx context.Context, channel *model.Channel, models []string) []
 	}
 
 	baseUrl := channel.GetBaseUrl()
-	var keyStr string
-	if channel.ID > 0 {
-		// 已保存的渠道使用轮询策略选 Key
-		k := op.ChannelGetKey(channel.ID)
-		keyStr = k.ChannelKey
-	} else {
-		k := channel.GetChannelKey()
-		keyStr = k.ChannelKey
-	}
-
-	if baseUrl == "" || keyStr == "" {
+	if baseUrl == "" {
 		results := make([]TestModelResult, 0, len(models))
 		for _, m := range models {
-			results = append(results, TestModelResult{Model: m, Passed: false, Error: "base url or key is empty"})
+			results = append(results, TestModelResult{Model: m, Passed: false, Error: "base url is empty"})
 		}
 		return results
 	}
@@ -77,13 +67,27 @@ func TestModels(ctx context.Context, channel *model.Channel, models []string) []
 		if modelName == "" {
 			continue
 		}
-		results = append(results, testSingleModel(ctx, transformer, httpClient, baseUrl, keyStr, modelName, channel, isEmbedding))
+		var key model.ChannelKey
+		if channel.ID > 0 {
+			key = op.ChannelGetKeyForModel(channel.ID, modelName)
+		} else {
+			key = channel.GetChannelKeyForModel(modelName)
+		}
+		if key.ChannelKey == "" {
+			results = append(results, TestModelResult{Model: modelName, Passed: false, Error: "no available key for model"})
+			continue
+		}
+		if key.IsCLI && !isCLIProvider(pid) {
+			results = append(results, TestModelResult{Model: modelName, Passed: false, Error: "CLI key requires a CLI-capable provider"})
+			continue
+		}
+		results = append(results, testSingleModel(ctx, transformer, httpClient, baseUrl, key.ChannelKey, modelName, channel, isEmbedding))
 	}
 	return results
 }
 
 // TestModelsWithKey 使用指定的 Key 对渠道模型进行连通性测试
-func TestModelsWithKey(ctx context.Context, channel *model.Channel, key string, models []string) []TestModelResult {
+func TestModelsWithKey(ctx context.Context, channel *model.Channel, key model.ChannelKey, models []string) []TestModelResult {
 	// 优先 provider-based 查找，回退到 legacy
 	pid := provider.ResolveProviderIDFromType(channel.Type)
 	if channel.ProviderID != "" {
@@ -114,7 +118,7 @@ func TestModelsWithKey(ctx context.Context, channel *model.Channel, key string, 
 	}
 
 	baseUrl := channel.GetBaseUrl()
-	if baseUrl == "" || key == "" {
+	if baseUrl == "" || key.ChannelKey == "" {
 		results := make([]TestModelResult, 0, len(models))
 		for _, m := range models {
 			results = append(results, TestModelResult{Model: m, Passed: false, Error: "base url or key is empty"})
@@ -129,9 +133,21 @@ func TestModelsWithKey(ctx context.Context, channel *model.Channel, key string, 
 		if modelName == "" {
 			continue
 		}
-		results = append(results, testSingleModel(ctx, transformer, httpClient, baseUrl, key, modelName, channel, isEmbedding))
+		if !key.SupportsModel(modelName) {
+			results = append(results, TestModelResult{Model: modelName, Passed: false, Error: "key does not support this model"})
+			continue
+		}
+		if key.IsCLI && !isCLIProvider(pid) {
+			results = append(results, TestModelResult{Model: modelName, Passed: false, Error: "CLI key requires a CLI-capable provider"})
+			continue
+		}
+		results = append(results, testSingleModel(ctx, transformer, httpClient, baseUrl, key.ChannelKey, modelName, channel, isEmbedding))
 	}
 	return results
+}
+
+func isCLIProvider(pid provider.ProviderID) bool {
+	return pid == provider.ProviderID("codex")
 }
 
 func testSingleModel(

@@ -3,25 +3,25 @@ import {
     MorphingDialogClose,
     MorphingDialogTitle,
     MorphingDialogDescription,
-    useMorphingDialog,
 } from '@/components/ui/morphing-dialog';
-import { useCreateChannel, ChannelType, AutoGroupType } from '@/api/endpoints/channel';
+import { useCreateChannel, ChannelType, AutoGroupType, DEFAULT_USAGE_QUERY } from '@/api/endpoints/channel';
 import { useTranslations } from 'next-intl';
 import { ChannelForm, type ChannelFormData } from './Form';
 
 export function CreateDialogContent() {
-    const { setIsOpen } = useMorphingDialog();
     const createChannel = useCreateChannel();
     const [createdChannelId, setCreatedChannelId] = useState<number | null>(null);
     const [formData, setFormData] = useState<ChannelFormData>({
         name: '',
         type: ChannelType.OpenAIChat,
         provider_id: '',
+        official_url: '',
         base_urls: [{ url: '', delay: 0 }],
         custom_header: [],
         channel_proxy: '',
         param_override: '',
-        keys: [{ enabled: true, channel_key: '', remark: '' }],
+        usage_query: DEFAULT_USAGE_QUERY,
+        keys: [{ enabled: true, channel_key: '', remark: '', is_cli: false, multiplier: 1, models: '' }],
         model: '',
         custom_model: '',
         auto_sync: false,
@@ -40,7 +40,14 @@ export function CreateDialogContent() {
         }));
         const normalizedKeys = formData.keys
             .filter((k) => k.channel_key.trim())
-            .map((k) => ({ enabled: k.enabled, channel_key: k.channel_key, remark: k.remark ?? '' }));
+            .map((k) => ({
+                enabled: k.enabled,
+                channel_key: k.channel_key,
+                is_cli: !!k.is_cli,
+                multiplier: Number(k.multiplier || 1),
+                models: k.models?.trim() || '',
+                remark: k.remark ?? '',
+            }));
         const normalizedHeaders = (formData.custom_header ?? [])
             .map((h) => ({ header_key: h.header_key.trim(), header_value: h.header_value }))
             .filter((h) => h.header_key && h.header_value !== '');
@@ -52,6 +59,7 @@ export function CreateDialogContent() {
                 name: formData.name,
                 type: formData.type,
                 provider_id: formData.provider_id || undefined,
+                official_url: formData.official_url.trim(),
                 enabled: formData.enabled,
                 base_urls: normalizedBaseUrls,
                 keys: normalizedKeys,
@@ -63,6 +71,7 @@ export function CreateDialogContent() {
                 custom_header: normalizedHeaders,
                 channel_proxy: channelProxy,
                 param_override: paramOverride,
+                usage_query: formData.usage_query,
                 match_regex: formData.match_regex.trim(),
             },
             {

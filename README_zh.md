@@ -5,7 +5,7 @@
 ### Octopus
 
 ![Author](https://img.shields.io/badge/Author-Ying%20Xinyao-blue)
-![Version](https://img.shields.io/badge/Version-v0.1.1-brightgreen)
+![Version](https://img.shields.io/badge/Version-v0.1.2-brightgreen)
 ![Build](https://img.shields.io/badge/Build-GitHub%20Actions-black)
 
 **为个人打造的简单、美观、优雅的 LLM API 聚合与负载均衡服务**
@@ -36,7 +36,7 @@
 直接运行
 
 ```bash
-docker run -d --name octopus -v /path/to/data:/app/data -p 8080:8080 ghcr.io/loserrc/octopus:v0.1.1
+docker run -d --name octopus -v /path/to/data:/app/data -p 8080:8080 ghcr.io/loserrc/octopus:v0.1.2
 ```
 
 或者使用 docker compose 运行

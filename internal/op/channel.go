@@ -27,6 +27,12 @@ var channelKeyRotationCounters sync.Map // map[int]*uint64
 // ChannelGetKey 从缓存中获取渠道，并使用最低成本优先 + 轮询 tiebreaker 策略选择可用 Key。
 // 当多个 Key 具有相同最低成本时，通过原子计数器实现轮询，确保全轮询。
 func ChannelGetKey(channelID int) model.ChannelKey {
+	return ChannelGetKeyForModel(channelID, "")
+}
+
+// ChannelGetKeyForModel 在渠道内按模型白名单、429 冷却和倍率评分选择 Key。
+// 倍率作为成本放大系数参与选择：score = total_cost * multiplier，越小越优先。
+func ChannelGetKeyForModel(channelID int, modelName string) model.ChannelKey {
 	ch, ok := channelCache.Get(channelID)
 	if !ok || len(ch.Keys) == 0 {
 		return model.ChannelKey{}
@@ -38,6 +44,9 @@ func ChannelGetKey(channelID int) model.ChannelKey {
 	var eligible []model.ChannelKey
 	for _, k := range ch.Keys {
 		if !k.Enabled || k.ChannelKey == "" {
+			continue
+		}
+		if !k.SupportsModel(modelName) {
 			continue
 		}
 		if k.StatusCode == 429 && k.LastUseTimeStamp > 0 {
@@ -53,17 +62,17 @@ func ChannelGetKey(channelID int) model.ChannelKey {
 	}
 
 	// 找出最低成本
-	minCost := eligible[0].TotalCost
+	minScore := eligible[0].SelectionScore()
 	for _, k := range eligible[1:] {
-		if k.TotalCost < minCost {
-			minCost = k.TotalCost
+		if k.SelectionScore() < minScore {
+			minScore = k.SelectionScore()
 		}
 	}
 
 	// 收集所有同最低成本的 Key
 	var tied []model.ChannelKey
 	for _, k := range eligible {
-		if k.TotalCost == minCost {
+		if k.SelectionScore() == minScore {
 			tied = append(tied, k)
 		}
 	}
@@ -88,6 +97,7 @@ func ChannelList(ctx context.Context) ([]model.Channel, error) {
 }
 
 func ChannelCreate(channel *model.Channel, ctx context.Context) error {
+	normalizeChannelBeforeSave(channel)
 	if err := db.GetDB().WithContext(ctx).Create(channel).Error; err != nil {
 		return err
 	}
@@ -222,6 +232,10 @@ func ChannelUpdate(req *model.ChannelUpdateRequest, ctx context.Context) (*model
 		selectFields = append(selectFields, "provider_id")
 		updates.ProviderID = *req.ProviderID
 	}
+	if req.OfficialURL != nil {
+		selectFields = append(selectFields, "official_url")
+		updates.OfficialURL = *req.OfficialURL
+	}
 	if req.Type != nil && req.ProviderID == nil {
 		// type 更新但 provider_id 未显式提供，从 type 推导 provider_id
 		if pid := provider.ResolveProviderIDFromType(*req.Type); pid != "" {
@@ -269,6 +283,10 @@ func ChannelUpdate(req *model.ChannelUpdateRequest, ctx context.Context) (*model
 		selectFields = append(selectFields, "param_override")
 		updates.ParamOverride = req.ParamOverride
 	}
+	if req.UsageQuery != nil {
+		selectFields = append(selectFields, "usage_query")
+		updates.UsageQuery = normalizeUsageQuery(*req.UsageQuery)
+	}
 	if req.MatchRegex != nil {
 		selectFields = append(selectFields, "match_regex")
 		updates.MatchRegex = req.MatchRegex
@@ -312,6 +330,15 @@ func ChannelUpdate(req *model.ChannelUpdateRequest, ctx context.Context) (*model
 			if ku.ChannelKey != nil {
 				updates["channel_key"] = *ku.ChannelKey
 			}
+			if ku.IsCLI != nil {
+				updates["is_cli"] = *ku.IsCLI
+			}
+			if ku.Multiplier != nil {
+				updates["multiplier"] = normalizeMultiplier(*ku.Multiplier)
+			}
+			if ku.Models != nil {
+				updates["models"] = *ku.Models
+			}
 			if ku.Remark != nil {
 				updates["remark"] = *ku.Remark
 			}
@@ -335,6 +362,9 @@ func ChannelUpdate(req *model.ChannelUpdateRequest, ctx context.Context) (*model
 				ChannelID:  req.ID,
 				Enabled:    ka.Enabled,
 				ChannelKey: ka.ChannelKey,
+				IsCLI:      ka.IsCLI,
+				Multiplier: normalizeMultiplier(ka.Multiplier),
+				Models:     ka.Models,
 				Remark:     ka.Remark,
 			})
 		}
@@ -355,6 +385,39 @@ func ChannelUpdate(req *model.ChannelUpdateRequest, ctx context.Context) (*model
 
 	channel, _ := channelCache.Get(req.ID)
 	return &channel, nil
+}
+
+func normalizeChannelBeforeSave(channel *model.Channel) {
+	if channel == nil {
+		return
+	}
+	channel.UsageQuery = normalizeUsageQuery(channel.UsageQuery)
+	for i := range channel.Keys {
+		channel.Keys[i].Multiplier = normalizeMultiplier(channel.Keys[i].Multiplier)
+	}
+}
+
+func normalizeUsageQuery(in model.UsageQueryConfig) model.UsageQueryConfig {
+	if in.Preset == "" {
+		in.Preset = model.UsageQueryPresetCustom
+	}
+	if in.Method == "" {
+		in.Method = "GET"
+	}
+	if in.TimeoutSec <= 0 {
+		in.TimeoutSec = 30
+	}
+	if in.IntervalMin < 0 {
+		in.IntervalMin = 0
+	}
+	return in
+}
+
+func normalizeMultiplier(v float64) float64 {
+	if v <= 0 {
+		return 1
+	}
+	return v
 }
 
 func ChannelEnabled(id int, enabled bool, ctx context.Context) error {

@@ -23,10 +23,10 @@ import (
 )
 
 const (
-	maxSingleFileSize  = 1 << 20 // 1 MB
-	maxZipEntries      = 50
+	maxSingleFileSize   = 1 << 20 // 1 MB
+	maxZipEntries       = 50
 	maxZipTotalJSONSize = 10 << 20 // 10 MB
-	maxTotalFiles      = 200      // 单次导入最大文件数
+	maxTotalFiles       = 200      // 单次导入最大文件数
 )
 
 func init() {
@@ -40,22 +40,22 @@ func init() {
 
 // codexAuthFile CPA Codex auth JSON 文件格式
 type codexAuthFile struct {
-	Type              string            `json:"type"`
-	IDToken           string            `json:"id_token"`
-	AccessToken       string            `json:"access_token"`
-	RefreshToken      string            `json:"refresh_token"`
-	AccountID         string            `json:"account_id"`
-	Email             string            `json:"email"`
-	Expired           json.RawMessage   `json:"expired"`
-	Disabled          bool              `json:"disabled"`
-	Priority          int               `json:"priority"`
-	Note              string            `json:"note"`
-	ProxyURL          string            `json:"proxy_url"`
-	Prefix            string            `json:"prefix"`
-	Headers           map[string]string `json:"headers"`
-	RequestRetry      int               `json:"request_retry"`
-	DisableCooling    bool              `json:"disable_cooling"`
-	ToolPrefixDisabled bool             `json:"tool_prefix_disabled"`
+	Type               string            `json:"type"`
+	IDToken            string            `json:"id_token"`
+	AccessToken        string            `json:"access_token"`
+	RefreshToken       string            `json:"refresh_token"`
+	AccountID          string            `json:"account_id"`
+	Email              string            `json:"email"`
+	Expired            json.RawMessage   `json:"expired"`
+	Disabled           bool              `json:"disabled"`
+	Priority           int               `json:"priority"`
+	Note               string            `json:"note"`
+	ProxyURL           string            `json:"proxy_url"`
+	Prefix             string            `json:"prefix"`
+	Headers            map[string]string `json:"headers"`
+	RequestRetry       int               `json:"request_retry"`
+	DisableCooling     bool              `json:"disable_cooling"`
+	ToolPrefixDisabled bool              `json:"tool_prefix_disabled"`
 	// 兼容 4 种 last_refresh key 名
 	LastRefresh string `json:"last_refresh"`
 }
@@ -507,6 +507,7 @@ func processJSONData(data []byte, filename, source string, channelID int, channe
 				{
 					ID:         existingKeyID,
 					ChannelKey: &credJSON,
+					IsCLI:      ptrBool(true),
 					Remark:     &remark,
 				},
 			},
@@ -552,6 +553,8 @@ func processJSONData(data []byte, filename, source string, channelID int, channe
 				{
 					Enabled:    !authFile.Disabled,
 					ChannelKey: credJSON,
+					IsCLI:      true,
+					Multiplier: 1,
 					Remark:     remark,
 				},
 			},
@@ -595,4 +598,8 @@ func processJSONData(data []byte, filename, source string, channelID int, channe
 		})
 		result.Imported++
 	}
+}
+
+func ptrBool(v bool) *bool {
+	return &v
 }

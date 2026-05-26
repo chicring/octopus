@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"math"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +18,7 @@ import (
 
 const relayLogMaxSize = 20
 const relayLogMaxSizeNoDB = 100 // 当不保存到数据库时，允许更大的缓存用于实时查询
+const firstTokenTimeoutRecommendBuffer = 1.25
 
 var relayLogCache = make([]model.RelayLog, 0, relayLogMaxSize)
 var relayLogCacheLock sync.Mutex
@@ -336,4 +339,83 @@ func RelayLogExists(ctx context.Context, id int64) (bool, error) {
 		return false, err
 	}
 	return count > 0, nil
+}
+
+func GroupFirstTokenTimeoutRecommend(ctx context.Context, req model.GroupFirstTokenTimeoutRecommendRequest) (model.GroupFirstTokenTimeoutRecommendation, error) {
+	days := req.Days
+	if days <= 0 {
+		days = 3
+	}
+	if days > 30 {
+		days = 30
+	}
+
+	modelSet := make(map[string]struct{}, len(req.ModelNames))
+	for _, name := range req.ModelNames {
+		name = strings.TrimSpace(name)
+		if name != "" {
+			modelSet[name] = struct{}{}
+		}
+	}
+	result := model.GroupFirstTokenTimeoutRecommendation{
+		BufferRatio: firstTokenTimeoutRecommendBuffer,
+		Days:        days,
+	}
+	if len(modelSet) == 0 {
+		return result, nil
+	}
+
+	cutoff := time.Now().Add(-time.Duration(days) * 24 * time.Hour).Unix()
+	values := make([]int, 0, 256)
+
+	relayLogCacheLock.Lock()
+	for _, log := range relayLogCache {
+		if log.Time < cutoff || log.Ftut <= 0 || strings.TrimSpace(log.Error) != "" {
+			continue
+		}
+		if _, ok := modelSet[log.RequestModelName]; ok {
+			values = append(values, log.Ftut)
+		}
+	}
+	relayLogCacheLock.Unlock()
+
+	enabled, err := SettingGetBool(model.SettingKeyRelayLogKeepEnabled)
+	if err != nil {
+		return result, err
+	}
+	if enabled {
+		names := make([]string, 0, len(modelSet))
+		for name := range modelSet {
+			names = append(names, name)
+		}
+		var dbValues []int
+		if err := db.GetDB().WithContext(ctx).
+			Model(&model.RelayLog{}).
+			Where("time >= ? AND ftut > 0 AND (error IS NULL OR TRIM(error) = '') AND request_model_name IN ?", cutoff, names).
+			Pluck("ftut", &dbValues).Error; err != nil {
+			return result, err
+		}
+		values = append(values, dbValues...)
+	}
+
+	if len(values) == 0 {
+		return result, nil
+	}
+	sort.Ints(values)
+	idx := int(math.Ceil(float64(len(values))*0.95)) - 1
+	if idx < 0 {
+		idx = 0
+	}
+	if idx >= len(values) {
+		idx = len(values) - 1
+	}
+	p95 := values[idx]
+	seconds := int(math.Ceil(float64(p95) * firstTokenTimeoutRecommendBuffer / 1000))
+	if seconds < 1 {
+		seconds = 1
+	}
+	result.RecommendedSeconds = seconds
+	result.SampleCount = len(values)
+	result.P95Ms = p95
+	return result, nil
 }

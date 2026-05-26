@@ -5,7 +5,7 @@
 ### Octopus
 
 ![Author](https://img.shields.io/badge/Author-Ying%20Xinyao-blue)
-![Version](https://img.shields.io/badge/Version-v0.1.1-brightgreen)
+![Version](https://img.shields.io/badge/Version-v0.1.2-brightgreen)
 ![Build](https://img.shields.io/badge/Build-GitHub%20Actions-black)
 
 **A Simple, Beautiful, and Elegant LLM API Aggregation & Load Balancing Service for Individuals**
@@ -36,7 +36,7 @@
 Run directly:
 
 ```bash
-docker run -d --name octopus -v /path/to/data:/app/data -p 8080:8080 ghcr.io/loserrc/octopus:v0.1.1
+docker run -d --name octopus -v /path/to/data:/app/data -p 8080:8080 ghcr.io/loserrc/octopus:v0.1.2
 ```
 
 Or use docker compose:
