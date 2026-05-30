@@ -733,10 +733,11 @@ func formatSSEData(data []byte) []byte {
 // Request types
 
 type ResponsesRequest struct {
-	Model             string                `json:"model"`
-	Instructions      string                `json:"instructions,omitempty"`
-	Input             ResponsesInput        `json:"input"`
-	Tools             []ResponsesTool       `json:"tools,omitempty"`
+	Model              string                `json:"model"`
+	Instructions       string                `json:"instructions,omitempty"`
+	Input              ResponsesInput        `json:"input"`
+	PreviousResponseID string                `json:"previous_response_id,omitempty"`
+	Tools              []ResponsesTool       `json:"tools,omitempty"`
 	ToolChoice        *ResponsesToolChoice  `json:"tool_choice,omitempty"`
 	ParallelToolCalls *bool                 `json:"parallel_tool_calls,omitempty"`
 	Stream            *bool                 `json:"stream,omitempty"`

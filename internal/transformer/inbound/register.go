@@ -11,6 +11,7 @@ type InboundType int
 const (
 	InboundTypeOpenAIChat InboundType = iota
 	InboundTypeOpenAIResponse
+	InboundTypeOpenAIResponseCompact
 	InboundTypeAnthropic
 	InboundTypeGemini
 	InboundTypeOpenAIEmbedding
@@ -20,8 +21,9 @@ const (
 )
 
 var inboundFactories = map[InboundType]func() model.Inbound{
-	InboundTypeOpenAIChat:      func() model.Inbound { return &openai.ChatInbound{} },
-	InboundTypeOpenAIResponse:  func() model.Inbound { return &openai.ResponseInbound{} },
+	InboundTypeOpenAIChat:             func() model.Inbound { return &openai.ChatInbound{} },
+	InboundTypeOpenAIResponse:         func() model.Inbound { return &openai.ResponseInbound{} },
+	InboundTypeOpenAIResponseCompact:  func() model.Inbound { return &openai.ResponseInbound{} },
 	InboundTypeOpenAIEmbedding: func() model.Inbound { return &openai.EmbeddingInbound{} },
 	InboundTypeAnthropic:       func() model.Inbound { return &anthropic.MessagesInbound{} },
 }

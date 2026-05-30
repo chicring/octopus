@@ -182,6 +182,13 @@ func Handler(inboundType inbound.InboundType, c *gin.Context) {
 			continue
 		}
 
+		// compact 仅 OpenAI Response 渠道有效
+		if internalRequest.RawAPIFormat == model.APIFormatOpenAIResponseCompact &&
+			channel.Type != outbound.OutboundTypeOpenAIResponse {
+			iter.Skip(channel.ID, usedKey.ID, channel.Name, "compact only supported on OpenAI Response channels")
+			continue
+		}
+
 		// 设置实际模型
 		internalRequest.Model = item.ModelName
 		model.ClearPassthrough(internalRequest)
@@ -390,6 +397,8 @@ func parseRequest(inboundType inbound.InboundType, c *gin.Context) (*model.Inter
 		internalRequest.RawAPIFormat = model.APIFormatOpenAIChatCompletion
 	case inbound.InboundTypeOpenAIResponse:
 		internalRequest.RawAPIFormat = model.APIFormatOpenAIResponse
+	case inbound.InboundTypeOpenAIResponseCompact:
+		internalRequest.RawAPIFormat = model.APIFormatOpenAIResponseCompact
 	case inbound.InboundTypeAnthropic:
 		internalRequest.RawAPIFormat = model.APIFormatAnthropicMessage
 	case inbound.InboundTypeGemini:

@@ -219,6 +219,13 @@ func (i *MessagesInbound) TransformRequest(ctx context.Context, body []byte) (*m
 							toolMsg.Content = model.MessageContent{
 								MultipleContent: toolContentParts,
 							}
+						} else {
+							// Empty content array or unsupported format — fall back to empty
+							// string so downstream providers (e.g. DeepSeek) don't get null content.
+							emptyContent := ""
+							toolMsg.Content = model.MessageContent{
+								Content: &emptyContent,
+							}
 						}
 
 						messages = append(messages, toolMsg)

@@ -27,6 +27,10 @@ func init() {
 				Handle(message),
 		).
 		AddRoute(
+			router.NewRoute("/responses/compact", http.MethodPost).
+				Handle(compact),
+		).
+		AddRoute(
 			router.NewRoute("/embeddings", http.MethodPost).
 				Handle(embedding),
 		)
@@ -40,6 +44,9 @@ func response(c *gin.Context) {
 }
 func message(c *gin.Context) {
 	relay.Handler(inbound.InboundTypeAnthropic, c)
+}
+func compact(c *gin.Context) {
+	relay.Handler(inbound.InboundTypeOpenAIResponseCompact, c)
 }
 func embedding(c *gin.Context) {
 	relay.Handler(inbound.InboundTypeOpenAIEmbedding, c)

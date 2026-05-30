@@ -32,8 +32,9 @@ func (o *ResponseOutbound) TransformRequest(ctx context.Context, request *model.
 
 	// 当入站格式也是 Responses API 时，直接透传原始请求 body，
 	// 避免 round-trip 转换破坏 OpenAI prompt cache 的前缀匹配。
-	if model.ShouldPassthrough(request, model.APIFormatOpenAIResponse) {
-		model.MarkPassthrough(request, model.APIFormatOpenAIResponse)
+	if model.ShouldPassthrough(request, model.APIFormatOpenAIResponse) ||
+		model.ShouldPassthrough(request, model.APIFormatOpenAIResponseCompact) {
+		model.MarkPassthrough(request, request.RawAPIFormat)
 		body = model.PatchRawRequest(request.RawRequest, request)
 	} else {
 		// 不同格式间转换（如 Chat API → Responses API），走完整转换
@@ -62,7 +63,11 @@ func (o *ResponseOutbound) TransformRequest(ctx context.Context, request *model.
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse base url: %w", err)
 	}
-	parsedUrl.Path = parsedUrl.Path + "/responses"
+	if request.RawAPIFormat == model.APIFormatOpenAIResponseCompact {
+		parsedUrl.Path = parsedUrl.Path + "/responses/compact"
+	} else {
+		parsedUrl.Path = parsedUrl.Path + "/responses"
+	}
 	req.URL = parsedUrl
 	req.Method = http.MethodPost
 
