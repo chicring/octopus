@@ -89,25 +89,19 @@ func createChannel(c *gin.Context) {
 		resp.Error(c, http.StatusBadRequest, resp.ErrInvalidJSON)
 		return
 	}
-	// 归一化 provider_id 和 type
-	// 优先使用 provider_id：如果提供了 provider_id，从 provider_id 推导 type
-	// 否则从 type 推导 provider_id
-	if channel.ProviderID != "" {
-		pid, lt, err := provider.NormalizeChannelType(&channel.ProviderID, nil)
+	// 归一化每个 BaseUrl 的 type 和 provider_id
+	for i := range channel.BaseUrls {
+		bu := &channel.BaseUrls[i]
+		pid, lt, err := provider.NormalizeChannelType(
+			strPtrIfNonEmpty(bu.ProviderID),
+			&bu.Type,
+		)
 		if err != nil {
 			resp.Error(c, http.StatusBadRequest, err.Error())
 			return
 		}
-		channel.ProviderID = pid
-		channel.Type = lt
-	} else {
-		pid, lt, err := provider.NormalizeChannelType(nil, &channel.Type)
-		if err != nil {
-			resp.Error(c, http.StatusBadRequest, err.Error())
-			return
-		}
-		channel.ProviderID = pid
-		channel.Type = lt
+		bu.ProviderID = pid
+		bu.Type = lt
 	}
 	if err := op.ChannelCreate(&channel, c.Request.Context()); err != nil {
 		resp.Error(c, http.StatusInternalServerError, err.Error())
@@ -134,32 +128,20 @@ func updateChannel(c *gin.Context) {
 		resp.Error(c, http.StatusBadRequest, resp.ErrInvalidJSON)
 		return
 	}
-	// 归一化 provider_id 和 type
-	if req.ProviderID != nil || req.Type != nil {
-		pid, lt, err := provider.NormalizeChannelType(req.ProviderID, req.Type)
-		if err != nil {
-			resp.Error(c, http.StatusBadRequest, err.Error())
-			return
-		}
-		hadProviderID := req.ProviderID != nil
-		hadType := req.Type != nil
-		// 只设置实际提供的字段，避免零值覆盖
-		if hadProviderID {
-			req.ProviderID = &pid
-		}
-		if hadType {
-			req.Type = &lt
-		}
-		// 如果只提供了 provider_id，推导的 type 也需要持久化
-		if hadProviderID && !hadType {
-			p := provider.Get(provider.ProviderID(pid))
-			if p != nil && p.LegacyType() != nil {
-				req.Type = &lt
+	// 归一化每个 BaseUrl 的 type 和 provider_id
+	if req.BaseUrls != nil {
+		for i := range *req.BaseUrls {
+			bu := &(*req.BaseUrls)[i]
+			pid, lt, err := provider.NormalizeChannelType(
+				strPtrIfNonEmpty(bu.ProviderID),
+				&bu.Type,
+			)
+			if err != nil {
+				resp.Error(c, http.StatusBadRequest, err.Error())
+				return
 			}
-		}
-		// 如果只提供了 type，推导的 provider_id 也需要持久化
-		if hadType && !hadProviderID && pid != "" {
-			req.ProviderID = &pid
+			bu.ProviderID = pid
+			bu.Type = lt
 		}
 	}
 	channel, err := op.ChannelUpdate(&req, c.Request.Context())
@@ -179,6 +161,14 @@ func updateChannel(c *gin.Context) {
 		helper.ChannelAutoGroup(channel, ctx)
 	}(channel)
 	resp.Success(c, channel)
+}
+
+// strPtrIfNonEmpty 返回非空字符串的指针，否则返回 nil。
+func strPtrIfNonEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
 
 func enableChannel(c *gin.Context) {

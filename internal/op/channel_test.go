@@ -20,9 +20,8 @@ func newTestChannelWithKeys(t *testing.T, name string, keys []model.ChannelKey) 
 
 	ch := &model.Channel{
 		Name:    name,
-		Type:    outbound.OutboundTypeOpenAIChat,
 		Enabled: true,
-		BaseUrls: []model.BaseUrl{{URL: "https://example.com"}},
+		BaseUrls: []model.BaseUrl{{URL: "https://example.com", Type: outbound.OutboundTypeOpenAIChat}},
 		Keys:    keys,
 	}
 	if err := ChannelCreate(ch, ctx); err != nil {

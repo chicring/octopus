@@ -10,40 +10,46 @@ import (
 	"github.com/bestruirui/octopus/internal/transformer/outbound"
 )
 
-func TestChannelUpdate_ProviderIDOnlyAlsoPersistsLegacyType(t *testing.T) {
+func TestChannelUpdate_BaseUrlsPersistTypeAndProviderID(t *testing.T) {
 	ctx := context.Background()
 	setupTestDBAndCache(t)
 
 	channel := &model.Channel{
-		Name:       "provider-id-update",
-		Type:       outbound.OutboundTypeOpenAIChat,
-		ProviderID: "openai-chat",
-		Enabled:    true,
-		BaseUrls:   []model.BaseUrl{{URL: "https://example.com"}},
-		Keys:       []model.ChannelKey{{Enabled: true, ChannelKey: "key"}},
+		Name:     "baseurl-type-update",
+		Enabled:  true,
+		BaseUrls: []model.BaseUrl{{URL: "https://example.com", Type: outbound.OutboundTypeOpenAIChat, ProviderID: "openai-chat"}},
+		Keys:     []model.ChannelKey{{Enabled: true, ChannelKey: "key"}},
 	}
 	if err := ChannelCreate(channel, ctx); err != nil {
 		t.Fatalf("ChannelCreate() error = %v", err)
 	}
 
-	newProviderID := "openai-embedding"
-	updated, err := ChannelUpdate(&model.ChannelUpdateRequest{ID: channel.ID, ProviderID: &newProviderID, Type: outboundTypePtr(outbound.OutboundTypeOpenAIEmbedding)}, ctx)
+	// 更新 base_urls，切换到 embedding 类型
+	updated, err := ChannelUpdate(&model.ChannelUpdateRequest{
+		ID: channel.ID,
+		BaseUrls: &[]model.BaseUrl{
+			{URL: "https://example.com", Type: outbound.OutboundTypeOpenAIEmbedding, ProviderID: "openai-embedding"},
+		},
+	}, ctx)
 	if err != nil {
 		t.Fatalf("ChannelUpdate() error = %v", err)
 	}
-	if updated.ProviderID != "openai-embedding" {
-		t.Fatalf("updated.ProviderID = %q", updated.ProviderID)
+	if len(updated.BaseUrls) != 1 {
+		t.Fatalf("expected 1 base url, got %d", len(updated.BaseUrls))
 	}
-	if updated.Type != outbound.OutboundTypeOpenAIEmbedding {
-		t.Fatalf("updated.Type = %d", updated.Type)
+	if updated.BaseUrls[0].Type != outbound.OutboundTypeOpenAIEmbedding {
+		t.Fatalf("updated.BaseUrls[0].Type = %d", updated.BaseUrls[0].Type)
+	}
+	if updated.BaseUrls[0].ProviderID != "openai-embedding" {
+		t.Fatalf("updated.BaseUrls[0].ProviderID = %q", updated.BaseUrls[0].ProviderID)
 	}
 
 	persisted, err := ChannelGet(channel.ID, ctx)
 	if err != nil {
 		t.Fatalf("ChannelGet() error = %v", err)
 	}
-	if persisted.ProviderID != "openai-embedding" || persisted.Type != outbound.OutboundTypeOpenAIEmbedding {
-		t.Fatalf("persisted channel mismatch: provider_id=%q type=%d", persisted.ProviderID, persisted.Type)
+	if persisted.BaseUrls[0].ProviderID != "openai-embedding" || persisted.BaseUrls[0].Type != outbound.OutboundTypeOpenAIEmbedding {
+		t.Fatalf("persisted base url mismatch: provider_id=%q type=%d", persisted.BaseUrls[0].ProviderID, persisted.BaseUrls[0].Type)
 	}
 }
 
@@ -61,5 +67,3 @@ func setupTestDBAndCache(t *testing.T) {
 		t.Fatalf("InitCache() error = %v", err)
 	}
 }
-
-func outboundTypePtr(v outbound.OutboundType) *outbound.OutboundType { return &v }

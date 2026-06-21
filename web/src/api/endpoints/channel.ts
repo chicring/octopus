@@ -28,6 +28,8 @@ export enum AutoGroupType {
 export type BaseUrl = {
     url: string;
     delay: number;
+    type: ChannelType;
+    provider_id?: string;
 };
 
 export type CustomHeader = {
@@ -55,8 +57,6 @@ export type ChannelKey = {
 export type Channel = {
     id: number;
     name: string;
-    type: ChannelType;
-    provider_id: string;
     enabled: boolean;
     base_urls: BaseUrl[];
     keys: ChannelKey[];
@@ -84,8 +84,6 @@ type ChannelServer = Omit<Channel, 'base_urls' | 'custom_header' | 'keys'> & {
  */
 export type CreateChannelRequest = {
     name: string;
-    type: ChannelType;
-    provider_id?: string;
     enabled?: boolean;
     base_urls: BaseUrl[];
     keys: Array<Pick<ChannelKey, 'enabled' | 'channel_key' | 'remark'>>;
@@ -105,9 +103,7 @@ export type CreateChannelRequest = {
  */
 export type UpdateChannelRequest = {
     id: number;
-    provider_id?: string;
     name?: string;
-    type?: ChannelType;
     enabled?: boolean;
     base_urls?: BaseUrl[];
     model?: string;
@@ -126,7 +122,6 @@ export type UpdateChannelRequest = {
 };
 
 export type FetchModelRequest = {
-    type: ChannelType;
     base_urls: BaseUrl[];
     keys: Array<Pick<ChannelKey, 'enabled' | 'channel_key'>>;
     proxy?: boolean;
@@ -428,7 +423,7 @@ export function useCodexChannels() {
         queryFn: async () => {
             const channels = await apiClient.get<ChannelServer[]>('/api/v1/channel/list');
             return channels
-                .filter(c => c.provider_id === 'codex' && c.keys && c.keys.length > 0)
+                .filter(c => (c.base_urls ?? []).some(bu => bu.provider_id === 'codex') && c.keys && c.keys.length > 0)
                 .map(item => ({
                     ...item,
                     base_urls: item.base_urls ?? [],

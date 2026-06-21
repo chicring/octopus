@@ -94,7 +94,7 @@ func importCodexAuthFiles(c *gin.Context) {
 		resp.Error(c, http.StatusNotFound, "channel not found")
 		return
 	}
-	if channel.ProviderID != "codex" {
+	if !channel.HasProvider("codex") {
 		resp.Error(c, http.StatusBadRequest, "channel is not a codex provider")
 		return
 	}

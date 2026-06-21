@@ -3,6 +3,7 @@ package helper
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -18,15 +19,19 @@ func FetchModels(ctx context.Context, request model.Channel) ([]string, error) {
 		return nil, err
 	}
 	fetchModel := make([]string, 0)
-	// 优先使用 provider ModelFetcher，回退到 legacy switch
-	pid := provider.ResolveProviderIDFromType(request.Type)
-	if request.ProviderID != "" {
-		pid = provider.ProviderID(request.ProviderID)
+	// 使用第一个非空 BaseUrl 及其类型
+	_, outType, providerID, ok := resolveFirstBaseUrl(&request)
+	if !ok {
+		return nil, fmt.Errorf("no base url")
+	}
+	pid := provider.ResolveProviderIDFromType(outType)
+	if providerID != "" {
+		pid = provider.ProviderID(providerID)
 	}
 	if fetcher := provider.GetModelFetcher(pid); fetcher != nil {
 		fetchModel, err = fetcher(client, ctx, request)
 	} else {
-		switch request.Type {
+		switch outType {
 		case outbound.OutboundTypeAnthropic:
 			fetchModel, err = fetchAnthropicModels(client, ctx, request)
 		case outbound.OutboundTypeGemini:

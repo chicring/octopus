@@ -312,7 +312,7 @@ func UsageCardGetByAccount(account string) (*model.UsageCard, bool) {
 // 如果渠道的 provider_id 为 "codex" 且有 key，则为每个 key 创建一张 Codex 用量卡片
 // 失败不影响渠道创建，仅记录 warning
 func AutoCreateCodexUsageCard(channel *model.Channel, ctx context.Context) {
-	if channel.ProviderID != "codex" || len(channel.Keys) == 0 {
+	if !channel.HasProvider("codex") || len(channel.Keys) == 0 {
 		return
 	}
 

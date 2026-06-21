@@ -131,31 +131,41 @@ func Handler(inboundType inbound.InboundType, c *gin.Context) {
 			continue
 		}
 
-		// 出站适配器 — 优先 provider_id，回退 legacy type（与 key 无关，渠道级计算一次）
-		pid := provider.ResolveProviderIDFromType(channel.Type)
-		if channel.ProviderID != "" {
-			pid = provider.ProviderID(channel.ProviderID)
+		// 为此渠道选择 BaseUrl 及其类型（每渠道一次，key 之间一致）
+		// 优先原生透传（出站格式 == 入站格式），无匹配则按延迟取最低的兼容 URL
+		isEmbedding := internalRequest.IsEmbeddingRequest()
+		baseURL, outType, outProviderID, ok := channel.SelectBaseUrl(internalRequest.RawAPIFormat, isEmbedding)
+		if !ok {
+			iter.Skip(channel.ID, 0, channel.Name, "no compatible base url for this request type")
+			lastErr = fmt.Errorf("channel %s: no compatible base url", channel.Name)
+			continue
+		}
+
+		// 出站适配器 — 优先 provider_id，回退 legacy type
+		pid := provider.ResolveProviderIDFromType(outType)
+		if outProviderID != "" {
+			pid = provider.ProviderID(outProviderID)
 		}
 		var outAdapter model.Outbound
 		if pid != "" {
 			outAdapter = provider.GetOutbound(pid)
 		}
 		if outAdapter == nil {
-			outAdapter = outbound.Get(channel.Type)
+			outAdapter = outbound.Get(outType)
 		}
 		if outAdapter == nil {
-			iter.Skip(channel.ID, 0, channel.Name, fmt.Sprintf("unsupported channel type: %d", channel.Type))
+			iter.Skip(channel.ID, 0, channel.Name, fmt.Sprintf("unsupported channel type: %d", outType))
 			lastErr = fmt.Errorf("channel %s: unsupported channel type", channel.Name)
 			continue
 		}
 
-		// 类型兼容性检查（与 key 无关）
-		if internalRequest.IsEmbeddingRequest() && !provider.IsEmbeddingProvider(pid) && !outbound.IsEmbeddingChannelType(channel.Type) {
+		// 类型兼容性检查
+		if isEmbedding && !provider.IsEmbeddingProvider(pid) && !outbound.IsEmbeddingChannelType(outType) {
 			iter.Skip(channel.ID, 0, channel.Name, "channel type not compatible with embedding request")
 			lastErr = fmt.Errorf("channel %s: not compatible with embedding request", channel.Name)
 			continue
 		}
-		if internalRequest.IsChatRequest() && !provider.IsChatProvider(pid) && !outbound.IsChatChannelType(channel.Type) {
+		if !isEmbedding && internalRequest.IsChatRequest() && !provider.IsChatProvider(pid) && !outbound.IsChatChannelType(outType) {
 			iter.Skip(channel.ID, 0, channel.Name, "channel type not compatible with chat request")
 			lastErr = fmt.Errorf("channel %s: not compatible with chat request", channel.Name)
 			continue
@@ -163,7 +173,7 @@ func Handler(inboundType inbound.InboundType, c *gin.Context) {
 
 		// compact 仅 OpenAI Response 渠道有效
 		if internalRequest.RawAPIFormat == model.APIFormatOpenAIResponseCompact &&
-			channel.Type != outbound.OutboundTypeOpenAIResponse {
+			outType != outbound.OutboundTypeOpenAIResponse {
 			iter.Skip(channel.ID, 0, channel.Name, "compact only supported on OpenAI Response channels")
 			lastErr = fmt.Errorf("channel %s: compact not supported", channel.Name)
 			continue
@@ -218,12 +228,13 @@ func Handler(inboundType inbound.InboundType, c *gin.Context) {
 			// （streamChunks/storedResponse 等）污染后续的响应聚合
 			inAdapter.Reset()
 
-			// 构造尝试级上下文 -- 只写变化的 4 个字段
+			// 构造尝试级上下文 -- 只写变化的 5 个字段
 			ra := &relayAttempt{
 				relayRequest:         req,
 				outAdapter:           outAdapter,
 				channel:              channel,
 				usedKey:              usedKey,
+				baseURL:              baseURL,
 				firstTokenTimeOutSec: group.FirstTokenTimeOut,
 			}
 
@@ -450,7 +461,7 @@ func (ra *relayAttempt) forward() (int, error) {
 	outboundRequest, err := ra.outAdapter.TransformRequest(
 		ctx,
 		ra.internalRequest,
-		ra.channel.GetBaseUrl(),
+		ra.baseURL,
 		ra.usedKey.ChannelKey,
 	)
 	if err != nil {

@@ -166,7 +166,7 @@ func importCodexChannelUsageCard(c *gin.Context) {
 	}
 
 	// 验证渠道类型
-	if channel.ProviderID != "codex" {
+	if !channel.HasProvider("codex") {
 		resp.Error(c, http.StatusBadRequest, "渠道不是 Codex 类型")
 		return
 	}
@@ -289,7 +289,7 @@ func batchImportCodexChannelUsageCards(c *gin.Context) {
 			continue
 		}
 
-		if channel.ProviderID != "codex" {
+		if !channel.HasProvider("codex") {
 			results = append(results, importResult{ChannelID: item.ChannelID, KeyID: item.KeyID, Error: "渠道不是 Codex 类型"})
 			continue
 		}

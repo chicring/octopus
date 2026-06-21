@@ -47,8 +47,10 @@ func ChannelBaseUrlDelayUpdate(channel *model.Channel, ctx context.Context) {
 			continue
 		}
 		newBaseUrls = append(newBaseUrls, model.BaseUrl{
-			URL:   baseUrl.URL,
-			Delay: delay,
+			URL:        baseUrl.URL,
+			Delay:      delay,
+			Type:       baseUrl.Type,
+			ProviderID: baseUrl.ProviderID,
 		})
 	}
 	if len(newBaseUrls) > 0 {

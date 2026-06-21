@@ -27,9 +27,8 @@ func setupOpCacheForBalancer(t *testing.T, channelID int, keys []model.ChannelKe
 	ch := &model.Channel{
 		ID:      channelID,
 		Name:    "iter-test",
-		Type:    outbound.OutboundTypeOpenAIChat,
 		Enabled: true,
-		BaseUrls: []model.BaseUrl{{URL: "https://example.com"}},
+		BaseUrls: []model.BaseUrl{{URL: "https://example.com", Type: outbound.OutboundTypeOpenAIChat}},
 		Keys:    keys,
 	}
 	if err := op.ChannelCreate(ch, ctx); err != nil {

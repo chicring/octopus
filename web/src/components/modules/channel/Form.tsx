@@ -1,4 +1,4 @@
-import { AutoGroupType, ChannelType, type Channel, useFetchModel, useTestChannelModelsByConfig, type TestModelResult, useChannelList } from '@/api/endpoints/channel';
+import { AutoGroupType, ChannelType, type Channel, useFetchModel, useTestChannelModelsByConfig, type TestModelResult } from '@/api/endpoints/channel';
 import { useProviderList, type ProviderInfo, type AuthResult } from '@/api/endpoints/provider';
 import { OAuthPanel } from './OAuthPanel';
 import { AuthFileImportPanel } from './AuthFileImportPanel';
@@ -43,8 +43,6 @@ export interface ChannelKeyFormItem {
 
 export interface ChannelFormData {
     name: string;
-    type: ChannelType;
-    provider_id: string;
     base_urls: Channel['base_urls'];
     custom_header: Channel['custom_header'];
     channel_proxy: string;
@@ -96,10 +94,11 @@ export function ChannelForm({
     const t = useTranslations('channel.form');
     const { data: providers } = useProviderList();
 
-    // Derive the currently selected provider info
+    // Derive the currently selected provider info from the first BaseUrl
+    const firstBaseUrl = formData.base_urls?.[0];
     const selectedProvider = useMemo<ProviderInfo | undefined>(
-        () => providers?.find((p) => p.id === formData.provider_id),
-        [providers, formData.provider_id],
+        () => providers?.find((p) => p.id === firstBaseUrl?.provider_id),
+        [providers, firstBaseUrl?.provider_id],
     );
     const isOAuthProvider = selectedProvider && selectedProvider.auth_type !== 'manual';
 
@@ -107,7 +106,7 @@ export function ChannelForm({
     // This avoids "empty list" UI and also keeps URL + APIKEY layout consistent.
     useEffect(() => {
         if (!formData.base_urls || formData.base_urls.length === 0) {
-            onFormDataChange({ ...formData, base_urls: [{ url: '', delay: 0 }] });
+            onFormDataChange({ ...formData, base_urls: [{ url: '', delay: 0, type: ChannelType.OpenAIChat }] });
             return;
         }
         if (!formData.keys || formData.keys.length === 0) {
@@ -154,7 +153,6 @@ export function ChannelForm({
         if (!formData.base_urls?.[0]?.url || !effectiveKey) return;
         fetchModel.mutate(
             {
-                type: formData.type,
                 base_urls: formData.base_urls,
                 keys: formData.keys
                     .filter((k) => k.channel_key.trim())
@@ -224,7 +222,6 @@ export function ChannelForm({
     const allModels = useMemo(() => [...autoModels, ...customModels], [autoModels, customModels]);
 
     const getTestConfig = () => ({
-        type: formData.type,
         base_urls: formData.base_urls,
         keys: formData.keys
             .filter((k) => k.channel_key.trim())
@@ -302,7 +299,7 @@ export function ChannelForm({
     const handleAddBaseUrl = () => {
         onFormDataChange({
             ...formData,
-            base_urls: [...(formData.base_urls ?? []), { url: '', delay: 0 }],
+            base_urls: [...(formData.base_urls ?? []), { url: '', delay: 0, type: ChannelType.OpenAIChat }],
         });
     };
 
@@ -365,88 +362,52 @@ export function ChannelForm({
     // 从 OAuth 凭证 JSON 中提取显示名（email > account_id）
     const getOAuthLabel = parseOAuthLabel;
 
-    // 合并渠道类型和提供商为一个选择器，统一使用 provider:<id> 格式
-    // 旧渠道可能只有 type 没有 provider_id，需要反查
-    const typeToProviderMap: Record<number, string> = {
-        [ChannelType.OpenAIChat]: 'openai-chat',
-        [ChannelType.OpenAIResponse]: 'openai-response',
-        [ChannelType.Anthropic]: 'anthropic',
-        [ChannelType.Gemini]: 'gemini',
-        [ChannelType.Volcengine]: 'volcengine',
-        [ChannelType.OpenAIEmbedding]: 'openai-embedding',
+    // provider_id → ChannelType 映射（用于按 provider 选择时设置 BaseUrl 的 type）
+    const providerToTypeMap: Record<string, ChannelType> = {
+        'openai-chat': ChannelType.OpenAIChat,
+        'openai-response': ChannelType.OpenAIResponse,
+        'anthropic': ChannelType.Anthropic,
+        'gemini': ChannelType.Gemini,
+        'volcengine': ChannelType.Volcengine,
+        'openai-embedding': ChannelType.OpenAIEmbedding,
+        'codex': ChannelType.OpenAIResponse,
     };
-    const resolvedProviderId = formData.provider_id || typeToProviderMap[formData.type] || '';
-    const channelKindValue = resolvedProviderId ? `provider:${resolvedProviderId}` : '';
 
-    const handleChannelKindChange = (value: string) => {
-        if (value.startsWith('provider:')) {
-            const providerId = value.slice('provider:'.length);
-            const provider = providers?.find((p) => p.id === providerId);
-            const updates: Partial<ChannelFormData> = { provider_id: providerId };
-            // 根据 provider 的 legacy type 设置渠道类型
-            if (provider?.id === 'codex') {
-                updates.type = ChannelType.OpenAIResponse;
-            } else if (provider?.supports_chat && !provider?.supports_embedding) {
-                // chat provider: 根据 id 映射到具体 type
-                const chatTypeMap: Record<string, ChannelType> = {
-                    'openai-chat': ChannelType.OpenAIChat,
-                    'openai-response': ChannelType.OpenAIResponse,
-                    'anthropic': ChannelType.Anthropic,
-                    'gemini': ChannelType.Gemini,
-                    'volcengine': ChannelType.Volcengine,
-                };
-                updates.type = chatTypeMap[provider.id] ?? ChannelType.OpenAIChat;
-            } else if (provider?.supports_embedding) {
-                updates.type = ChannelType.OpenAIEmbedding;
-            }
-            if (formData.base_urls?.[0]?.url.trim() === '') {
-                const schema = provider?.credential_schema;
-                const defaultUrl = schema?.fields?.find((f) => f.key === 'base_url')?.default;
-                if (defaultUrl) {
-                    updates.base_urls = [{ url: defaultUrl, delay: 0 }];
-                }
-            }
-            onFormDataChange({ ...formData, ...updates });
+    // 为某个 BaseUrl 行选择渠道类型/提供商
+    const handleBaseUrlKindChange = (idx: number, value: string) => {
+        if (!value.startsWith('provider:')) return;
+        const providerId = value.slice('provider:'.length);
+        const provider = providers?.find((p) => p.id === providerId);
+        const patch: Partial<Channel['base_urls'][number]> = { provider_id: providerId };
+        if (provider) {
+            patch.type = providerToTypeMap[provider.id] ?? ChannelType.OpenAIChat;
         }
+        // 若 URL 为空且 provider 有默认 URL，自动填充
+        const curr = formData.base_urls[idx];
+        if (curr && curr.url.trim() === '') {
+            const schema = provider?.credential_schema;
+            const defaultUrl = schema?.fields?.find((f) => f.key === 'base_url')?.default;
+            if (defaultUrl) {
+                patch.url = defaultUrl;
+            }
+        }
+        handleUpdateBaseUrl(idx, patch);
     };
 
     return (
         <form onSubmit={onSubmit} className="space-y-4 px-1">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                    <label htmlFor={`${idPrefix}-name`} className="text-sm font-medium text-card-foreground">
-                        {t('name')}
-                    </label>
-                    <Input
-                        className='rounded-xl'
-                        id={`${idPrefix}-name`}
-                        type="text"
-                        value={formData.name}
-                        onChange={(event) => onFormDataChange({ ...formData, name: event.target.value })}
-                        required
-                    />
-                </div>
-
-                <div className="space-y-2">
-                    <label htmlFor={`${idPrefix}-kind`} className="text-sm font-medium text-card-foreground">
-                        {t('type')}
-                    </label>
-                    <Select
-                        value={channelKindValue}
-                        onValueChange={handleChannelKindChange}
-                    >
-                        <SelectTrigger id={`${idPrefix}-kind`} className="rounded-xl w-full border border-border px-4 py-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className='rounded-xl max-h-80'>
-                            {providers?.map((provider) => (
-                                <SelectItem key={provider.id} className='rounded-xl' value={`provider:${provider.id}`}>
-                                    {provider.display_name}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                </div>
+            <div className="space-y-2">
+                <label htmlFor={`${idPrefix}-name`} className="text-sm font-medium text-card-foreground">
+                    {t('name')}
+                </label>
+                <Input
+                    className='rounded-xl'
+                    id={`${idPrefix}-name`}
+                    type="text"
+                    value={formData.name}
+                    onChange={(event) => onFormDataChange({ ...formData, name: event.target.value })}
+                    required
+                />
             </div>
 
             <div className="space-y-2">
@@ -466,30 +427,52 @@ export function ChannelForm({
                     </Button>
                 </div>
                 <div className="space-y-2">
-                    {(formData.base_urls ?? []).map((u, idx) => (
-                        <div key={`baseurl-${idx}`} className="flex items-center gap-2">
-                            <Input
-                                id={`${idPrefix}-base-${idx}`}
-                                type="url"
-                                value={u.url}
-                                onChange={(e) => handleUpdateBaseUrl(idx, { url: e.target.value })}
-                                placeholder={t('baseUrlUrl')}
-                                required={idx === 0}
-                                className="rounded-xl flex-1"
-                            />
-                            <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleRemoveBaseUrl(idx)}
-                                disabled={(formData.base_urls ?? []).length <= 1}
-                                className="h-8 w-8 p-0 rounded-xl text-muted-foreground hover:text-destructive disabled:opacity-40 hover:bg-transparent"
-                                title="Remove"
-                            >
-                                <X className="h-4 w-4" />
-                            </Button>
-                        </div>
-                    ))}
+                    {(formData.base_urls ?? []).map((u, idx) => {
+                        const buProviderValue = u.provider_id ? `provider:${u.provider_id}` : '';
+                        return (
+                            <div key={`baseurl-${idx}`} className="rounded-xl border border-border p-2 space-y-2">
+                                <div className="flex items-center gap-2">
+                                    <Input
+                                        id={`${idPrefix}-base-${idx}`}
+                                        type="url"
+                                        value={u.url}
+                                        onChange={(e) => handleUpdateBaseUrl(idx, { url: e.target.value })}
+                                        placeholder={t('baseUrlUrl')}
+                                        required={idx === 0}
+                                        className="rounded-xl flex-1"
+                                    />
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleRemoveBaseUrl(idx)}
+                                        disabled={(formData.base_urls ?? []).length <= 1}
+                                        className="h-8 w-8 p-0 rounded-xl text-muted-foreground hover:text-destructive disabled:opacity-40 hover:bg-transparent"
+                                        title="Remove"
+                                    >
+                                        <X className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Select
+                                        value={buProviderValue}
+                                        onValueChange={(v) => handleBaseUrlKindChange(idx, v)}
+                                    >
+                                        <SelectTrigger id={`${idPrefix}-kind-${idx}`} className="rounded-xl flex-1 border border-border px-3 py-1.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                            <SelectValue placeholder={t('type')} />
+                                        </SelectTrigger>
+                                        <SelectContent className='rounded-xl max-h-80'>
+                                            {providers?.map((provider) => (
+                                                <SelectItem key={provider.id} className='rounded-xl' value={`provider:${provider.id}`}>
+                                                    {provider.display_name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
 

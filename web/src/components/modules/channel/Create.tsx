@@ -15,9 +15,7 @@ export function CreateDialogContent() {
     const [createdChannelId, setCreatedChannelId] = useState<number | null>(null);
     const [formData, setFormData] = useState<ChannelFormData>({
         name: '',
-        type: ChannelType.OpenAIChat,
-        provider_id: '',
-        base_urls: [{ url: '', delay: 0 }],
+        base_urls: [{ url: '', delay: 0, type: ChannelType.OpenAIChat }],
         custom_header: [],
         channel_proxy: '',
         param_override: '',
@@ -37,6 +35,8 @@ export function CreateDialogContent() {
         const normalizedBaseUrls = (formData.base_urls ?? []).filter((u) => u.url.trim()).map((u) => ({
             url: u.url.trim(),
             delay: Number(u.delay || 0),
+            type: u.type,
+            provider_id: u.provider_id || undefined,
         }));
         const normalizedKeys = formData.keys
             .filter((k) => k.channel_key.trim())
@@ -50,8 +50,6 @@ export function CreateDialogContent() {
         createChannel.mutate(
             {
                 name: formData.name,
-                type: formData.type,
-                provider_id: formData.provider_id || undefined,
                 enabled: formData.enabled,
                 base_urls: normalizedBaseUrls,
                 keys: normalizedKeys,

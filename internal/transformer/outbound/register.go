@@ -19,6 +19,23 @@ const (
 	OutboundTypeOpenAIEmbedding
 )
 
+// outboundTypeToAPIFormat 映射 OutboundType 到出站 APIFormat。
+// 用于 SelectBaseUrl 判断是否可原生透传。
+var outboundTypeToAPIFormat = map[OutboundType]model.APIFormat{
+	OutboundTypeOpenAIChat:      model.APIFormatOpenAIChatCompletion,
+	OutboundTypeOpenAIResponse:  model.APIFormatOpenAIResponse,
+	OutboundTypeAnthropic:       model.APIFormatAnthropicMessage,
+	OutboundTypeGemini:          model.APIFormatGeminiContents,
+	OutboundTypeVolcengine:      model.APIFormatOpenAIResponse,
+	OutboundTypeOpenAIEmbedding: model.APIFormatOpenAIEmbedding,
+}
+
+// OutboundTypeToAPIFormat 返回某 OutboundType 对应的出站 APIFormat。
+// 不支持的类型返回空字符串。
+func OutboundTypeToAPIFormat(t OutboundType) model.APIFormat {
+	return outboundTypeToAPIFormat[t]
+}
+
 // EmbeddingChannelTypes 定义支持 embedding 请求的 channel 类型集合
 var EmbeddingChannelTypes = map[OutboundType]bool{
 	OutboundTypeOpenAIEmbedding: true,

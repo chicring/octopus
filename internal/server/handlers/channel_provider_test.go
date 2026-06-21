@@ -23,19 +23,18 @@ func TestUpdateChannel_TypeOnlyBackfillsProviderID(t *testing.T) {
 	setupHandlerTestDB(t)
 
 	channel := &model.Channel{
-		Name:       "handler-update",
-		Type:       outbound.OutboundTypeOpenAIChat,
-		ProviderID: "openai-chat",
-		Enabled:    true,
-		BaseUrls:   []model.BaseUrl{{URL: "https://example.com"}},
-		Keys:       []model.ChannelKey{{Enabled: true, ChannelKey: "key"}},
+		Name:     "handler-update",
+		Enabled:  true,
+		BaseUrls: []model.BaseUrl{{URL: "https://example.com", Type: outbound.OutboundTypeOpenAIChat, ProviderID: "openai-chat"}},
+		Keys:     []model.ChannelKey{{Enabled: true, ChannelKey: "key"}},
 	}
 	if err := op.ChannelCreate(channel, context.Background()); err != nil {
 		t.Fatalf("ChannelCreate() error = %v", err)
 	}
 
-	newType := outbound.OutboundTypeAnthropic
-	body, _ := json.Marshal(model.ChannelUpdateRequest{ID: channel.ID, Type: &newType})
+	// 更新 base_urls，切换到 Anthropic 类型
+	newBaseUrls := []model.BaseUrl{{URL: "https://example.com", Type: outbound.OutboundTypeAnthropic}}
+	body, _ := json.Marshal(model.ChannelUpdateRequest{ID: channel.ID, BaseUrls: &newBaseUrls})
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	req, _ := http.NewRequest(http.MethodPost, "/api/v1/channel/update", bytes.NewReader(body))
@@ -56,11 +55,14 @@ func TestUpdateChannel_TypeOnlyBackfillsProviderID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ChannelGet() error = %v", err)
 	}
-	if updated.ProviderID != "anthropic" {
-		t.Fatalf("updated.ProviderID = %q", updated.ProviderID)
+	if len(updated.BaseUrls) != 1 {
+		t.Fatalf("expected 1 base url, got %d", len(updated.BaseUrls))
 	}
-	if updated.Type != outbound.OutboundTypeAnthropic {
-		t.Fatalf("updated.Type = %d", updated.Type)
+	if updated.BaseUrls[0].ProviderID != "anthropic" {
+		t.Fatalf("updated.BaseUrls[0].ProviderID = %q", updated.BaseUrls[0].ProviderID)
+	}
+	if updated.BaseUrls[0].Type != outbound.OutboundTypeAnthropic {
+		t.Fatalf("updated.BaseUrls[0].Type = %d", updated.BaseUrls[0].Type)
 	}
 }
 

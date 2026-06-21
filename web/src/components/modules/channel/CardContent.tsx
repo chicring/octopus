@@ -46,10 +46,8 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
     const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
     const [formData, setFormData] = useState<ChannelFormData>({
         name: channel.name,
-        type: channel.type,
-        provider_id: channel.provider_id ?? '',
         enabled: channel.enabled,
-        base_urls: channel.base_urls?.length ? channel.base_urls : [{ url: '', delay: 0 }],
+        base_urls: channel.base_urls?.length ? channel.base_urls : [{ url: '', delay: 0, type: 0 }],
         custom_header: channel.custom_header ?? [],
         channel_proxy: channel.channel_proxy ?? '',
         param_override: channel.param_override ?? '',
@@ -82,7 +80,7 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
         return parseOAuthLabel(key) || key;
     }, []);
 
-    const isOAuthChannel = channel.provider_id && channel.provider_id !== '';
+    const isOAuthChannel = (channel.base_urls ?? []).some(bu => bu.provider_id === 'codex');
 
     const getModels = useCallback(() =>
         [channel.model, channel.custom_model]
@@ -173,13 +171,13 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
 
         // only send changed fields to avoid accidental clears
         if (formData.name !== channel.name) req.name = formData.name;
-        if (formData.type !== channel.type) req.type = formData.type;
-        if (formData.provider_id !== (channel.provider_id ?? '')) req.provider_id = formData.provider_id || undefined;
         if (formData.enabled !== channel.enabled) req.enabled = formData.enabled;
         if (!baseUrlsEqual(formData.base_urls, channel.base_urls)) {
             req.base_urls = (formData.base_urls ?? []).filter((u) => u.url.trim()).map((u) => ({
                 url: u.url.trim(),
                 delay: Number(u.delay || 0),
+                type: u.type,
+                provider_id: u.provider_id || undefined,
             }));
         }
         if (formData.model !== channel.model) req.model = formData.model;
