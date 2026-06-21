@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/bestruirui/octopus/internal/model"
+	"github.com/bestruirui/octopus/internal/op"
 )
 
 // Iterator 统一的负载均衡迭代器
@@ -140,6 +141,14 @@ func (it *Iterator) StartAttempt(channelID, channelKeyID int, channelName, chann
 // Attempts 返回所有决策记录（交给日志模块持久化）
 func (it *Iterator) Attempts() []model.ChannelAttempt {
 	return it.attempts
+}
+
+// AvailableKeys 返回当前渠道的可用 Key 列表（已过滤 enabled/429 冷却期），
+// 按「最低成本优先 + 轮询 tiebreaker」排序。熔断状态不在此过滤，
+// 由调用方在每次 attempt 前用 SkipCircuitBreak 实时检查。
+// 用于支持单次请求内在同一渠道内穷举多个 Key。
+func (it *Iterator) AvailableKeys(channelID int) []model.ChannelKey {
+	return op.ChannelGetKeys(channelID)
 }
 
 // AttemptSpan 管理单次通道尝试的生命周期（计时、状态、结果）

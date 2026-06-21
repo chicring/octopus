@@ -671,7 +671,7 @@ func TestStats_SummaryReport(t *testing.T) {
 func TestChannelGetKey_RoundRobin(t *testing.T) {
 	t.Log("ChannelGetKey 轮询策略验证:")
 	t.Log("  - 同渠道内多Key: 最低成本优先, 同成本轮询")
-	t.Log("  - Key失败后: 不会同渠道换Key, 而是跨渠道重试")
+	t.Log("  - Key失败后: 同渠道内穷举其他可用 Key, 全部失败才跨渠道重试")
 	t.Log("  - 429冷却: StatusCode=429的Key冷却5分钟")
 	t.Log("  - Key亲和性: 无, 每次请求独立选择Key")
 }

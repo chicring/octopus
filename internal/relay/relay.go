@@ -131,31 +131,7 @@ func Handler(inboundType inbound.InboundType, c *gin.Context) {
 			continue
 		}
 
-		usedKey := op.ChannelGetKey(channel.ID)
-		if usedKey.ChannelKey == "" {
-			iter.Skip(channel.ID, 0, channel.Name, "no available key")
-			lastErr = fmt.Errorf("channel %s: no available key", channel.Name)
-			continue
-		}
-
-		// 熔断检查
-		if iter.SkipCircuitBreak(channel.ID, usedKey.ID, channel.Name) {
-			lastErr = fmt.Errorf("channel %s: circuit breaker tripped", channel.Name)
-			continue
-		}
-
-		// Codex auth 凭证：请求前检查过期并刷新
-		if op.IsCodexAuthKey(usedKey.ChannelKey) {
-			newKeyStr, ready, ensureErr := op.EnsureCodexKeyReady(c.Request.Context(), &usedKey)
-			if !ready {
-				iter.Skip(channel.ID, usedKey.ID, channel.Name, fmt.Sprintf("codex auth not ready: %v", ensureErr))
-				lastErr = ensureErr
-				continue
-			}
-			usedKey.ChannelKey = newKeyStr
-		}
-
-		// 出站适配器 — 优先 provider_id，回退 legacy type
+		// 出站适配器 — 优先 provider_id，回退 legacy type（与 key 无关，渠道级计算一次）
 		pid := provider.ResolveProviderIDFromType(channel.Type)
 		if channel.ProviderID != "" {
 			pid = provider.ProviderID(channel.ProviderID)
@@ -168,24 +144,28 @@ func Handler(inboundType inbound.InboundType, c *gin.Context) {
 			outAdapter = outbound.Get(channel.Type)
 		}
 		if outAdapter == nil {
-			iter.Skip(channel.ID, usedKey.ID, channel.Name, fmt.Sprintf("unsupported channel type: %d", channel.Type))
+			iter.Skip(channel.ID, 0, channel.Name, fmt.Sprintf("unsupported channel type: %d", channel.Type))
+			lastErr = fmt.Errorf("channel %s: unsupported channel type", channel.Name)
 			continue
 		}
 
-		// 类型兼容性检查
+		// 类型兼容性检查（与 key 无关）
 		if internalRequest.IsEmbeddingRequest() && !provider.IsEmbeddingProvider(pid) && !outbound.IsEmbeddingChannelType(channel.Type) {
-			iter.Skip(channel.ID, usedKey.ID, channel.Name, "channel type not compatible with embedding request")
+			iter.Skip(channel.ID, 0, channel.Name, "channel type not compatible with embedding request")
+			lastErr = fmt.Errorf("channel %s: not compatible with embedding request", channel.Name)
 			continue
 		}
 		if internalRequest.IsChatRequest() && !provider.IsChatProvider(pid) && !outbound.IsChatChannelType(channel.Type) {
-			iter.Skip(channel.ID, usedKey.ID, channel.Name, "channel type not compatible with chat request")
+			iter.Skip(channel.ID, 0, channel.Name, "channel type not compatible with chat request")
+			lastErr = fmt.Errorf("channel %s: not compatible with chat request", channel.Name)
 			continue
 		}
 
 		// compact 仅 OpenAI Response 渠道有效
 		if internalRequest.RawAPIFormat == model.APIFormatOpenAIResponseCompact &&
 			channel.Type != outbound.OutboundTypeOpenAIResponse {
-			iter.Skip(channel.ID, usedKey.ID, channel.Name, "compact only supported on OpenAI Response channels")
+			iter.Skip(channel.ID, 0, channel.Name, "compact only supported on OpenAI Response channels")
+			lastErr = fmt.Errorf("channel %s: compact not supported", channel.Name)
 			continue
 		}
 
@@ -193,33 +173,77 @@ func Handler(inboundType inbound.InboundType, c *gin.Context) {
 		internalRequest.Model = item.ModelName
 		model.ClearPassthrough(internalRequest)
 
-		// 重置入站适配器的尝试级响应状态，避免前次尝试的残留数据
-		// （streamChunks/storedResponse 等）污染后续的响应聚合
-		inAdapter.Reset()
+		// 渠道内穷举所有可用 Key
+		availableKeys := iter.AvailableKeys(channel.ID)
+		if len(availableKeys) == 0 {
+			iter.Skip(channel.ID, 0, channel.Name, "no available key")
+			lastErr = fmt.Errorf("channel %s: no available key", channel.Name)
+			continue
+		}
 
-		log.Infof("request model %s, mode: %d, forwarding to channel: %s model: %s (attempt %d/%d, sticky=%t)",
+		log.Infof("request model %s, mode: %d, forwarding to channel: %s model: %s (attempt %d/%d, sticky=%t, keys=%d)",
 			requestModel, group.Mode, channel.Name, item.ModelName,
-			iter.Index()+1, iter.Len(), iter.IsSticky())
+			iter.Index()+1, iter.Len(), iter.IsSticky(), len(availableKeys))
 
-		// 构造尝试级上下文 -- 只写变化的 4 个字段
-		ra := &relayAttempt{
-			relayRequest:         req,
-			outAdapter:           outAdapter,
-			channel:              channel,
-			usedKey:              usedKey,
-			firstTokenTimeOutSec: group.FirstTokenTimeOut,
+		var channelHadAttempt bool
+		for ki := range availableKeys {
+			select {
+			case <-c.Request.Context().Done():
+				log.Infof("request context canceled, stopping retry")
+				metrics.Save(c.Request.Context(), false, context.Canceled, iter.Attempts())
+				return
+			default:
+			}
+
+			usedKey := availableKeys[ki]
+
+			// 熔断检查（每个 key 独立）
+			if iter.SkipCircuitBreak(channel.ID, usedKey.ID, channel.Name) {
+				lastErr = fmt.Errorf("channel %s key %d: circuit breaker tripped", channel.Name, usedKey.ID)
+				continue
+			}
+
+			// Codex auth 凭证：请求前检查过期并刷新
+			if op.IsCodexAuthKey(usedKey.ChannelKey) {
+				newKeyStr, ready, ensureErr := op.EnsureCodexKeyReady(c.Request.Context(), &usedKey)
+				if !ready {
+					iter.Skip(channel.ID, usedKey.ID, channel.Name, fmt.Sprintf("codex auth not ready: %v", ensureErr))
+					lastErr = ensureErr
+					continue
+				}
+				usedKey.ChannelKey = newKeyStr
+			}
+
+			// 重置入站适配器的尝试级响应状态，避免前次尝试的残留数据
+			// （streamChunks/storedResponse 等）污染后续的响应聚合
+			inAdapter.Reset()
+
+			// 构造尝试级上下文 -- 只写变化的 4 个字段
+			ra := &relayAttempt{
+				relayRequest:         req,
+				outAdapter:           outAdapter,
+				channel:              channel,
+				usedKey:              usedKey,
+				firstTokenTimeOutSec: group.FirstTokenTimeOut,
+			}
+
+			result := ra.attempt()
+			channelHadAttempt = true
+			if result.Success {
+				metrics.Save(c.Request.Context(), true, nil, iter.Attempts())
+				return
+			}
+			if result.Written {
+				metrics.Save(c.Request.Context(), false, result.Err, iter.Attempts())
+				return
+			}
+			lastErr = result.Err
 		}
 
-		result := ra.attempt()
-		if result.Success {
-			metrics.Save(c.Request.Context(), true, nil, iter.Attempts())
-			return
+		if !channelHadAttempt {
+			// 渠道所有 key 均被熔断或不可用
+			iter.Skip(channel.ID, 0, channel.Name, "all keys circuit-broken or unavailable")
 		}
-		if result.Written {
-			metrics.Save(c.Request.Context(), false, result.Err, iter.Attempts())
-			return
-		}
-		lastErr = result.Err
 	}
 
 	// 所有通道都失败或被跳过

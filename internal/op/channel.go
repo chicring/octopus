@@ -3,6 +3,7 @@ package op
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -27,9 +28,20 @@ var channelKeyRotationCounters sync.Map // map[int]*uint64
 // ChannelGetKey 从缓存中获取渠道，并使用最低成本优先 + 轮询 tiebreaker 策略选择可用 Key。
 // 当多个 Key 具有相同最低成本时，通过原子计数器实现轮询，确保全轮询。
 func ChannelGetKey(channelID int) model.ChannelKey {
+	keys := ChannelGetKeys(channelID)
+	if len(keys) == 0 {
+		return model.ChannelKey{}
+	}
+	return keys[0]
+}
+
+// ChannelGetKeys 返回某渠道所有可用 Key，按「最低成本优先 + 轮询 tiebreaker」排序。
+// 列表首个元素即 ChannelGetKey 会选中的 Key；后续元素供单次请求内穷举重试。
+// 熔断状态不在此过滤（由调用方在 attempt 前用 SkipCircuitBreak 实时检查）。
+func ChannelGetKeys(channelID int) []model.ChannelKey {
 	ch, ok := channelCache.Get(channelID)
 	if !ok || len(ch.Keys) == 0 {
-		return model.ChannelKey{}
+		return nil
 	}
 
 	nowSec := time.Now().Unix()
@@ -49,34 +61,42 @@ func ChannelGetKey(channelID int) model.ChannelKey {
 	}
 
 	if len(eligible) == 0 {
-		return model.ChannelKey{}
+		return nil
 	}
 
-	// 找出最低成本
-	minCost := eligible[0].TotalCost
-	for _, k := range eligible[1:] {
-		if k.TotalCost < minCost {
-			minCost = k.TotalCost
-		}
+	// 按成本升序稳定排序：最低成本优先，同成本保持原顺序
+	sorted := make([]model.ChannelKey, len(eligible))
+	copy(sorted, eligible)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		return sorted[i].TotalCost < sorted[j].TotalCost
+	})
+
+	// 找到最低成本段
+	minCost := sorted[0].TotalCost
+	tieEnd := 1
+	for tieEnd < len(sorted) && sorted[tieEnd].TotalCost == minCost {
+		tieEnd++
 	}
 
-	// 收集所有同最低成本的 Key
-	var tied []model.ChannelKey
-	for _, k := range eligible {
-		if k.TotalCost == minCost {
-			tied = append(tied, k)
-		}
+	// 单个或无 tie：直接返回
+	if tieEnd <= 1 {
+		return sorted
 	}
 
-	// 单个 Key 直接返回
-	if len(tied) == 1 {
-		return tied[0]
-	}
-
-	// 多个同成本 Key：原子计数器轮询
+	// 多个同最低成本 Key：原子计数器轮询决定起始位置
+	tied := sorted[:tieEnd]
 	counterPtr, _ := channelKeyRotationCounters.LoadOrStore(channelID, new(uint64))
-	idx := atomic.AddUint64(counterPtr.(*uint64), 1) % uint64(len(tied))
-	return tied[idx]
+	idx := int(atomic.AddUint64(counterPtr.(*uint64), 1) % uint64(len(tied)))
+
+	// 轮转 tied 段，使 idx 位置成为首位
+	rotated := make([]model.ChannelKey, len(tied))
+	copy(rotated, tied[idx:])
+	copy(rotated[len(tied)-idx:], tied[:idx])
+
+	result := make([]model.ChannelKey, 0, len(sorted))
+	result = append(result, rotated...)
+	result = append(result, sorted[tieEnd:]...)
+	return result
 }
 
 func ChannelList(ctx context.Context) ([]model.Channel, error) {
@@ -170,9 +190,19 @@ func ChannelKeySaveDB(ctx context.Context) error {
 	}
 
 	// 使用事务批量写入，减少磁盘 fsync 次数
+	// 只更新运行时统计字段，避免覆盖 ChannelUpdate 已写入的 remark/enabled/channel_key
 	err := db.GetDB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		for i := range keys {
-			if err := tx.Save(&keys[i]).Error; err != nil {
+			if err := tx.Model(&model.ChannelKey{}).
+				Where("id = ?", keys[i].ID).
+				Updates(map[string]interface{}{
+					"status_code":         keys[i].StatusCode,
+					"last_use_time_stamp": keys[i].LastUseTimeStamp,
+					"total_cost":          keys[i].TotalCost,
+					"total_requests":      keys[i].TotalRequests,
+					"total_input_token":   keys[i].TotalInputToken,
+					"total_output_token":  keys[i].TotalOutputToken,
+				}).Error; err != nil {
 				return err
 			}
 		}
@@ -523,7 +553,17 @@ func channelRefreshCacheByID(id int, ctx context.Context) error {
 			dbConn := db.GetDB().WithContext(ctx)
 			for _, keyID := range dirtyKeyIDs {
 				if k, ok := channelKeyCache.Get(keyID); ok {
-					if err := dbConn.Save(&k).Error; err != nil {
+					// 只更新运行时统计字段，避免覆盖 ChannelUpdate 刚写入的 remark 等字段
+					if err := dbConn.Model(&model.ChannelKey{}).
+						Where("id = ?", keyID).
+						Updates(map[string]interface{}{
+							"status_code":         k.StatusCode,
+							"last_use_time_stamp": k.LastUseTimeStamp,
+							"total_cost":          k.TotalCost,
+							"total_requests":      k.TotalRequests,
+							"total_input_token":   k.TotalInputToken,
+							"total_output_token":  k.TotalOutputToken,
+						}).Error; err != nil {
 						log.Errorf("failed to flush dirty channel key %d before refresh: %v", keyID, err)
 					}
 				}
